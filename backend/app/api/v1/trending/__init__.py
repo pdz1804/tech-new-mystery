@@ -1,0 +1,1 @@
+"""Trending API module."""

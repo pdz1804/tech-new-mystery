@@ -1,0 +1,84 @@
+[tool.poetry]
+name = "tech-news-mystery-backend"
+version = "0.1.0"
+description = "Tech News Mystery — FastAPI backend with DynamoDB"
+authors = ["Tech News Team <team@technewsmystery.dev>"]
+readme = "README.md"
+
+packages = [{ include = "app" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+# Web framework
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.32.0"}
+
+# Database
+pynamodb = "^6.0.0"
+boto3 = "^1.35.0"
+
+# Caching & Task Queue
+redis = {extras = ["hiredis"], version = "^5.2.0"}
+celery = {extras = ["redis"], version = "^5.4.0"}
+
+# Settings & validation
+pydantic = "^2.10.0"
+pydantic-settings = "^2.6.0"
+
+# Auth & security
+python-jose = {extras = ["cryptography"], version = "^3.3.0"}
+passlib = {extras = ["bcrypt"], version = "^1.7.4"}
+
+# HTTP
+httpx = "^0.23.0"
+
+# AI & LLM
+anthropic = "^0.40.0"
+langchain = "^0.3.0"
+langchain-anthropic = "^0.3.0"
+crawl4ai = "^0.4.0"
+tavily-python = "^0.5.0"
+google-generativeai = "^0.7.0"
+openai = "^1.54.0"
+
+# Utilities
+python-slugify = "^8.0.0"
+pydantic-extra-types = "^2.9.0"
+email-validator = "^2.2.0"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+pytest-asyncio = "^0.24.0"
+pytest-cov = "^6.0.0"
+moto = {extras = ["dynamodb"], version = "^5.0.0"}
+responses = "^0.25.0"
+black = "^24.4.0"
+ruff = "^0.8.0"
+mypy = "^1.13.0"
+boto3-stubs = {extras = ["dynamodb"], version = "^1.35.0"}
+types-redis = "^4.6.0"
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "TCH"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "--cov=app --cov-report=term-missing"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
