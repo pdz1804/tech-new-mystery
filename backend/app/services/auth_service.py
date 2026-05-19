@@ -36,7 +36,11 @@ class AuthService:
         )
 
         # Generate tokens
-        access_token = create_access_token({"sub": user.user_id, "username": user.username})
+        access_token = create_access_token({
+            "sub": user.user_id,
+            "username": user.username,
+            "is_admin": user.is_admin
+        })
         refresh_token = create_refresh_token({"sub": user.user_id})
 
         return {
@@ -58,7 +62,11 @@ class AuthService:
             raise UnauthorizedError()
 
         # Generate tokens
-        access_token = create_access_token({"sub": user.user_id, "username": user.username})
+        access_token = create_access_token({
+            "sub": user.user_id,
+            "username": user.username,
+            "is_admin": user.is_admin
+        })
         refresh_token = create_refresh_token({"sub": user.user_id})
 
         return {
