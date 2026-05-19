@@ -1,15 +1,14 @@
 'use client';
 
+import { useState } from 'react';
+import CodeBlock from './CodeBlock';
+
 interface MarkdownContentProps {
   content: string;
   className?: string;
 }
 
 export function MarkdownContent({ content, className = '' }: MarkdownContentProps) {
-  /**
-   * Parse markdown content and render with proper styling.
-   * Handles: headings, paragraphs, lists, bold, italic, links, code blocks
-   */
   const parseMarkdown = (markdown: string): React.ReactNode[] => {
     const lines = markdown.split('\n');
     const elements: React.ReactNode[] = [];
@@ -19,10 +18,52 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
       const line = lines[i];
       const trimmed = line.trim();
 
-      // Skip empty lines but keep track of them for spacing
+      // Skip empty lines but keep track for spacing
       if (!trimmed) {
         elements.push(<div key={`empty-${i}`} className="h-2" />);
         i++;
+        continue;
+      }
+
+      // Code blocks: ``` ... ```
+      if (trimmed.startsWith('```')) {
+        const codeBlockLines: string[] = [];
+        const languageMatch = trimmed.match(/^```(\w*)/);
+        const language = languageMatch ? languageMatch[1] : '';
+        i++;
+
+        while (i < lines.length && !lines[i].trim().startsWith('```')) {
+          codeBlockLines.push(lines[i]);
+          i++;
+        }
+
+        if (i < lines.length && lines[i].trim().startsWith('```')) {
+          i++;
+        }
+
+        const codeContent = codeBlockLines.join('\n').trimEnd();
+        elements.push(
+          <CodeBlock
+            key={`code-${i}`}
+            code={codeContent}
+            language={language}
+          />
+        );
+        continue;
+      }
+
+      // Blockquotes
+      if (trimmed.startsWith('> ')) {
+        const quoteLines: string[] = [];
+        while (i < lines.length && lines[i].trim().startsWith('> ')) {
+          quoteLines.push(lines[i].trim().slice(2));
+          i++;
+        }
+        elements.push(
+          <blockquote key={`quote-${i}`} className="mb-6 border-l-4 border-slate-300 pl-4 italic text-slate-700">
+            {quoteLines.join(' ')}
+          </blockquote>
+        );
         continue;
       }
 
@@ -38,8 +79,8 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
       // Headings
       if (trimmed.startsWith('# ')) {
         elements.push(
-          <h1 key={`h1-${i}`} className="mt-8 mb-6 text-4xl font-bold text-slate-900">
-            {trimmed.slice(2).trim()}
+          <h1 key={`h1-${i}`} className="mt-8 mb-6 text-3xl sm:text-4xl font-bold text-slate-900">
+            {renderInlineMarkdown(trimmed.slice(2).trim())}
           </h1>
         );
         i++;
@@ -48,8 +89,8 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
 
       if (trimmed.startsWith('## ')) {
         elements.push(
-          <h2 key={`h2-${i}`} className="mt-6 mb-4 text-3xl font-bold text-slate-900">
-            {trimmed.slice(3).trim()}
+          <h2 key={`h2-${i}`} className="mt-6 mb-4 text-2xl sm:text-3xl font-bold text-slate-900">
+            {renderInlineMarkdown(trimmed.slice(3).trim())}
           </h2>
         );
         i++;
@@ -58,35 +99,55 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
 
       if (trimmed.startsWith('### ')) {
         elements.push(
-          <h3 key={`h3-${i}`} className="mt-5 mb-3 text-2xl font-bold text-slate-900">
-            {trimmed.slice(4).trim()}
+          <h3 key={`h3-${i}`} className="mt-5 mb-3 text-xl sm:text-2xl font-bold text-slate-900">
+            {renderInlineMarkdown(trimmed.slice(4).trim())}
           </h3>
         );
         i++;
         continue;
       }
 
-      // Lists
+      // Unordered lists
       if (trimmed.startsWith('- ')) {
-        const listItems = [];
+        const listItems: React.ReactNode[] = [];
         while (i < lines.length && lines[i].trim().startsWith('- ')) {
           const itemText = lines[i].trim().slice(2);
           listItems.push(
-            <li key={`li-${i}`} className="mb-2 text-slate-800 leading-relaxed">
+            <li key={`li-${i}`} className="mb-2 text-slate-800 leading-relaxed text-sm sm:text-base">
               {renderInlineMarkdown(itemText)}
             </li>
           );
           i++;
         }
         elements.push(
-          <ul key={`ul-${i}`} className="mb-6 ml-6 list-disc space-y-2">
+          <ul key={`ul-${i}`} className="mb-6 ml-4 sm:ml-6 list-disc space-y-2">
             {listItems}
           </ul>
         );
         continue;
       }
 
-      // Images: ![alt](url)
+      // Ordered lists
+      if (/^\d+\. /.test(trimmed)) {
+        const listItems: React.ReactNode[] = [];
+        while (i < lines.length && /^\d+\. /.test(lines[i].trim())) {
+          const itemText = lines[i].trim().replace(/^\d+\. /, '');
+          listItems.push(
+            <li key={`oli-${i}`} className="mb-2 text-slate-800 leading-relaxed text-sm sm:text-base">
+              {renderInlineMarkdown(itemText)}
+            </li>
+          );
+          i++;
+        }
+        elements.push(
+          <ol key={`ol-${i}`} className="mb-6 ml-4 sm:ml-6 list-decimal space-y-2">
+            {listItems}
+          </ol>
+        );
+        continue;
+      }
+
+      // Images
       const imageMatch = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
       if (imageMatch) {
         const [, altText, imageUrl] = imageMatch;
@@ -107,10 +168,10 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
         continue;
       }
 
-      // Italic/emphasis line
-      if (trimmed.startsWith('*') && trimmed.endsWith('*')) {
+      // Italic/emphasis line (starts and ends with *)
+      if (trimmed.startsWith('*') && trimmed.endsWith('*') && trimmed.length > 2) {
         elements.push(
-          <p key={`em-${i}`} className="mb-4 italic text-slate-600 leading-relaxed">
+          <p key={`em-${i}`} className="mb-4 italic text-slate-600 leading-relaxed text-sm sm:text-base">
             {trimmed.slice(1, -1).trim()}
           </p>
         );
@@ -120,7 +181,7 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
 
       // Regular paragraph
       elements.push(
-        <p key={`p-${i}`} className="mb-4 text-slate-800 leading-relaxed">
+        <p key={`p-${i}`} className="mb-4 text-slate-800 leading-relaxed text-sm sm:text-base">
           {renderInlineMarkdown(trimmed)}
         </p>
       );
@@ -131,7 +192,6 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
   };
 
   const renderInlineMarkdown = (text: string): React.ReactNode => {
-    // Handle bold, italic, links, and images
     const parts: React.ReactNode[] = [];
     let currentIndex = 0;
 
@@ -191,10 +251,10 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
           </strong>
         );
       }
-      // Handle code
+      // Handle inline code
       else if (match[7]) {
         parts.push(
-          <code key={`code-${match.index}`} className="rounded bg-slate-100 px-2 py-1 font-mono text-sm text-slate-900">
+          <code key={`code-${match.index}`} className="rounded bg-slate-100 px-2 py-1 font-mono text-xs sm:text-sm text-slate-900">
             {match[7]}
           </code>
         );
@@ -226,8 +286,9 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
   };
 
   return (
-    <div className={`prose prose-lg max-w-none space-y-4 ${className}`}>
+    <div className={`prose prose-sm sm:prose-base lg:prose-lg max-w-none space-y-4 ${className}`}>
       {parseMarkdown(content)}
     </div>
   );
 }
+
