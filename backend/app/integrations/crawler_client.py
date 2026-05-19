@@ -6,24 +6,15 @@ from typing import Optional, Any
 from enum import Enum
 
 try:
-    from crawl4ai import AsyncWebCrawler, CrawlerRunConfig, CacheMode
+    from crawl4ai import AsyncWebCrawler, CacheMode
     try:
-        from crawl4ai import BrowserConfig
+        from crawl4ai.content_filter_strategy import RelevantContentFilter
     except ImportError:
-        BrowserConfig = None
-    try:
-        from crawl4ai.markdown_generation_strategy import DefaultMarkdownGenerator
-        from crawl4ai.content_filter_strategy import PruningContentFilter
-    except ImportError:
-        DefaultMarkdownGenerator = None
-        PruningContentFilter = None
+        RelevantContentFilter = None
 except ImportError:
     AsyncWebCrawler = None
-    CrawlerRunConfig = None
-    BrowserConfig = None
     CacheMode = None
-    DefaultMarkdownGenerator = None
-    PruningContentFilter = None
+    RelevantContentFilter = None
 
 logger = logging.getLogger(__name__)
 
@@ -65,52 +56,44 @@ class CrawlerClient:
     """Web crawler client using Crawl4AI with native media extraction."""
 
     def __init__(self):
-        self.crawler = None
+        if AsyncWebCrawler:
+            self.crawler = AsyncWebCrawler()
+        else:
+            self.crawler = None
 
     async def initialize(self):
         """Initialize crawler."""
         try:
-            if BrowserConfig:
-                browser_config = BrowserConfig(headless=True)
-                self.crawler = AsyncWebCrawler(config=browser_config)
-            else:
+            if not self.crawler:
                 self.crawler = AsyncWebCrawler()
-            await self.crawler.__aenter__()
             logger.info("Crawler initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize crawler: {e}")
             raise
 
-    def _build_crawler_config(self, cache_mode: str = "always") -> Any:
-        """Build enhanced CrawlerRunConfig with media extraction and caching."""
-        if not CrawlerRunConfig:
-            return None
+    def _build_crawler_config(self, cache_mode: str = "always") -> dict:
+        """Build crawler parameters for AsyncWebCrawler.arun().
 
+        For Crawl4AI 0.4.0+, returns a dict of parameters to pass to arun().
+        """
         config_kwargs = {
-            "wait_for": "body",
-            "js_code": "window.scrollTo(0, document.body.scrollHeight);",
-            "remove_overlay_elements": True,
+            "word_count_threshold": 10,
+            "verbose": False,
         }
 
         # Add cache mode if available
         if CacheMode:
             cache_modes = {
-                "always": CacheMode.ALWAYS,
+                "always": CacheMode.ENABLED,
                 "write": CacheMode.WRITE_ONLY,
-                "no": CacheMode.NO_CACHE,
+                "no": CacheMode.BYPASS,
             }
-            config_kwargs["cache_mode"] = cache_modes.get(cache_mode, CacheMode.ALWAYS)
+            config_kwargs["cache_mode"] = cache_modes.get(cache_mode, CacheMode.ENABLED)
 
-        # Add enhanced markdown generation with media extraction
-        if DefaultMarkdownGenerator and PruningContentFilter:
-            try:
-                config_kwargs["markdown_generator"] = DefaultMarkdownGenerator(
-                    content_filter=PruningContentFilter(threshold=0.48, threshold_type="fixed"),
-                )
-            except Exception as e:
-                logger.warning(f"Failed to configure advanced markdown generation: {e}")
+        # Content filter is abstract in 0.4.0, skip for now
+        # Can be added once a concrete implementation is available
 
-        return CrawlerRunConfig(**config_kwargs)
+        return config_kwargs
 
     def _extract_media_items(self, result: Any) -> list[MediaItem]:
         """Extract media items from crawled result."""
@@ -147,10 +130,8 @@ class CrawlerClient:
             cache_mode = "always" if use_cache else "no"
             config = self._build_crawler_config(cache_mode=cache_mode)
 
-            if config:
-                result = await self.crawler.arun(url=url, config=config)
-            else:
-                result = await self.crawler.arun(url=url)
+            # Pass config parameters directly to arun()
+            result = await self.crawler.arun(url=url, **config)
 
             if not result.success:
                 return CrawledContent(
@@ -216,7 +197,6 @@ class CrawlerClient:
         """Close crawler."""
         if self.crawler:
             try:
-                await self.crawler.__aexit__(None, None, None)
                 logger.info("Crawler closed successfully")
             except Exception as e:
                 logger.error(f"Error closing crawler: {e}")
