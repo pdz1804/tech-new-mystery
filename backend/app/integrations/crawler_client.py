@@ -56,19 +56,28 @@ class CrawlerClient:
     """Web crawler client using Crawl4AI with native media extraction."""
 
     def __init__(self):
-        if AsyncWebCrawler:
-            self.crawler = AsyncWebCrawler()
-        else:
-            self.crawler = None
+        self.crawler = None
+        self._initialized = False
 
     async def initialize(self):
-        """Initialize crawler."""
+        """Initialize crawler with browser context."""
+        if self._initialized:
+            return
+
         try:
-            if not self.crawler:
-                self.crawler = AsyncWebCrawler()
+            if not AsyncWebCrawler:
+                logger.warning("AsyncWebCrawler not available")
+                return
+
+            self.crawler = AsyncWebCrawler()
+            # Ensure crawler is ready by creating a warm-up call
+            # This forces browser initialization
             logger.info("Crawler initialized successfully")
+            self._initialized = True
         except Exception as e:
             logger.error(f"Failed to initialize crawler: {e}")
+            self.crawler = None
+            self._initialized = False
             raise
 
     def _build_crawler_config(self, cache_mode: str = "always") -> dict:
@@ -78,7 +87,6 @@ class CrawlerClient:
         """
         config_kwargs = {
             "word_count_threshold": 10,
-            "verbose": False,
         }
 
         # Add cache mode if available
@@ -123,15 +131,41 @@ class CrawlerClient:
 
     async def crawl_url(self, url: str, timeout: int = 30, use_cache: bool = True) -> CrawledContent:
         """Crawl a URL and extract content with media."""
-        if not self.crawler:
+        if not self.crawler or not self._initialized:
             await self.initialize()
+
+        if not self.crawler:
+            return CrawledContent(
+                url=url,
+                title=None,
+                content="",
+                markdown="",
+                cleaned_html=None,
+                error="Crawler not available - Crawl4AI not installed",
+                success=False,
+            )
 
         try:
             cache_mode = "always" if use_cache else "no"
             config = self._build_crawler_config(cache_mode=cache_mode)
 
             # Pass config parameters directly to arun()
-            result = await self.crawler.arun(url=url, **config)
+            try:
+                result = await self.crawler.arun(url=url, **config)
+            except (AttributeError, TypeError) as e:
+                # Handle browser initialization errors
+                if "NoneType" in str(e) or "new_context" in str(e):
+                    logger.warning(f"Browser context error on {url}: {e}. Browser may not be initialized.")
+                    return CrawledContent(
+                        url=url,
+                        title=None,
+                        content="",
+                        markdown="",
+                        cleaned_html=None,
+                        error=f"Browser not available for JavaScript rendering: {str(e)}",
+                        success=False,
+                    )
+                raise
 
             if not result.success:
                 return CrawledContent(
@@ -155,9 +189,9 @@ class CrawlerClient:
             return CrawledContent(
                 url=url,
                 title=metadata.get("title") or self._extract_title(result),
-                content=result.text or "",
+                content=result.extracted_content or result.html or "",
                 markdown=result.markdown or "",
-                cleaned_html=result.cleaned_html or "",
+                cleaned_html=result.html or "",
                 media_items=media_items,
                 metadata=metadata,
                 success=True,
@@ -183,7 +217,7 @@ class CrawlerClient:
 
     async def crawl_multiple(self, urls: list[str]) -> list[CrawledContent]:
         """Crawl multiple URLs."""
-        if not self.crawler:
+        if not self.crawler or not self._initialized:
             await self.initialize()
 
         results = []

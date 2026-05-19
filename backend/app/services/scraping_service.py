@@ -254,14 +254,10 @@ class ScrapingService:
             logger.debug(f"Crawl4AI execution completed in {elapsed_time:.2f} seconds")
 
             if not crawled_content.success:
-                logger.error(f"Crawl4AI failed for {url}: {crawled_content.error}")
-                return {
-                    "markdown_content": None,
-                    "raw_html": None,
-                    "success": False,
-                    "error": f"Failed to scrape URL: {crawled_content.error}",
-                    "images_processed": 0
-                }
+                logger.warning(f"Crawl4AI failed for {url}: {crawled_content.error}")
+                # Try fallback scraper if Crawl4AI fails
+                logger.info(f"Attempting fallback scraper for {url}")
+                return await self._fallback_scrape(url)
 
             logger.debug(f"Crawl4AI extraction successful")
             logger.debug(f"  - Markdown size: {len(crawled_content.markdown)} chars")
@@ -368,7 +364,8 @@ class ScrapingService:
                 "markdown_content": markdown_with_images,
                 "raw_html": html,
                 "success": True,
-                "error": None
+                "error": None,
+                "images_processed": 0
             }
         except Exception as fallback_error:
             logger.error(f"[ERROR] Fallback scraper failed for {url}: {type(fallback_error).__name__}: {str(fallback_error)}")
@@ -376,5 +373,6 @@ class ScrapingService:
                 "markdown_content": None,
                 "raw_html": None,
                 "success": False,
-                "error": f"All scraping methods failed: {str(fallback_error)}"
+                "error": f"All scraping methods failed: {str(fallback_error)}",
+                "images_processed": 0
             }
