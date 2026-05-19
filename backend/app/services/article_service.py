@@ -293,8 +293,17 @@ class ArticleService:
 
         logger.debug(f"Crawl4AI extraction successful - content size: {len(raw_content)} chars")
 
+        # Extract image URLs from scraping result
+        image_urls = []
+        if scrape_result.get("markdown_content"):
+            # Extract S3 image URLs from markdown (format: ![](url))
+            import re
+            image_pattern = r'!\[.*?\]\((https://[^)]+)\)'
+            image_urls = re.findall(image_pattern, scrape_result.get("markdown_content", ""))
+            logger.debug(f"Extracted {len(image_urls)} image URLs from scraping result")
+
         # Process content using AI-powered service
-        logger.info(f"Processing extracted content with AI (generating title, summary, category, tags)")
+        logger.info(f"Processing extracted content with AI (generating title, summary, category, tags, markdown)")
         from app.services.article_processing_service import ArticleProcessingService
         processor = ArticleProcessingService()
 
@@ -303,6 +312,7 @@ class ArticleService:
             raw_content=raw_content,
             title=title,
             author=author,
+            image_urls=image_urls,
         )
 
         if not processing_result:
