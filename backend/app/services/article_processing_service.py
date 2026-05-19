@@ -177,26 +177,29 @@ class ArticleProcessingService:
     ) -> dict:
         """Single consolidated Bedrock call to generate all fields at once."""
 
-        # Prepare image references for markdown
-        image_markdown = ""
-        if image_urls:
-            image_markdown = "\n\n## 📸 Article Images\n"
-            for i, img_url in enumerate(image_urls, 1):
-                image_markdown += f"\n![Article Image {i}]({img_url})\n"
-
         categories_str = ", ".join(self.CATEGORIES[:-1])
+
+        # Prepare image URLs for the prompt
+        images_section = ""
+        if image_urls:
+            images_section = "\nAVAILABLE IMAGES TO EMBED IN ARTICLE:\n"
+            for i, img_url in enumerate(image_urls, 1):
+                images_section += f"{i}. {img_url}\n"
+            images_section += "\nINSTRUCTIONS FOR IMAGES:\n- Analyze the article content and determine where images would be most relevant\n- Embed images naturally throughout the markdown using ![description](image_url) syntax\n- Place images contextually within paragraphs or between sections where they enhance the content\n- Use image descriptions that match the article content\n- Images can appear anywhere in the content, not just at the end\n"
 
         prompt = f"""You are a professional content editor and analyst. Process this article and generate ALL required metadata in a single JSON response.
 
 ARTICLE CONTENT:
 {content}
+{images_section}
 
 INSTRUCTIONS:
 1. Generate a clear, engaging title (5-12 words) if not provided. Use the provided title if it exists.
 2. Write a 2-3 sentence summary capturing main points and key findings
 3. Classify into ONE category: {categories_str}, or Other
 4. Generate 4-6 semantic tags (single words or short phrases, lowercase, hyphen-separated)
-5. Structure full article as markdown with proper headers and formatting
+5. Structure full article as markdown with proper headers, paragraphs, and lists
+6. Embed available images contextually throughout the markdown where relevant
 
 PROVIDED TITLE: {title if title else "NOT PROVIDED - GENERATE ONE"}
 PROVIDED AUTHOR: {author if author else "UNKNOWN"}
@@ -210,7 +213,7 @@ Return ONLY valid JSON (no markdown, no backticks) with this exact structure:
     "summary": "2-3 sentence summary",
     "category": "One of the listed categories",
     "tags": ["tag1", "tag2", "tag3", "tag4"],
-    "markdown_content": "Full article markdown content with headers, paragraphs, lists as appropriate"
+    "markdown_content": "Full article markdown content with headers, images embedded contextually, paragraphs, lists as appropriate"
 }}
 
 Remember:
@@ -218,7 +221,8 @@ Remember:
 - Summary must be 2-3 sentences
 - Tags must be lowercase and hyphen-separated
 - Markdown must use proper formatting (headers with #, bold with **, lists with -, etc.)
-- Do NOT include title or author in the markdown_content - just the article body
+- IMPORTANT: Embed images naturally in markdown_content using ![description](url) - images can appear in middle, after sections, or anywhere relevant
+- Do NOT include title or author in markdown_content - just the article body with embedded images
 - Return ONLY the JSON object, nothing else
 
 JSON Response:"""
@@ -274,12 +278,8 @@ JSON Response:"""
                             clean_tags.append(clean_tag)
                 clean_tags = clean_tags[:10]
 
-                # Get markdown content
+                # Get markdown content (already includes images embedded contextually)
                 markdown_base = data.get("markdown_content", "").strip()
-
-                # Add images to markdown
-                if image_urls:
-                    markdown_base += image_markdown
 
                 # Build final markdown with metadata
                 final_markdown = self._build_final_markdown(

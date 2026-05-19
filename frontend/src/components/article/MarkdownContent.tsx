@@ -86,6 +86,27 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
         continue;
       }
 
+      // Images: ![alt](url)
+      const imageMatch = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+      if (imageMatch) {
+        const [, altText, imageUrl] = imageMatch;
+        elements.push(
+          <div key={`img-${i}`} className="my-6">
+            <img
+              src={imageUrl}
+              alt={altText || 'Article image'}
+              className="max-w-full h-auto rounded-lg shadow-md"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.style.display = 'none';
+              }}
+            />
+          </div>
+        );
+        i++;
+        continue;
+      }
+
       // Italic/emphasis line
       if (trimmed.startsWith('*') && trimmed.endsWith('*')) {
         elements.push(
@@ -110,75 +131,90 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
   };
 
   const renderInlineMarkdown = (text: string): React.ReactNode => {
-    // Handle bold, italic, and links
+    // Handle bold, italic, links, and images
     const parts: React.ReactNode[] = [];
     let currentIndex = 0;
 
-    const boldItalicRegex = /\*\*([^*]+)\*\*|\*([^*]+)\*|_([^_]+)_|__([^_]+)__|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)/g;
+    const inlineRegex = /!\[([^\]]*)\]\(([^)]+)\)|\*\*([^*]+)\*\*|\*([^*]+)\*|_([^_]+)_|__([^_]+)__|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\)/g;
     let match;
 
-    while ((match = boldItalicRegex.exec(text)) !== null) {
+    while ((match = inlineRegex.exec(text)) !== null) {
       // Add text before match
       if (match.index > currentIndex) {
         parts.push(text.substring(currentIndex, match.index));
       }
 
+      // Handle images: ![alt](url)
+      if (match[1] !== undefined && match[2]) {
+        parts.push(
+          <img
+            key={`inline-img-${match.index}`}
+            src={match[2]}
+            alt={match[1] || 'Image'}
+            className="inline max-h-6 align-middle rounded"
+            onError={(e) => {
+              const target = e.target as HTMLImageElement;
+              target.style.display = 'none';
+            }}
+          />
+        );
+      }
       // Handle bold
-      if (match[1]) {
+      else if (match[3]) {
         parts.push(
           <strong key={`bold-${match.index}`} className="font-bold text-slate-900">
-            {match[1]}
+            {match[3]}
           </strong>
         );
       }
       // Handle italic (single asterisk)
-      else if (match[2]) {
+      else if (match[4]) {
         parts.push(
           <em key={`italic-${match.index}`} className="italic">
-            {match[2]}
+            {match[4]}
           </em>
         );
       }
       // Handle italic (underscore)
-      else if (match[3]) {
+      else if (match[5]) {
         parts.push(
           <em key={`italic2-${match.index}`} className="italic">
-            {match[3]}
+            {match[5]}
           </em>
         );
       }
       // Handle bold (underscore)
-      else if (match[4]) {
+      else if (match[6]) {
         parts.push(
           <strong key={`bold2-${match.index}`} className="font-bold text-slate-900">
-            {match[4]}
+            {match[6]}
           </strong>
         );
       }
       // Handle code
-      else if (match[5]) {
+      else if (match[7]) {
         parts.push(
           <code key={`code-${match.index}`} className="rounded bg-slate-100 px-2 py-1 font-mono text-sm text-slate-900">
-            {match[5]}
+            {match[7]}
           </code>
         );
       }
-      // Handle links
-      else if (match[6] && match[7]) {
+      // Handle links: [text](url)
+      else if (match[8] && match[9]) {
         parts.push(
           <a
             key={`link-${match.index}`}
-            href={match[7]}
+            href={match[9]}
             target="_blank"
             rel="noopener noreferrer"
             className="font-semibold text-blue-600 hover:underline"
           >
-            {match[6]}
+            {match[8]}
           </a>
         );
       }
 
-      currentIndex = boldItalicRegex.lastIndex;
+      currentIndex = inlineRegex.lastIndex;
     }
 
     // Add remaining text
