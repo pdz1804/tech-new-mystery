@@ -151,6 +151,9 @@ class SearchService:
         query: str,
         limit: int = 10,
         include_domains: Optional[list[str]] = None,
+        start_date: Optional[str] = None,
+        topic: Optional[str] = None,
+        search_depth: Optional[str] = None,
     ) -> dict:
         """
         Search web using Tavily Search API for tech news and articles.
@@ -159,6 +162,9 @@ class SearchService:
             query: The search query
             limit: Maximum number of results (default 10)
             include_domains: List of domains to search in (default: tech news domains)
+            start_date: Search from this date onwards (format: YYYY-MM-DD)
+            topic: Topic type - 'news' for news articles
+            search_depth: 'basic' or 'advanced' search depth
 
         Returns:
             dict with keys:
@@ -209,13 +215,24 @@ class SearchService:
             logger.info(f"[TAVILY_SEARCH] Initializing TavilyClient with API key")
             client = TavilyClient(api_key=api_key)
 
-            # Execute search with domain filter
-            logger.info(f"[TAVILY_SEARCH] Searching query='{query}', limit={limit}, domains={include_domains[:2]}...")
-            response = client.search(
-                query=query,
-                max_results=limit,
-                include_domains=include_domains,
-            )
+            # Build search parameters
+            search_params = {
+                "query": query,
+                "max_results": limit,
+                "include_domains": include_domains,
+            }
+
+            # Add optional parameters if provided
+            if start_date:
+                search_params["start_date"] = start_date
+            if topic:
+                search_params["topic"] = topic
+            if search_depth:
+                search_params["search_depth"] = search_depth
+
+            # Execute search with parameters
+            logger.info(f"[TAVILY_SEARCH] Searching query='{query}', limit={limit}, start_date={start_date}, topic={topic}...")
+            response = client.search(**search_params)
 
             logger.info(f"[TAVILY_SEARCH] Response received: {len(response.get('results', []))} results")
 
@@ -262,6 +279,8 @@ class SearchService:
         self,
         query: str,
         limit: int = 10,
+        from_date: Optional[str] = None,
+        sort_by: Optional[str] = None,
     ) -> dict:
         """
         Search news using NewsAPI for tech news and articles.
@@ -269,6 +288,8 @@ class SearchService:
         Args:
             query: The search query
             limit: Maximum number of results (default 10)
+            from_date: Search from this date onwards (format: YYYY-MM-DD)
+            sort_by: Sort results by 'popularity', 'publishedAt', or 'relevancy'
 
         Returns:
             dict with keys:
@@ -305,14 +326,21 @@ class SearchService:
             logger.info(f"[NEWSAPI_SEARCH] Initializing NewsAPI client")
             client = NewsApiClient(api_key=api_key)
 
+            # Build search parameters
+            search_params = {
+                "q": query,
+                "language": "en",
+                "page_size": limit,
+                "sort_by": sort_by or "publishedAt",
+            }
+
+            # Add optional date filter if provided
+            if from_date:
+                search_params["from_param"] = from_date
+
             # Search for articles
-            logger.info(f"[NEWSAPI_SEARCH] Searching query='{query}', limit={limit}...")
-            response = client.get_everything(
-                q=query,
-                sort_by="publishedAt",
-                language="en",
-                page_size=limit,
-            )
+            logger.info(f"[NEWSAPI_SEARCH] Searching query='{query}', limit={limit}, from_date={from_date}, sort_by={sort_by or 'publishedAt'}...")
+            response = client.get_everything(**search_params)
 
             if response.get("status") != "ok":
                 logger.warning(f"[NEWSAPI_SEARCH] NewsAPI error: {response.get('message')}")

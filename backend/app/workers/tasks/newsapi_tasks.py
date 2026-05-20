@@ -30,10 +30,16 @@ def newsapi_scheduled_task(self):
 
 
 async def _fetch_and_store_search_results() -> dict:
-    """Fetch articles from NewsAPI and store as pending searches for review."""
+    """Fetch news articles from NewsAPI about tech from yesterday and store as pending searches."""
+    from datetime import datetime, timedelta
+
     logger.info("[NEWSAPI_SCHEDULED] Starting scheduled NewsAPI article discovery")
 
-    # Tech topics to search
+    # Get yesterday's date for dynamic search
+    yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+    logger.info(f"[NEWSAPI_SCHEDULED] Searching for news from {yesterday}")
+
+    # Tech topics to search for news
     topics = [
         "artificial intelligence",
         "machine learning",
@@ -65,10 +71,12 @@ async def _fetch_and_store_search_results() -> dict:
             logger.debug(f"Searching topic: {topic}")
 
             try:
-                # Search via NewsAPI
+                # Search via NewsAPI with news parameters
                 search_result = await search_service.newsapi_search(
                     query=topic,
                     limit=5,  # Get 5 results per topic
+                    from_date=yesterday,  # Only news from yesterday
+                    sort_by="popularity",  # Sort by popularity
                 )
 
                 if not search_result.get("success") or not search_result.get("results"):

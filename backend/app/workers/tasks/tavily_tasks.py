@@ -30,17 +30,23 @@ def tavily_scheduled_task(self):
 
 
 async def _fetch_and_store_search_results() -> dict:
-    """Fetch articles from Tavily and store as pending searches for review."""
+    """Fetch articles from Tavily news about tech from yesterday and store as pending searches."""
+    from datetime import datetime, timedelta
+
     logger.info("[TAVILY_SCHEDULED] Starting scheduled Tavily article discovery")
 
-    # Tech topics to search
+    # Get yesterday's date for dynamic search
+    yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+    logger.info(f"[TAVILY_SCHEDULED] Searching for news from {yesterday}")
+
+    # Tech topics to search for news
     topics = [
-        "artificial intelligence",
-        "machine learning",
-        "web development",
-        "devops cloud computing",
-        "cybersecurity",
-        "blockchain cryptocurrency",
+        "artificial intelligence news",
+        "machine learning news",
+        "web development news",
+        "devops cloud computing news",
+        "cybersecurity news",
+        "blockchain cryptocurrency news",
     ]
 
     search_repo = PendingSearchRepository()
@@ -56,7 +62,7 @@ async def _fetch_and_store_search_results() -> dict:
         existing_urls = {s.url for s in existing_searches}
         logger.debug(f"Existing pending searches: {len(existing_urls)}")
 
-        # Search each topic
+        # Search each topic for news
         for topic in topics:
             if results_found >= max_results_per_run:
                 logger.info(f"Reached max results ({max_results_per_run}) for this run")
@@ -65,10 +71,13 @@ async def _fetch_and_store_search_results() -> dict:
             logger.debug(f"Searching topic: {topic}")
 
             try:
-                # Search via Tavily
+                # Search via Tavily with news parameters
                 search_result = await search_service.tavily_search(
                     query=topic,
                     limit=5,  # Get 5 results per topic
+                    start_date=yesterday,  # Only news from yesterday
+                    topic="news",  # Search news specifically
+                    search_depth="advanced",  # Use advanced search
                 )
 
                 if not search_result.get("success") or not search_result.get("results"):
