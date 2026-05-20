@@ -198,3 +198,24 @@ class ArticleRepository:
             logger.error(f"[ERROR] Failed to delete article {article_id}: {type(e).__name__}: {str(e)}")
             logger.debug("Error details:", exc_info=True)
             raise
+
+    async def list_pending(self) -> list[ArticleModel]:
+        """List all pending (unpublished) articles.
+
+        Returns:
+            List of unpublished ArticleModel instances
+        """
+        logger.debug("Scanning for pending articles (is_published=False)")
+        try:
+            results = await asyncio.to_thread(
+                lambda: list(ArticleModel.scan(
+                    ArticleModel.is_published == False,
+                    limit=1000
+                ))
+            )
+            logger.info(f"Found {len(results)} pending articles")
+            return results
+        except Exception as e:
+            logger.error(f"Error listing pending articles: {type(e).__name__}: {str(e)}")
+            logger.debug("Error details:", exc_info=True)
+            raise

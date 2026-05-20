@@ -71,3 +71,10 @@ class UserRepository:
         """Check if user is active."""
         user = await self.get_by_id(user_id)
         return user.is_active if user else False
+
+    async def list_all(self, limit: int = 100) -> list[UserModel]:
+        """List all users."""
+        users = await asyncio.to_thread(
+            lambda: list(UserModel.scan(limit=limit))
+        )
+        return users

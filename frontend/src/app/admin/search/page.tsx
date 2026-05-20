@@ -44,7 +44,7 @@ export default function AdminSearchPage() {
   const router = useRouter();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isHydrated = useAuthStore((s) => s.isHydrated);
-  const userRole = useAuthStore((s) => s.user?.role);
+  const isAdmin = useAuthStore((s) => s.user?.is_admin);
   const setIntendedDestination = useAuthStore((s) => s.setIntendedDestination);
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -56,7 +56,7 @@ export default function AdminSearchPage() {
   const [generalError, setGeneralError] = useState<string | null>(null);
 
   // Protect route - redirect if not admin
-  if (isHydrated && (!isAuthenticated || userRole !== 'admin')) {
+  if (isHydrated && (!isAuthenticated || !isAdmin)) {
     setIntendedDestination('/admin/search');
     router.push('/login');
     return null;
