@@ -1,9 +1,9 @@
 """Search business logic service."""
 
 import logging
-import os
 from typing import Optional
 from app.repositories.article_repository import ArticleRepository
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -192,7 +192,7 @@ class SearchService:
                 "theverge.com",
             ]
 
-        api_key = os.getenv("TAVILY_API_KEY")
+        api_key = settings.tavily_api_key
         if not api_key:
             logger.error("TAVILY_API_KEY not configured")
             return {
@@ -250,6 +250,113 @@ class SearchService:
             }
         except Exception as e:
             logger.error(f"Error searching with Tavily: {str(e)}")
+            return {
+                "success": False,
+                "query": query,
+                "results": [],
+                "count": 0,
+                "error": f"Search failed: {str(e)}"
+            }
+
+    async def newsapi_search(
+        self,
+        query: str,
+        limit: int = 10,
+    ) -> dict:
+        """
+        Search news using NewsAPI for tech news and articles.
+
+        Args:
+            query: The search query
+            limit: Maximum number of results (default 10)
+
+        Returns:
+            dict with keys:
+            - success: Boolean indicating if search succeeded
+            - query: The original query
+            - results: List of search results [{url, title, description, source, published_date}, ...]
+            - count: Number of results returned
+            - error: Error message if search failed
+        """
+        if not query or not query.strip():
+            return {
+                "success": False,
+                "query": query,
+                "results": [],
+                "count": 0,
+                "error": "Query cannot be empty"
+            }
+
+        api_key = settings.newsapi_key
+        if not api_key:
+            logger.error("NEWSAPI_KEY not configured")
+            return {
+                "success": False,
+                "query": query,
+                "results": [],
+                "count": 0,
+                "error": "NewsAPI key not configured"
+            }
+
+        try:
+            import newsapi
+            from newsapi import NewsApiClient
+
+            logger.info(f"[NEWSAPI_SEARCH] Initializing NewsAPI client")
+            client = NewsApiClient(api_key=api_key)
+
+            # Search for articles
+            logger.info(f"[NEWSAPI_SEARCH] Searching query='{query}', limit={limit}...")
+            response = client.get_everything(
+                q=query,
+                sort_by="publishedAt",
+                language="en",
+                page_size=limit,
+            )
+
+            if response.get("status") != "ok":
+                logger.warning(f"[NEWSAPI_SEARCH] NewsAPI error: {response.get('message')}")
+                return {
+                    "success": False,
+                    "query": query,
+                    "results": [],
+                    "count": 0,
+                    "error": response.get("message", "NewsAPI request failed")
+                }
+
+            logger.info(f"[NEWSAPI_SEARCH] Response received: {len(response.get('articles', []))} results")
+
+            # Format results
+            results = []
+            for item in response.get("articles", []):
+                results.append({
+                    "url": item.get("url", ""),
+                    "title": item.get("title", ""),
+                    "description": item.get("description", ""),
+                    "source": item.get("source", {}).get("name", ""),
+                    "published_date": item.get("publishedAt"),
+                })
+
+            logger.info(f"[NEWSAPI_SEARCH] Formatted {len(results)} results")
+            return {
+                "success": True,
+                "query": query,
+                "results": results,
+                "count": len(results),
+                "error": None
+            }
+
+        except ImportError:
+            logger.error("NewsAPI library not installed. Install with: pip install newsapi-python")
+            return {
+                "success": False,
+                "query": query,
+                "results": [],
+                "count": 0,
+                "error": "NewsAPI library not installed"
+            }
+        except Exception as e:
+            logger.error(f"Error searching with NewsAPI: {str(e)}")
             return {
                 "success": False,
                 "query": query,

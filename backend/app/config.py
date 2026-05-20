@@ -60,6 +60,9 @@ class Settings(BaseSettings):
     # Tavily
     tavily_api_key: str | None = None
 
+    # NewsAPI
+    newsapi_key: str | None = None
+
     # JWT
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"

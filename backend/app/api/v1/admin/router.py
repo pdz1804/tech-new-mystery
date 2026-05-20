@@ -503,3 +503,31 @@ async def trigger_tavily_scheduler(
     except Exception as e:
         logger.error(f"[TAVILY_TRIGGER] Error triggering Tavily scheduler: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to trigger scheduler: {str(e)}")
+
+
+@router.post("/newsapi/trigger", response_model=GenericSuccessResponse)
+async def trigger_newsapi_scheduler(
+    _: dict = Depends(require_admin),
+) -> GenericSuccessResponse:
+    """Manually trigger NewsAPI scheduler task (admin only).
+
+    Queues the NewsAPI scheduler task to fetch articles immediately
+    instead of waiting for the next scheduled run (6 hours).
+    """
+    try:
+        from app.workers.tasks.newsapi_tasks import newsapi_scheduled_task
+
+        logger.info("[NEWSAPI_TRIGGER] Admin manually triggering NewsAPI scheduler")
+
+        # Dispatch the task asynchronously
+        task = newsapi_scheduled_task.delay()
+
+        logger.info(f"[NEWSAPI_TRIGGER] Task queued with ID: {task.id}")
+
+        return GenericSuccessResponse(
+            success=True,
+            message=f"NewsAPI scheduler task triggered successfully. Task ID: {task.id}",
+        )
+    except Exception as e:
+        logger.error(f"[NEWSAPI_TRIGGER] Error triggering NewsAPI scheduler: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to trigger scheduler: {str(e)}")

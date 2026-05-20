@@ -26,7 +26,7 @@ class PendingSearchRepository:
             updated_at=search_data.get("updated_at", int(datetime.utcnow().timestamp())),
             status="pending",
         )
-        await search.async_save()
+        await asyncio.to_thread(search.save)
         return search
 
     async def get_by_id(self, search_id: str) -> Optional[PendingSearchModel]:
@@ -65,7 +65,7 @@ class PendingSearchRepository:
             search.approved_by = approved_by
             search.approved_at = int(datetime.utcnow().timestamp())
 
-        await search.async_save()
+        await asyncio.to_thread(search.save)
         return search
 
     async def delete(self, search_id: str) -> bool:
@@ -74,5 +74,5 @@ class PendingSearchRepository:
         if not search:
             return False
 
-        await search.async_delete()
+        await asyncio.to_thread(search.delete)
         return True

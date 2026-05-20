@@ -28,7 +28,7 @@ export default function AdminQueuePage() {
   const [searches, setSearches] = useState<PendingSearch[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [triggeringScheduler, setTriggeringScheduler] = useState(false);
+  const [triggeringScheduler, setTriggeringScheduler] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -109,13 +109,14 @@ export default function AdminQueuePage() {
     }
   };
 
-  const handleTriggerScheduler = async () => {
+  const handleTriggerScheduler = async (source: 'tavily' | 'newsapi') => {
     try {
-      setTriggeringScheduler(true);
+      setTriggeringScheduler(source);
       setError(null);
       setSuccessMessage(null);
 
-      const { data } = await apiClient.post('/admin/tavily/trigger');
+      const endpoint = source === 'tavily' ? '/admin/tavily/trigger' : '/admin/newsapi/trigger';
+      const { data } = await apiClient.post(endpoint);
 
       if (data.success) {
         setSuccessMessage(data.message);
@@ -140,7 +141,7 @@ export default function AdminQueuePage() {
       setError(message);
       console.error('Error triggering scheduler:', err);
     } finally {
-      setTriggeringScheduler(false);
+      setTriggeringScheduler(null);
     }
   };
 
@@ -156,28 +157,49 @@ export default function AdminQueuePage() {
           <div className="flex-1">
             <h1 className="text-3xl font-bold text-slate-900">Search Queue</h1>
             <p className="mt-2 text-slate-600">
-              Review and approve search results from Tavily ({searches.length} pending)
+              Review and approve search results ({searches.length} pending)
             </p>
           </div>
-          <button
-            type="button"
-            onClick={handleTriggerScheduler}
-            disabled={triggeringScheduler || loading}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all whitespace-nowrap flex-shrink-0"
-            title="Manually trigger Tavily scheduler to fetch articles now"
-          >
-            {triggeringScheduler ? (
-              <>
-                <Loader2 size={18} className="animate-spin" />
-                <span className="hidden sm:inline">Triggering...</span>
-              </>
-            ) : (
-              <>
-                <Zap size={18} />
-                <span className="hidden sm:inline">Trigger Tavily</span>
-              </>
-            )}
-          </button>
+          <div className="flex gap-2 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => handleTriggerScheduler('tavily')}
+              disabled={triggeringScheduler !== null || loading}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all whitespace-nowrap"
+              title="Manually trigger Tavily scheduler to fetch articles now"
+            >
+              {triggeringScheduler === 'tavily' ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  <span className="hidden sm:inline">Tavily...</span>
+                </>
+              ) : (
+                <>
+                  <Zap size={18} />
+                  <span className="hidden sm:inline">Tavily</span>
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleTriggerScheduler('newsapi')}
+              disabled={triggeringScheduler !== null || loading}
+              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all whitespace-nowrap"
+              title="Manually trigger NewsAPI scheduler to fetch articles now"
+            >
+              {triggeringScheduler === 'newsapi' ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" />
+                  <span className="hidden sm:inline">NewsAPI...</span>
+                </>
+              ) : (
+                <>
+                  <Zap size={18} />
+                  <span className="hidden sm:inline">NewsAPI</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Success Message */}
