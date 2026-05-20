@@ -439,6 +439,20 @@ async def approve_search(
 
     except HTTPException:
         raise
+    except ValueError as e:
+        error_msg = str(e)
+        logger.warning(f"[APPROVE_SEARCH] Validation error for search {search_id}: {error_msg}")
+
+        # Handle duplicate URL
+        if "already exists" in error_msg:
+            # Mark search as rejected due to duplicate
+            await search_repo.update_status(search_id, "rejected", approved_by="admin")
+            raise HTTPException(
+                status_code=409,
+                detail="Article from this URL already exists in the system"
+            )
+
+        raise HTTPException(status_code=400, detail=error_msg)
     except Exception as e:
         logger.error(f"[APPROVE_SEARCH] Error approving search {search_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to approve search: {str(e)}")

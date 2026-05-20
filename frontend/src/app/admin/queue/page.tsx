@@ -81,9 +81,14 @@ export default function AdminQueuePage() {
       } else {
         setError('Failed to approve search');
       }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error occurred';
-      setError(message);
+    } catch (err: any) {
+      // Handle duplicate URL (409 Conflict)
+      if (err?.response?.status === 409) {
+        setError('This article already exists. Click Delete to remove this search result.');
+      } else {
+        const message = err instanceof Error ? err.message : 'Unknown error occurred';
+        setError(message);
+      }
       console.error('Error approving search:', err);
     } finally {
       setActionLoading(null);
