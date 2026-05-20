@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { useRouter } from 'next/navigation';
+import { apiClient } from '@/lib/api/client';
 import { Button } from '@/components/ui/Button';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Shield, Loader2 } from 'lucide-react';
@@ -26,11 +27,13 @@ export default function AdminUsersPage() {
   const [toggleLoading, setToggleLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Protect route - redirect if not admin
-  if (isHydrated && !user?.is_admin) {
-    router.push('/');
-    return null;
-  }
+  useEffect(() => {
+    // Protect route - redirect if not admin
+    if (isHydrated && !user?.is_admin) {
+      router.push('/');
+      return;
+    }
+  }, [isHydrated, user?.is_admin, router]);
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -38,21 +41,10 @@ export default function AdminUsersPage() {
         setLoading(true);
         setError(null);
 
-        const response = await fetch('/api/v1/admin/users', {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${useAuthStore.getState().accessToken}`,
-            'Content-Type': 'application/json',
-          },
-        });
+        const { data: response } = await apiClient.get('/admin/users');
 
-        if (!response.ok) {
-          throw new Error(`Failed to fetch users: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        if (data.success) {
-          setUsers(data.data);
+        if (response.success) {
+          setUsers(response.data);
         } else {
           setError('Failed to load users');
         }
@@ -73,19 +65,8 @@ export default function AdminUsersPage() {
   const toggleAdminStatus = async (userId: string, currentStatus: boolean) => {
     try {
       setToggleLoading(userId);
-      const response = await fetch(`/api/v1/admin/users/${userId}/toggle-admin`, {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${useAuthStore.getState().accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const { data } = await apiClient.put(`/admin/users/${userId}/toggle-admin`);
 
-      if (!response.ok) {
-        throw new Error(`Failed to toggle admin status: ${response.statusText}`);
-      }
-
-      const data = await response.json();
       if (data.success) {
         setUsers(
           users.map((u) =>

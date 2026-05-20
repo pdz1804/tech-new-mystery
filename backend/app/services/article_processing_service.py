@@ -207,23 +207,30 @@ PROVIDED AUTHOR: {author if author else "UNKNOWN"}
 CATEGORIES (choose exactly one):
 {categories_str}
 
-Return ONLY valid JSON (no markdown, no backticks) with this exact structure:
+CRITICAL INSTRUCTIONS FOR JSON RESPONSE:
+- Return ONLY a valid JSON object (no markdown code blocks, no extra text before/after)
+- Use proper JSON formatting with no unescaped quotes or newlines in string values
+- Escape any special characters (quotes, backslashes, newlines) in markdown_content
+- All string values must be on single logical lines (use \\n for actual newlines if needed)
+
+JSON Response Format (MUST be exactly this structure):
 {{
-    "title": "Generated or provided title",
-    "summary": "2-3 sentence summary",
-    "category": "One of the listed categories",
-    "tags": ["tag1", "tag2", "tag3", "tag4"],
-    "markdown_content": "Full article markdown content with headers, images embedded contextually, paragraphs, lists as appropriate"
+    "title": "Clear, engaging title under 100 chars",
+    "summary": "2-3 sentence summary of main points",
+    "category": "One of: AI, Web Development, DevOps, Security, Mobile, Cloud Computing, Data Science, Infrastructure, Blockchain, Other",
+    "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
+    "markdown_content": "Full article as markdown with headers, paragraphs, lists, and images. Use proper \\n for line breaks in JSON string."
 }}
 
-Remember:
-- Title must be under 100 characters
-- Summary must be 2-3 sentences
-- Tags must be lowercase and hyphen-separated
-- Markdown must use proper formatting (headers with #, bold with **, lists with -, etc.)
-- IMPORTANT: Embed images naturally in markdown_content using ![description](url) - images can appear in middle, after sections, or anywhere relevant
-- Do NOT include title or author in markdown_content - just the article body with embedded images
-- Return ONLY the JSON object, nothing else
+Important:
+- Title: under 100 characters, engaging
+- Summary: exactly 2-3 sentences
+- Category: choose EXACTLY ONE from the list above
+- Tags: 4-6 lowercase tags, hyphen-separated, no special chars
+- Markdown: proper formatting with # headers, ** bold, - lists
+- Images: embed as ![description](url) contextually throughout content
+- NO title or author in markdown_content, just body with embedded images
+- MUST return ONLY the JSON object - nothing else!
 
 JSON Response:"""
 
@@ -239,17 +246,43 @@ JSON Response:"""
                 )
 
                 logger.debug(f"Raw response length: {len(response)} chars")
+                logger.debug(f"First 500 chars of response: {response[:500]}")
 
-                # Parse JSON response
+                # Parse JSON response with improved extraction
                 try:
                     data = json.loads(response.strip())
-                except json.JSONDecodeError:
-                    # Try to extract JSON from response if it has extra text
-                    json_match = re.search(r'\{.*\}', response, re.DOTALL)
-                    if json_match:
-                        data = json.loads(json_match.group())
-                    else:
-                        raise ValueError("Could not find JSON in response")
+                except json.JSONDecodeError as initial_error:
+                    # Try to extract and clean JSON from response
+                    # Look for { and match closing }
+                    start_idx = response.find('{')
+                    if start_idx == -1:
+                        raise ValueError("Could not find JSON start in response")
+
+                    # Find the matching closing brace
+                    brace_count = 0
+                    end_idx = -1
+                    for i in range(start_idx, len(response)):
+                        if response[i] == '{':
+                            brace_count += 1
+                        elif response[i] == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                end_idx = i
+                                break
+
+                    if end_idx == -1:
+                        raise ValueError("Could not find matching closing brace in response")
+
+                    json_str = response[start_idx:end_idx+1]
+
+                    # Try to parse the extracted JSON
+                    try:
+                        data = json.loads(json_str)
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Initial JSON parse error: {str(initial_error)}")
+                        logger.warning(f"Extracted JSON: {json_str[:500]}...")
+                        logger.warning(f"Extracted JSON parse error: {str(e)}")
+                        raise ValueError(f"Invalid JSON after extraction: {str(e)}")
 
                 # Extract and validate fields
                 generated_title = (data.get("title") or title or "Untitled").strip()

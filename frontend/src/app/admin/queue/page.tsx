@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { useRouter } from 'next/navigation';
+import { apiClient } from '@/lib/api/client';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -30,11 +31,13 @@ export default function AdminQueuePage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Protect route - redirect if not admin
-  if (isHydrated && !user?.is_admin) {
-    router.push('/');
-    return null;
-  }
+  useEffect(() => {
+    // Protect route - redirect if not admin
+    if (isHydrated && !user?.is_admin) {
+      router.push('/');
+      return;
+    }
+  }, [isHydrated, user?.is_admin, router]);
 
   useEffect(() => {
     const fetchQueue = async () => {
@@ -42,21 +45,10 @@ export default function AdminQueuePage() {
         setLoading(true);
         setError(null);
 
-        const response = await fetch('/api/v1/admin/articles/queue', {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${useAuthStore.getState().accessToken}`,
-            'Content-Type': 'application/json',
-          },
-        });
+        const { data: response } = await apiClient.get('/admin/articles/queue');
 
-        if (!response.ok) {
-          throw new Error(`Failed to fetch queue: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        if (data.success) {
-          setArticles(data.data);
+        if (response.success) {
+          setArticles(response.data);
         } else {
           setError('Failed to load pending articles');
         }
@@ -77,19 +69,8 @@ export default function AdminQueuePage() {
   const handleApprove = async (articleId: string) => {
     try {
       setActionLoading(articleId);
-      const response = await fetch(`/api/v1/admin/articles/${articleId}/approve`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${useAuthStore.getState().accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const { data } = await apiClient.post(`/admin/articles/${articleId}/approve`);
 
-      if (!response.ok) {
-        throw new Error(`Failed to approve: ${response.statusText}`);
-      }
-
-      const data = await response.json();
       if (data.success) {
         setArticles(articles.filter((a) => a.article_id !== articleId));
       } else {
@@ -107,19 +88,8 @@ export default function AdminQueuePage() {
   const handleReject = async (articleId: string) => {
     try {
       setActionLoading(articleId);
-      const response = await fetch(`/api/v1/admin/articles/${articleId}/reject`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${useAuthStore.getState().accessToken}`,
-          'Content-Type': 'application/json',
-        },
-      });
+      const { data } = await apiClient.delete(`/admin/articles/${articleId}/reject`);
 
-      if (!response.ok) {
-        throw new Error(`Failed to reject: ${response.statusText}`);
-      }
-
-      const data = await response.json();
       if (data.success) {
         setArticles(articles.filter((a) => a.article_id !== articleId));
       } else {
