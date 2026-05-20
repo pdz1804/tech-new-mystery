@@ -22,10 +22,13 @@ def newsapi_scheduled_task(self):
 
     Searches tech topics and stores results as pending searches for admin review.
     """
+    logger.info("[NEWSAPI_SCHEDULED] Task started - executing async search")
     try:
-        return asyncio.run(_fetch_and_store_search_results())
+        result = asyncio.run(_fetch_and_store_search_results())
+        logger.info(f"[NEWSAPI_SCHEDULED] Task completed successfully: {result}")
+        return result
     except Exception as exc:
-        logger.error(f"NewsAPI task failed: {str(exc)}", exc_info=True)
+        logger.error(f"[NEWSAPI_SCHEDULED] Task failed: {str(exc)}", exc_info=True)
         raise self.retry(exc=exc)
 
 
@@ -79,8 +82,12 @@ async def _fetch_and_store_search_results() -> dict:
                     sort_by="popularity",  # Sort by popularity
                 )
 
-                if not search_result.get("success") or not search_result.get("results"):
-                    logger.warning(f"No results for topic: {topic}")
+                if not search_result.get("success"):
+                    logger.error(f"[NEWSAPI_SCHEDULED] Search failed for topic '{topic}': {search_result.get('error')}")
+                    continue
+
+                if not search_result.get("results"):
+                    logger.warning(f"[NEWSAPI_SCHEDULED] No results for topic: {topic}")
                     continue
 
                 # Save each search result as pending

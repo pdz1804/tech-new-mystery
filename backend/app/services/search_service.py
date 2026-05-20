@@ -334,12 +334,15 @@ class SearchService:
                 "sort_by": sort_by or "publishedAt",
             }
 
-            # Add optional date filter if provided
+            # Add optional date filter if provided (use 'from_param' to avoid reserved keyword)
             if from_date:
                 search_params["from_param"] = from_date
+                logger.debug(f"[NEWSAPI_SEARCH] Added from_date filter: {from_date}")
 
             # Search for articles
             logger.info(f"[NEWSAPI_SEARCH] Searching query='{query}', limit={limit}, from_date={from_date}, sort_by={sort_by or 'publishedAt'}...")
+            logger.debug(f"[NEWSAPI_SEARCH] Search params: {search_params}")
+
             response = client.get_everything(**search_params)
 
             if response.get("status") != "ok":
@@ -374,8 +377,8 @@ class SearchService:
                 "error": None
             }
 
-        except ImportError:
-            logger.error("NewsAPI library not installed. Install with: pip install newsapi-python")
+        except ImportError as e:
+            logger.error(f"NewsAPI library not installed: {str(e)}")
             return {
                 "success": False,
                 "query": query,
@@ -383,8 +386,17 @@ class SearchService:
                 "count": 0,
                 "error": "NewsAPI library not installed"
             }
+        except TypeError as e:
+            logger.error(f"NewsAPI parameter error: {str(e)}", exc_info=True)
+            return {
+                "success": False,
+                "query": query,
+                "results": [],
+                "count": 0,
+                "error": f"Invalid parameter: {str(e)}"
+            }
         except Exception as e:
-            logger.error(f"Error searching with NewsAPI: {str(e)}")
+            logger.error(f"Error searching with NewsAPI: {str(e)}", exc_info=True)
             return {
                 "success": False,
                 "query": query,

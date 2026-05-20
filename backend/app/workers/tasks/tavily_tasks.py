@@ -22,10 +22,13 @@ def tavily_scheduled_task(self):
 
     Searches tech topics and stores results as pending searches for admin review.
     """
+    logger.info("[TAVILY_SCHEDULED] Task started - executing async search")
     try:
-        return asyncio.run(_fetch_and_store_search_results())
+        result = asyncio.run(_fetch_and_store_search_results())
+        logger.info(f"[TAVILY_SCHEDULED] Task completed successfully: {result}")
+        return result
     except Exception as exc:
-        logger.error(f"Tavily task failed: {str(exc)}", exc_info=True)
+        logger.error(f"[TAVILY_SCHEDULED] Task failed: {str(exc)}", exc_info=True)
         raise self.retry(exc=exc)
 
 
