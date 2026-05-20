@@ -206,14 +206,18 @@ class SearchService:
         try:
             from tavily import TavilyClient
 
+            logger.info(f"[TAVILY_SEARCH] Initializing TavilyClient with API key")
             client = TavilyClient(api_key=api_key)
 
             # Execute search with domain filter
+            logger.info(f"[TAVILY_SEARCH] Searching query='{query}', limit={limit}, domains={include_domains[:2]}...")
             response = client.search(
                 query=query,
                 max_results=limit,
                 include_domains=include_domains,
             )
+
+            logger.info(f"[TAVILY_SEARCH] Response received: {len(response.get('results', []))} results")
 
             # Format results
             results = []
@@ -226,6 +230,7 @@ class SearchService:
                     "published_date": item.get("published_date"),
                 })
 
+            logger.info(f"[TAVILY_SEARCH] Formatted {len(results)} results")
             return {
                 "success": True,
                 "query": query,

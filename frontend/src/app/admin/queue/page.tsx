@@ -9,16 +9,15 @@ import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Check, X, ExternalLink, Loader2, Zap } from 'lucide-react';
 
-interface PendingArticle {
-  article_id: string;
+interface PendingSearch {
+  search_id: string;
+  query: string;
   title: string;
-  slug: string;
-  summary: string | null;
-  category: string | null;
-  tags: string[];
-  original_url: string;
-  source_id: string;
+  url: string;
+  snippet: string | null;
+  source: string | null;
   created_at: string;
+  status: string;
 }
 
 export default function AdminQueuePage() {
@@ -26,7 +25,7 @@ export default function AdminQueuePage() {
   const user = useAuthStore((s) => s.user);
   const isHydrated = useAuthStore((s) => s.isHydrated);
 
-  const [articles, setArticles] = useState<PendingArticle[]>([]);
+  const [searches, setSearches] = useState<PendingSearch[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [triggeringScheduler, setTriggeringScheduler] = useState(false);
@@ -47,12 +46,12 @@ export default function AdminQueuePage() {
         setLoading(true);
         setError(null);
 
-        const { data: response } = await apiClient.get('/admin/articles/queue');
+        const { data: response } = await apiClient.get('/admin/searches');
 
         if (response.success) {
-          setArticles(response.data);
+          setSearches(response.data);
         } else {
-          setError('Failed to load pending articles');
+          setError('Failed to load pending searches');
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error occurred';
@@ -68,39 +67,43 @@ export default function AdminQueuePage() {
     }
   }, [isHydrated]);
 
-  const handleApprove = async (articleId: string) => {
+  const handleApprove = async (searchId: string) => {
     try {
-      setActionLoading(articleId);
-      const { data } = await apiClient.post(`/admin/articles/${articleId}/approve`);
+      setActionLoading(searchId);
+      const { data } = await apiClient.post(`/admin/searches/${searchId}/approve`);
 
       if (data.success) {
-        setArticles(articles.filter((a) => a.article_id !== articleId));
+        setSearches(searches.filter((s) => s.search_id !== searchId));
+        setSuccessMessage('Search approved and article created successfully');
+        setTimeout(() => setSuccessMessage(null), 5000);
       } else {
-        setError('Failed to approve article');
+        setError('Failed to approve search');
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error occurred';
       setError(message);
-      console.error('Error approving article:', err);
+      console.error('Error approving search:', err);
     } finally {
       setActionLoading(null);
     }
   };
 
-  const handleReject = async (articleId: string) => {
+  const handleReject = async (searchId: string) => {
     try {
-      setActionLoading(articleId);
-      const { data } = await apiClient.delete(`/admin/articles/${articleId}/reject`);
+      setActionLoading(searchId);
+      const { data } = await apiClient.delete(`/admin/searches/${searchId}/reject`);
 
       if (data.success) {
-        setArticles(articles.filter((a) => a.article_id !== articleId));
+        setSearches(searches.filter((s) => s.search_id !== searchId));
+        setSuccessMessage('Search rejected successfully');
+        setTimeout(() => setSuccessMessage(null), 5000);
       } else {
-        setError('Failed to reject article');
+        setError('Failed to reject search');
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error occurred';
       setError(message);
-      console.error('Error rejecting article:', err);
+      console.error('Error rejecting search:', err);
     } finally {
       setActionLoading(null);
     }
@@ -118,12 +121,12 @@ export default function AdminQueuePage() {
         setSuccessMessage(data.message);
         // Auto-dismiss success message after 5 seconds
         setTimeout(() => setSuccessMessage(null), 5000);
-        // Refresh queue after a delay to show new articles
+        // Refresh queue after a delay to show new searches
         setTimeout(async () => {
           try {
-            const { data: response } = await apiClient.get('/admin/articles/queue');
+            const { data: response } = await apiClient.get('/admin/searches');
             if (response.success) {
-              setArticles(response.data);
+              setSearches(response.data);
             }
           } catch (err) {
             console.error('Error refreshing queue:', err);
@@ -151,9 +154,9 @@ export default function AdminQueuePage() {
         {/* Header */}
         <div className="mb-8 flex items-start justify-between gap-4">
           <div className="flex-1">
-            <h1 className="text-3xl font-bold text-slate-900">Article Queue</h1>
+            <h1 className="text-3xl font-bold text-slate-900">Search Queue</h1>
             <p className="mt-2 text-slate-600">
-              Review and approve articles fetched via Tavily ({articles.length} pending)
+              Review and approve search results from Tavily ({searches.length} pending)
             </p>
           </div>
           <button
@@ -205,18 +208,18 @@ export default function AdminQueuePage() {
               </div>
             ))}
           </div>
-        ) : articles.length === 0 ? (
+        ) : searches.length === 0 ? (
           <div className="rounded-lg border border-slate-200 bg-white p-12 text-center shadow-sm">
-            <p className="text-lg text-slate-600">No pending articles</p>
+            <p className="text-lg text-slate-600">No pending searches</p>
             <p className="mt-2 text-sm text-slate-500">
-              Check back later when new articles are fetched
+              Trigger Tavily to fetch search results or check back later
             </p>
           </div>
         ) : (
           <div className="space-y-4">
-            {articles.map((article) => (
+            {searches.map((search) => (
               <div
-                key={article.article_id}
+                key={search.search_id}
                 className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md"
               >
                 <div className="p-6">
@@ -224,10 +227,10 @@ export default function AdminQueuePage() {
                   <div className="mb-4 flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <h3 className="mb-2 text-lg font-semibold text-slate-900">
-                        {article.title}
+                        {search.title}
                       </h3>
                       <a
-                        href={article.original_url}
+                        href={search.url}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
@@ -238,47 +241,40 @@ export default function AdminQueuePage() {
                     </div>
                   </div>
 
-                  {/* Summary */}
-                  {article.summary && (
+                  {/* Snippet */}
+                  {search.snippet && (
                     <p className="mb-4 text-sm text-slate-600 line-clamp-2">
-                      {article.summary}
+                      {search.snippet}
                     </p>
                   )}
 
-                  {/* Category and Tags */}
+                  {/* Query and Source */}
                   <div className="mb-4 flex flex-wrap items-center gap-2">
-                    {article.category && (
-                      <Badge className="bg-slate-100 text-slate-800">
-                        {article.category}
+                    <Badge className="bg-slate-100 text-slate-800">
+                      {search.query}
+                    </Badge>
+                    {search.source && (
+                      <Badge className="bg-blue-100 text-blue-800">
+                        {search.source}
                       </Badge>
-                    )}
-                    {article.tags.slice(0, 3).map((tag) => (
-                      <Badge key={tag} className="bg-blue-100 text-blue-800">
-                        {tag}
-                      </Badge>
-                    ))}
-                    {article.tags.length > 3 && (
-                      <span className="text-xs text-slate-500">
-                        +{article.tags.length - 3} more
-                      </span>
                     )}
                   </div>
 
                   {/* Created date */}
                   <p className="mb-4 text-xs text-slate-500">
-                    Created{' '}
-                    {new Date(article.created_at).toLocaleDateString()} at{' '}
-                    {new Date(article.created_at).toLocaleTimeString()}
+                    Found{' '}
+                    {new Date(search.created_at).toLocaleDateString()} at{' '}
+                    {new Date(search.created_at).toLocaleTimeString()}
                   </p>
 
                   {/* Actions */}
                   <div className="flex gap-3">
                     <Button
-                      onClick={() => handleApprove(article.article_id)}
-                      disabled={actionLoading === article.article_id}
+                      onClick={() => handleApprove(search.search_id)}
+                      disabled={actionLoading === search.search_id}
                       className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
                     >
-                      {actionLoading === article.article_id ? (
+                      {actionLoading === search.search_id ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <Check className="h-4 w-4" />
@@ -286,11 +282,11 @@ export default function AdminQueuePage() {
                       Approve
                     </Button>
                     <Button
-                      onClick={() => handleReject(article.article_id)}
-                      disabled={actionLoading === article.article_id}
+                      onClick={() => handleReject(search.search_id)}
+                      disabled={actionLoading === search.search_id}
                       className="flex items-center gap-2 bg-red-600 hover:bg-red-700"
                     >
-                      {actionLoading === article.article_id ? (
+                      {actionLoading === search.search_id ? (
                         <Loader2 className="h-4 w-4 animate-spin" />
                       ) : (
                         <X className="h-4 w-4" />

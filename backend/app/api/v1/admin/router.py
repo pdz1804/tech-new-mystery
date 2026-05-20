@@ -10,6 +10,7 @@ from app.services.article_service import ArticleService
 from app.services.search_service import SearchService
 from app.repositories.article_repository import ArticleRepository
 from app.repositories.user_repository import UserRepository
+from app.repositories.pending_search_repository import PendingSearchRepository
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +109,25 @@ class GenericSuccessResponse(BaseModel):
     """Generic success response."""
     success: bool
     message: str
+
+
+class PendingSearchResponse(BaseModel):
+    """Response schema for pending search result."""
+    search_id: str
+    query: str
+    title: str
+    url: str
+    snippet: str | None
+    source: str | None
+    created_at: str
+    status: str
+
+
+class SearchesListResponse(BaseModel):
+    """Response schema for searches list endpoint."""
+    success: bool
+    data: list[PendingSearchResponse]
+    count: int
 
 
 @router.post("/search/tavily", response_model=TavilySearchResponse)
@@ -340,6 +360,121 @@ async def reject_article(
     except Exception as e:
         logger.error(f"[REJECT_ARTICLE] Error rejecting article {article_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to reject article: {str(e)}")
+
+
+@router.get("/searches", response_model=SearchesListResponse)
+async def list_pending_searches(
+    _: dict = Depends(require_admin),
+) -> SearchesListResponse:
+    """List pending Tavily search results awaiting approval (admin only)."""
+    try:
+        from datetime import datetime
+
+        search_repo = PendingSearchRepository()
+        pending_searches = await search_repo.list_pending(limit=1000)
+
+        search_responses = [
+            PendingSearchResponse(
+                search_id=search.search_id,
+                query=search.query,
+                title=search.title,
+                url=search.url,
+                snippet=search.snippet,
+                source=search.source,
+                created_at=datetime.fromtimestamp(search.created_at).isoformat() if search.created_at else "",
+                status=search.status,
+            )
+            for search in pending_searches
+        ]
+
+        logger.info(f"[SEARCHES_LIST] Retrieved {len(search_responses)} pending searches")
+        return SearchesListResponse(
+            success=True,
+            data=search_responses,
+            count=len(search_responses),
+        )
+
+    except Exception as e:
+        logger.error(f"[SEARCHES_LIST] Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to list pending searches: {str(e)}")
+
+
+@router.post("/searches/{search_id}/approve", response_model=GenericSuccessResponse)
+async def approve_search(
+    search_id: str,
+    _: dict = Depends(require_admin),
+    service: ArticleService = Depends(get_article_service),
+) -> GenericSuccessResponse:
+    """Approve a pending search result and create an article from it (admin only)."""
+    try:
+        search_repo = PendingSearchRepository()
+        search = await search_repo.get_by_id(search_id)
+
+        if not search:
+            raise HTTPException(status_code=404, detail="Search result not found")
+
+        if search.status != "pending":
+            raise HTTPException(status_code=400, detail=f"Search is already {search.status}")
+
+        logger.info(f"[APPROVE_SEARCH] Creating article from search: {search.title}")
+
+        # Create article from the search result URL
+        article = await service.create_from_url(
+            url=search.url,
+            title=search.title,
+            auto_summarize=True,
+        )
+
+        # Mark search as approved
+        await search_repo.update_status(search_id, "approved", approved_by="admin")
+
+        logger.info(
+            f"[APPROVE_SEARCH] Search {search_id} approved. Article created: {article.get('article_id')}"
+        )
+
+        return GenericSuccessResponse(
+            success=True,
+            message=f"Search approved and article '{article.get('title')}' created successfully",
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[APPROVE_SEARCH] Error approving search {search_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to approve search: {str(e)}")
+
+
+@router.delete("/searches/{search_id}/reject", response_model=GenericSuccessResponse)
+async def reject_search(
+    search_id: str,
+    _: dict = Depends(require_admin),
+) -> GenericSuccessResponse:
+    """Reject and delete a pending search result (admin only)."""
+    try:
+        search_repo = PendingSearchRepository()
+        search = await search_repo.get_by_id(search_id)
+
+        if not search:
+            raise HTTPException(status_code=404, detail="Search result not found")
+
+        # Delete the search
+        deleted = await search_repo.delete(search_id)
+
+        if not deleted:
+            raise HTTPException(status_code=500, detail="Failed to delete search")
+
+        logger.info(f"[REJECT_SEARCH] Search {search_id} rejected and deleted")
+
+        return GenericSuccessResponse(
+            success=True,
+            message="Search result rejected and deleted",
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[REJECT_SEARCH] Error rejecting search {search_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to reject search: {str(e)}")
 
 
 @router.post("/tavily/trigger", response_model=GenericSuccessResponse)

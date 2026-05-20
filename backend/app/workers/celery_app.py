@@ -32,3 +32,10 @@ celery_app.conf.update(
         },
     },
 )
+
+# Import tasks after celery_app is created to avoid circular imports
+# This ensures all task decorators are registered with celery_app
+try:
+    from app.workers.tasks import tavily_tasks, crawl_tasks, trending_tasks, digest_tasks, submission_tasks, summary_tasks
+except ImportError:
+    pass

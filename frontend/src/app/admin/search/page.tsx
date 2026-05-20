@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Loader2, CheckCircle, AlertCircle, Plus } from 'lucide-react';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { useRouter } from 'next/navigation';
+import { apiClient } from '@/lib/api/client';
 import { Alert } from '@/components/ui/Alert';
 
 interface SearchResult {
@@ -14,12 +15,6 @@ interface SearchResult {
   source: string;
   date: string;
   url: string;
-}
-
-interface CreateResponse {
-  success: boolean;
-  article_id?: string;
-  message?: string;
 }
 
 const containerVariants = {
@@ -79,20 +74,24 @@ export default function AdminSearchPage() {
     setSearchResults([]);
 
     try {
-      const response = await fetch('/api/v1/admin/search/tavily', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ topic: searchQuery }),
+      const { data } = await apiClient.post('/admin/search/tavily', {
+        query: searchQuery,
+        limit: 10,
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to search articles');
+      if (data.success && data.results) {
+        const mappedResults = data.results.map((result: any, index: number) => ({
+          id: `${index}-${result.url}`,
+          title: result.title || 'Untitled',
+          snippet: result.snippet || result.content?.substring(0, 200) || '',
+          source: result.source || new URL(result.url).hostname,
+          date: result.published_at || new Date().toISOString().split('T')[0],
+          url: result.url,
+        }));
+        setSearchResults(mappedResults);
+      } else {
+        setGeneralError(data.error || 'No results found');
       }
-
-      const data = await response.json();
-      setSearchResults(data.results || []);
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Failed to search articles';
       setGeneralError(errorMsg);
@@ -107,23 +106,14 @@ export default function AdminSearchPage() {
     setErrorMessages((prev) => ({ ...prev, [result.id]: '' }));
 
     try {
-      const response = await fetch('/api/v1/admin/search/approve-and-create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title: result.title,
-          url: result.url,
-          snippet: result.snippet,
-          source: result.source,
-        }),
+      const { data } = await apiClient.post('/admin/search/approve-and-create', {
+        title: result.title,
+        url: result.url,
+        query: searchQuery,
       });
 
-      const data: CreateResponse = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || 'Failed to create article');
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to create article');
       }
 
       setSuccessMessages((prev) => ({
@@ -155,7 +145,7 @@ export default function AdminSearchPage() {
         return updated;
       });
     }
-  }, []);
+  }, [searchQuery]);
 
   return (
     <motion.main
