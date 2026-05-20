@@ -340,3 +340,31 @@ async def reject_article(
     except Exception as e:
         logger.error(f"[REJECT_ARTICLE] Error rejecting article {article_id}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to reject article: {str(e)}")
+
+
+@router.post("/tavily/trigger", response_model=GenericSuccessResponse)
+async def trigger_tavily_scheduler(
+    _: dict = Depends(require_admin),
+) -> GenericSuccessResponse:
+    """Manually trigger Tavily scheduler task (admin only).
+
+    Queues the Tavily scheduler task to fetch articles immediately
+    instead of waiting for the next scheduled run (6 hours).
+    """
+    try:
+        from app.workers.tasks.tavily_tasks import tavily_scheduled_task
+
+        logger.info("[TAVILY_TRIGGER] Admin manually triggering Tavily scheduler")
+
+        # Dispatch the task asynchronously
+        task = tavily_scheduled_task.delay()
+
+        logger.info(f"[TAVILY_TRIGGER] Task queued with ID: {task.id}")
+
+        return GenericSuccessResponse(
+            success=True,
+            message=f"Tavily scheduler task triggered successfully. Task ID: {task.id}",
+        )
+    except Exception as e:
+        logger.error(f"[TAVILY_TRIGGER] Error triggering Tavily scheduler: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to trigger scheduler: {str(e)}")

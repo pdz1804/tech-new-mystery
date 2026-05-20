@@ -7,7 +7,7 @@ import { apiClient } from '@/lib/api/client';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { Check, X, ExternalLink, Loader2 } from 'lucide-react';
+import { Check, X, ExternalLink, Loader2, Zap } from 'lucide-react';
 
 interface PendingArticle {
   article_id: string;
@@ -29,7 +29,9 @@ export default function AdminQueuePage() {
   const [articles, setArticles] = useState<PendingArticle[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [triggeringScheduler, setTriggeringScheduler] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     // Protect route - redirect if not admin
@@ -104,6 +106,41 @@ export default function AdminQueuePage() {
     }
   };
 
+  const handleTriggerScheduler = async () => {
+    try {
+      setTriggeringScheduler(true);
+      setError(null);
+      setSuccessMessage(null);
+
+      const { data } = await apiClient.post('/admin/tavily/trigger');
+
+      if (data.success) {
+        setSuccessMessage(data.message);
+        // Auto-dismiss success message after 5 seconds
+        setTimeout(() => setSuccessMessage(null), 5000);
+        // Refresh queue after a delay to show new articles
+        setTimeout(async () => {
+          try {
+            const { data: response } = await apiClient.get('/admin/articles/queue');
+            if (response.success) {
+              setArticles(response.data);
+            }
+          } catch (err) {
+            console.error('Error refreshing queue:', err);
+          }
+        }, 2000);
+      } else {
+        setError('Failed to trigger scheduler');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error occurred';
+      setError(message);
+      console.error('Error triggering scheduler:', err);
+    } finally {
+      setTriggeringScheduler(false);
+    }
+  };
+
   if (!isHydrated) {
     return null;
   }
@@ -112,12 +149,40 @@ export default function AdminQueuePage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 sm:p-6 lg:p-8">
       <div className="mx-auto max-w-5xl">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-slate-900">Article Queue</h1>
-          <p className="mt-2 text-slate-600">
-            Review and approve articles fetched via Tavily ({articles.length} pending)
-          </p>
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <h1 className="text-3xl font-bold text-slate-900">Article Queue</h1>
+            <p className="mt-2 text-slate-600">
+              Review and approve articles fetched via Tavily ({articles.length} pending)
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleTriggerScheduler}
+            disabled={triggeringScheduler || loading}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all whitespace-nowrap flex-shrink-0"
+            title="Manually trigger Tavily scheduler to fetch articles now"
+          >
+            {triggeringScheduler ? (
+              <>
+                <Loader2 size={18} className="animate-spin" />
+                <span className="hidden sm:inline">Triggering...</span>
+              </>
+            ) : (
+              <>
+                <Zap size={18} />
+                <span className="hidden sm:inline">Trigger Tavily</span>
+              </>
+            )}
+          </button>
         </div>
+
+        {/* Success Message */}
+        {successMessage && (
+          <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-4 text-green-700">
+            {successMessage}
+          </div>
+        )}
 
         {/* Error Message */}
         {error && (
