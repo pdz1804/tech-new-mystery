@@ -15,6 +15,7 @@ import {
   Home,
   Compass,
   List,
+  CheckSquare,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/stores/authStore';
 
@@ -200,6 +201,9 @@ export function Header() {
             <NavLink href="/articles" icon={<List size={18} />} label="Articles" />
             <NavLink href="/search" icon={<Compass size={18} />} label="Browse" />
             <NavLink href="/profile?tab=saved" icon={<Bookmark size={18} />} label="Saved" />
+            {user?.is_admin && (
+              <NavLink href="/admin/queue" icon={<CheckSquare size={18} />} label="Queue" />
+            )}
           </nav>
         </div>
 
@@ -260,6 +264,9 @@ export function Header() {
                 <MobileNavLink href="/articles" icon={<List size={18} />} label="Articles" />
                 <MobileNavLink href="/search" icon={<Compass size={18} />} label="Browse" />
                 <MobileNavLink href="/profile?tab=saved" icon={<Bookmark size={18} />} label="Saved" />
+                {user?.is_admin && (
+                  <MobileNavLink href="/admin/queue" icon={<CheckSquare size={18} />} label="Queue" />
+                )}
                 <button
                   onClick={handleLogout}
                   className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors duration-150"

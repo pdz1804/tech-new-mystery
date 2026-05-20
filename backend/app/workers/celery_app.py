@@ -26,5 +26,9 @@ celery_app.conf.update(
             "task": "app.workers.tasks.trending_tasks.recalculate_trending_task",
             "schedule": crontab(minute="*/30"),
         },
+        "fetch-tavily-articles": {
+            "task": "app.workers.tasks.tavily_tasks.tavily_scheduled_task",
+            "schedule": crontab(minute=0, hour="*/6"),  # Every 6 hours
+        },
     },
 )
