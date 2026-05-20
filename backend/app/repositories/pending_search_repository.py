@@ -32,7 +32,7 @@ class PendingSearchRepository:
     async def get_by_id(self, search_id: str) -> Optional[PendingSearchModel]:
         """Get a pending search by ID."""
         try:
-            return await PendingSearchModel.async_get(search_id)
+            return await asyncio.to_thread(PendingSearchModel.get, search_id)
         except PendingSearchModel.DoesNotExist:
             return None
 
