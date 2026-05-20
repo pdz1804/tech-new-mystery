@@ -120,26 +120,24 @@ export function Header() {
 
             {/* Right Actions */}
             <div className="flex items-center gap-4 flex-shrink-0">
-              <motion.button
-                whileHover={{ scale: 1.08 }}
-                whileTap={{ scale: 0.95 }}
+              <button
+                type="button"
                 aria-label="Notifications (no new messages)"
-                className="relative p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all duration-150"
+                className="relative p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all duration-100"
               >
                 <Bell size={20} aria-hidden="true" />
                 <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" aria-hidden="true" />
-              </motion.button>
+              </button>
 
               {/* User Menu */}
               <div className="relative">
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                <button
+                  type="button"
                   onClick={() => setShowUserMenu(!showUserMenu)}
                   aria-label={`User menu for ${user?.username}`}
                   aria-expanded={showUserMenu}
                   aria-haspopup="menu"
-                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-slate-100 transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600"
+                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-slate-100 transition-all duration-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600"
                 >
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-white text-xs font-bold flex-shrink-0">
                     {user?.username?.charAt(0).toUpperCase()}
@@ -147,7 +145,7 @@ export function Header() {
                   <span className="hidden lg:inline text-sm font-medium text-slate-900">
                     {user?.username}
                   </span>
-                </motion.button>
+                </button>
 
                 <AnimatePresence>
                   {showUserMenu && (
@@ -218,17 +216,16 @@ export function Header() {
               <span className="text-base font-bold text-slate-900">Tech News</span>
             </Link>
 
-            <motion.button
-              whileHover={{ scale: 1.08 }}
-              whileTap={{ scale: 0.95 }}
+            <button
+              type="button"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               aria-label="Toggle navigation menu"
               aria-expanded={isMenuOpen}
               aria-controls="mobile-menu"
-              className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-600"
+              className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-all duration-100 focus:outline-none focus:ring-2 focus:ring-blue-600"
             >
               {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
-            </motion.button>
+            </button>
           </div>
 
           {/* Mobile Search Bar */}

@@ -59,6 +59,7 @@ class ArticleModel(Model):
     title = UnicodeAttribute()
     source_id = UnicodeAttribute()
     original_url = UnicodeAttribute()
+    preview_image = UnicodeAttribute(null=True)
     content = UnicodeAttribute(null=True)
     summary = UnicodeAttribute(null=True)
     markdown_content = UnicodeAttribute(null=True)

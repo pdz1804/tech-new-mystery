@@ -74,6 +74,7 @@ class ArticleResponse(ArticleBase):
     author: str | None = None
     original_url: str
     source_id: str
+    preview_image: str | None = None
     view_count: int
     is_published: bool
     published_at: datetime | None = None

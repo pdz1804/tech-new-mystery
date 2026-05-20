@@ -95,10 +95,10 @@ async def get_article(
 @router.post("", response_model=ArticleDetailResponse, status_code=201)
 async def create_article(
     payload: CreateArticleRequest,
-    current_user: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),
     service: ArticleService = Depends(get_article_service),
 ) -> ArticleDetailResponse:
-    """Create a new article."""
+    """Create a new article (admin only)."""
     article = await service.create_article(payload.model_dump())
     return ArticleDetailResponse(success=True, data=article)
 
@@ -137,10 +137,10 @@ async def delete_article(
 @router.post("/from-url", response_model=ArticleDetailResponse, status_code=201)
 async def create_article_from_url(
     payload: CreateArticleFromUrlRequest,
-    current_user: dict = Depends(get_current_user),
+    _: dict = Depends(require_admin),
     service: ArticleService = Depends(get_article_service),
 ) -> ArticleDetailResponse:
-    """Create article from URL with intelligent parsing and AI summarization."""
+    """Create article from URL with intelligent parsing and AI summarization (admin only)."""
     try:
         article = await service.create_from_url(
             str(payload.url),

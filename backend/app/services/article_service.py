@@ -60,6 +60,7 @@ class ArticleService:
             "author": article.author,
             "original_url": article.original_url,
             "source_id": article.source_id,
+            "preview_image": article.preview_image,
             "category": article.category,
             "tags": article.tags,
             "view_count": article.view_count,
@@ -81,6 +82,7 @@ class ArticleService:
             "author": article.author,
             "original_url": article.original_url,
             "source_id": article.source_id,
+            "preview_image": article.preview_image,
             "category": article.category,
             "tags": article.tags,
             "view_count": article.view_count,
@@ -339,6 +341,9 @@ class ArticleService:
 
         logger.debug(f"Creating article record - ID: {article_id}, Slug: {slug}, Category: {category}, Tags: {tags}")
 
+        # Extract first image as preview image
+        preview_image = image_urls[0] if image_urls else None
+
         # Prepare article data
         article_data = {
             "article_id": article_id,
@@ -346,6 +351,7 @@ class ArticleService:
             "slug": slug,
             "source_id": self._extract_domain(url_str),
             "original_url": url_str,
+            "preview_image": preview_image,
             "content": content,
             "summary": summary,
             "markdown_content": structured_markdown,

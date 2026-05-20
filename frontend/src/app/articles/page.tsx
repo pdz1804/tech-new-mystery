@@ -31,6 +31,7 @@ interface ArticleResponse {
     slug: string;
     summary?: string;
     category?: string;
+    preview_image?: string;
     view_count?: number;
     published_at?: string;
     created_at?: string;
@@ -393,6 +394,7 @@ export default function ArticlesPage() {
                     category={article.category}
                     views={article.view_count}
                     summary={article.summary}
+                    imageUrl={article.preview_image}
                   />
                 </motion.div>
               ))}
