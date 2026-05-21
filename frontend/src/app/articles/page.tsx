@@ -3,25 +3,26 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Filter, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Search, Filter } from 'lucide-react';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { apiClient } from '@/lib/api/client';
 import { ArticleCard } from '@/components/article/ArticleCard';
 import { ArticleCardSkeleton } from '@/components/ui/Skeleton';
 import { ArticleCreateModal } from '@/components/article/ArticleCreateModal';
 import { useFilterMetadata } from '@/hooks/useFilterMetadata';
+import { AppLoadingState } from '@/components/ui/AppLoadingState';
 
 const containerVariants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: { staggerChildren: 0.1, delayChildren: 0.2 },
+    transition: { staggerChildren: 0.05, delayChildren: 0.1 },
   },
 };
 
 const itemVariants = {
-  hidden: { opacity: 0, y: 30 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.6 } },
+  hidden: { opacity: 0, y: 10 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.4 } },
 };
 
 interface ArticleResponse {
@@ -103,7 +104,7 @@ export default function ArticlesPage() {
   }, [isAuthenticated]);
 
   if (!isHydrated || !isAuthenticated) {
-    return null;
+    return <AppLoadingState variant="articles" />;
   }
 
   let filteredArticles = allArticles;
@@ -160,104 +161,71 @@ export default function ArticlesPage() {
           fetchArticles();
         }}
       />
+
       <motion.main
         initial="hidden"
         animate="visible"
         variants={containerVariants}
-        className="relative min-h-screen"
+        className="article-list-stage app-page-shell search-stage"
         id="main-content"
       >
-        {/* Hero Header with Liquid Glass */}
-        <section className="section-glass pt-24">
-          <motion.div
-            variants={itemVariants}
-            className="container-glass text-center mb-16"
-          >
-            <span className="text-label text-blue-400 mb-4 block uppercase">Article Library</span>
-            <h1 className="text-display mb-6 text-[rgba(255,255,255,0.95)]">Latest Articles</h1>
-            <p className="text-h3 font-normal mb-8 max-w-2xl mx-auto text-[rgba(255,255,255,0.65)]">
-              Explore {allArticles.length} curated articles on technology and innovation
-            </p>
-            <button
-              type="button"
-              onClick={() => setIsArticleModalOpen(true)}
-              className="btn-liquid primary"
-              aria-label="Create a new article"
-            >
-              <Plus size={20} className="inline mr-2" />
-              Add Article
-            </button>
-          </motion.div>
-        </section>
-
-        {/* Content Section */}
-        <section className="section-glass pb-20">
-          <div className="container-glass">
-            {/* Filter & Sort Controls */}
-            <motion.div
-              variants={itemVariants}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true }}
-              className="mb-12"
-            >
-              {/* Filter Bar */}
-              <div className="glass-panel p-6 mb-8">
-                <div className="flex items-center gap-4 mb-6">
-                  <Filter size={20} className="text-blue-400" />
-                  <h3 className="text-h3 text-[rgba(255,255,255,0.95)]">Filter & Sort</h3>
-                </div>
-
-                {/* Categories */}
-                <div className="mb-8">
-                  <p className="text-label text-[rgba(255,255,255,0.65)] mb-4 block">Categories</p>
-                  <div className="flex flex-wrap gap-2">
-                    {categories.map((cat) => (
-                      <motion.button
-                        key={cat.name}
-                        type="button"
-                        onClick={() => handleCategoryChange(cat.name)}
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                          selectedCategory === cat.name
-                            ? 'btn-liquid primary'
-                            : 'btn-liquid secondary'
-                        } ${cat.count === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        disabled={cat.count === 0}
-                      >
-                        {cat.name} ({cat.count})
-                      </motion.button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Sort Options */}
-                <div>
-                  <p className="text-label text-[rgba(255,255,255,0.65)] mb-4 block">Sort By</p>
-                  <div className="flex flex-wrap gap-2">
-                    {(['newest', 'oldest', 'popular'] as const).map((sort) => (
-                      <motion.button
-                        key={sort}
-                        type="button"
-                        onClick={() => handleSortChange(sort)}
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        className={`px-4 py-2 rounded-lg font-medium transition-all capitalize ${
-                          sortBy === sort
-                            ? 'btn-liquid primary'
-                            : 'btn-liquid secondary'
-                        }`}
-                      >
-                        {sort}
-                      </motion.button>
-                    ))}
-                  </div>
-                </div>
+        <div className="app-page-container">
+        <section className="app-hero-panel mb-8 p-4 sm:p-5">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <motion.div variants={itemVariants} className="min-w-0">
+              <h1 className="font-sans text-3xl font-bold text-black sm:text-4xl">Articles</h1>
+              <p className="text-sm text-black/60">{allArticles.length} curated articles</p>
+            </motion.div>
+            <div className="flex min-w-0 flex-1 flex-col gap-3 lg:flex-row lg:items-center lg:justify-end">
+              <div className="compact-toolbar">
+                  {categories.map((cat) => (
+                    <button
+                      key={cat.name}
+                      type="button"
+                      onClick={() => handleCategoryChange(cat.name)}
+                      className={`compact-chip ${selectedCategory === cat.name ? 'active' : ''} ${cat.count === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      disabled={cat.count === 0}
+                    >
+                      <span>{cat.name}</span>
+                      <span className="text-xs opacity-70">({cat.count})</span>
+                    </button>
+                  ))}
               </div>
 
-              {/* Results Count */}
-              <p className="text-body text-[rgba(255,255,255,0.65)]">
+              <div className="segmented-glass shrink-0">
+                  {(['newest', 'oldest', 'popular'] as const).map((sort) => (
+                    <button
+                      key={sort}
+                      type="button"
+                      onClick={() => handleSortChange(sort)}
+                      className={`segmented-item capitalize ${sortBy === sort ? 'active' : ''}`}
+                    >
+                      <span>{sort}</span>
+                    </button>
+                  ))}
+              </div>
+              <motion.button
+                variants={itemVariants}
+                onClick={() => setIsArticleModalOpen(true)}
+                className="btn-liquid primary flex shrink-0 items-center gap-2"
+                aria-label="Create a new article"
+              >
+                <Plus size={20} />
+                Add
+              </motion.button>
+            </div>
+          </div>
+        </section>
+
+          {/* RIGHT MAIN CONTENT - Articles */}
+          <motion.div
+            variants={itemVariants}
+            className="min-w-0"
+          >
+
+            {/* Results Info */}
+            <motion.div variants={itemVariants} className="mb-6">
+              <p className="text-black/60 text-sm">
                 Showing {currentArticles.length} of {sortedArticles.length} articles
               </p>
             </motion.div>
@@ -270,92 +238,88 @@ export default function ArticlesPage() {
                 ))}
               </div>
             ) : error ? (
-              <motion.div
-                variants={itemVariants}
-                className="glass-panel p-8 text-center border-red-500/50"
-              >
-                <p className="text-red-300">{error}</p>
+              <motion.div variants={itemVariants} className="apple-empty-state p-6 text-center">
+                <p className="text-red-700">{error}</p>
               </motion.div>
             ) : currentArticles.length > 0 ? (
-              <motion.div
-                variants={containerVariants}
-                initial="hidden"
-                whileInView="visible"
-                viewport={{ once: true, amount: 0.1 }}
-                className="glass-grid mb-12"
-              >
-                {currentArticles.map((article) => (
-                  <ArticleCard
-                    key={article.article_id}
-                    id={article.article_id}
-                    title={article.title}
-                    slug={article.slug}
-                    publishedAt={article.published_at || article.created_at || ''}
-                    category={article.category || undefined}
-                    views={article.view_count}
-                    summary={article.summary || undefined}
-                  />
-                ))}
-              </motion.div>
+              <>
+                <motion.div
+                  variants={containerVariants}
+                  initial="hidden"
+                  whileInView="visible"
+                  viewport={{ once: true, amount: 0.05 }}
+                  className="glass-grid mb-12"
+                >
+                  {currentArticles.map((article) => (
+                    <ArticleCard
+                      key={article.article_id}
+                      id={article.article_id}
+                      title={article.title}
+                      slug={article.slug}
+                      publishedAt={article.published_at || article.created_at || ''}
+                      category={article.category || undefined}
+                      views={article.view_count}
+                      summary={article.summary || undefined}
+                    />
+                  ))}
+                </motion.div>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <motion.div
+                    variants={itemVariants}
+                    className="flex items-center justify-center gap-4 mt-12"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setPage(Math.max(1, page - 1))}
+                      disabled={page === 1}
+                      className="btn-liquid secondary p-2"
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft size={20} />
+                    </button>
+
+                    <div className="flex gap-2">
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                        <motion.button
+                          key={p}
+                          type="button"
+                          onClick={() => setPage(p)}
+                          whileHover={{ scale: 1.1 }}
+                          whileTap={{ scale: 0.95 }}
+                          className={`h-10 w-10 rounded-2xl font-bold transition-all ${page === p ? 'bg-blue-600 text-white shadow-[0_10px_24px_rgba(0,122,255,0.24)]' : 'bg-white/70 text-black hover:bg-white'}`}
+                          aria-label={`Go to page ${p}`}
+                          aria-current={page === p ? 'page' : undefined}
+                        >
+                          {p}
+                        </motion.button>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setPage(Math.min(totalPages, page + 1))}
+                      disabled={page === totalPages}
+                      className="btn-liquid secondary p-2"
+                      aria-label="Next page"
+                    >
+                      <ChevronRight size={20} />
+                    </button>
+                  </motion.div>
+                )}
+              </>
             ) : (
               <motion.div
                 variants={itemVariants}
-                className="glass-panel p-12 text-center"
+                className="apple-empty-state p-12 text-center"
               >
-                <p className="text-[rgba(255,255,255,0.65)]">No articles found. Try adjusting your filters.</p>
+                <Search size={48} className="mx-auto mb-4 text-black/30" />
+                <p className="text-black/60">No articles found. Try adjusting your filters.</p>
               </motion.div>
             )}
-
-            {/* Pagination */}
-            {totalPages > 1 && (
-              <motion.div
-                variants={itemVariants}
-                className="flex items-center justify-center gap-4 mt-12"
-              >
-                <button
-                  type="button"
-                  onClick={() => setPage(Math.max(1, page - 1))}
-                  disabled={page === 1}
-                  className="btn-liquid secondary p-2"
-                  aria-label="Previous page"
-                >
-                  <ChevronLeft size={20} />
-                </button>
-
-                <div className="flex gap-2">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                    <motion.button
-                      key={p}
-                      type="button"
-                      onClick={() => setPage(p)}
-                      whileHover={{ scale: 1.1 }}
-                      whileTap={{ scale: 0.95 }}
-                      className={`w-10 h-10 rounded-lg font-bold transition-all ${
-                        page === p
-                          ? 'btn-liquid primary'
-                          : 'btn-liquid secondary'
-                      }`}
-                      aria-label={`Go to page ${p}`}
-                      aria-current={page === p ? 'page' : undefined}
-                    >
-                      {p}
-                    </motion.button>
-                  ))}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setPage(Math.min(totalPages, page + 1))}
-                  disabled={page === totalPages}
-                  className="btn-liquid secondary p-2"
-                  aria-label="Next page"
-                >
-                  <ChevronRight size={20} />
-                </button>
-              </motion.div>
-            )}
-          </div>
-        </section>
+          </motion.div>
+        </div>
       </motion.main>
     </>
   );

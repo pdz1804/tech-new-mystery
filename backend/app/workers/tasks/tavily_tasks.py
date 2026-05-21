@@ -52,12 +52,15 @@ async def _fetch_and_store_search_results(start_date: str | None = None) -> dict
 
     # Tech topics to search for news
     topics = [
-        "artificial intelligence news",
-        "machine learning news",
-        "web development news",
-        "devops cloud computing news",
-        "cybersecurity news",
-        "blockchain cryptocurrency news",
+        "artificial intelligence breakthroughs",
+        "AI agents autonomous systems",
+        "machine learning innovation",
+        "AWS cloud technology",
+        "Google Cloud Platform GCP",
+        "Microsoft Azure cloud",
+        "LLM language model news",
+        "generative AI news",
+        "tech startup AI funding",
     ]
 
     search_repo = PendingSearchRepository()

@@ -10,6 +10,7 @@ import { ArticleEditModal } from '@/components/article/ArticleEditModal';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { format } from 'date-fns';
 import type { ArticleResponse } from '@/types/article';
+import { AppLoadingState } from '@/components/ui/AppLoadingState';
 
 export default function ArticleManagementPage() {
   const router = useRouter();
@@ -36,7 +37,7 @@ export default function ArticleManagementPage() {
   }, [user, router]);
 
   if (!user?.is_admin) {
-    return null;
+    return <AppLoadingState variant="articles" />;
   }
 
   const articles = data?.data || [];

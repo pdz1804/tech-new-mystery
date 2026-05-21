@@ -25,11 +25,11 @@ export function ArticleHeader({
   views,
 }: ArticleHeaderProps) {
   return (
-    <header className="mb-12">
+    <header className="article-reading-header">
       {/* Category Badge */}
       {category && (
         <motion.div variants={itemVariants}>
-          <span className="inline-block rounded-full px-3 py-1.5 text-sm font-semibold mb-4 border border-indigo-500/20 bg-blue-600/10 text-blue-600">
+          <span className="article-reading-category">
             {category}
           </span>
         </motion.div>
@@ -38,7 +38,7 @@ export function ArticleHeader({
       {/* Title */}
       <motion.h1
         variants={itemVariants}
-        className="mb-6 text-5xl font-bold text-slate-900 leading-tight"
+        className="article-reading-title"
       >
         {title}
       </motion.h1>
@@ -46,14 +46,14 @@ export function ArticleHeader({
       {/* Meta Information */}
       <motion.div
         variants={itemVariants}
-        className="flex flex-wrap gap-6 border-b border-slate-200 pb-6"
+        className="article-reading-meta"
       >
         {publishedAt && (
           <div className="flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-blue-600" />
+            <Calendar className="h-4 w-4 text-[#007AFF]" />
             <time
               dateTime={publishedAt}
-              className="text-sm text-slate-600"
+              className="text-sm text-black/62"
             >
               {format(new Date(publishedAt), 'MMMM d, yyyy')}
             </time>
@@ -61,13 +61,13 @@ export function ArticleHeader({
         )}
         {author && (
           <div className="flex items-center gap-2">
-            <User className="h-5 w-5 text-blue-600" />
-            <span className="text-sm text-slate-600">By {author}</span>
+            <User className="h-4 w-4 text-[#007AFF]" />
+            <span className="text-sm text-black/62">By {author}</span>
           </div>
         )}
         <div className="flex items-center gap-2">
-          <Eye className="h-5 w-5 text-blue-600" />
-          <span className="text-sm text-slate-600">
+          <Eye className="h-4 w-4 text-[#007AFF]" />
+          <span className="text-sm text-black/62">
             {views.toLocaleString()} views
           </span>
         </div>

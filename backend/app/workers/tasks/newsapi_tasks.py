@@ -16,8 +16,21 @@ from app.utils.time import now_timestamp
 logger = logging.getLogger(__name__)
 
 
+DEFAULT_NEWSAPI_TOPICS = [
+    "artificial intelligence breakthroughs",
+    "AI agents autonomous systems",
+    "machine learning innovation",
+    "AWS cloud technology",
+    "Google Cloud Platform GCP",
+    "Microsoft Azure cloud",
+    "LLM language model news",
+    "generative AI news",
+    "tech startup funding AI",
+]
+
+
 @celery_app.task(bind=True, max_retries=2, default_retry_delay=60)
-def newsapi_scheduled_task(self, from_date: str | None = None):
+def newsapi_scheduled_task(self, from_date: str | None = None, queries: list[str] | None = None):
     """Scheduled task to discover articles via NewsAPI every 6 hours.
 
     Searches tech topics and stores results as pending searches for admin review.
@@ -28,7 +41,7 @@ def newsapi_scheduled_task(self, from_date: str | None = None):
     """
     logger.info("[NEWSAPI_SCHEDULED] Task started - executing async search")
     try:
-        result = asyncio.run(_fetch_and_store_search_results(from_date=from_date))
+        result = asyncio.run(_fetch_and_store_search_results(from_date=from_date, queries=queries))
         logger.info(f"[NEWSAPI_SCHEDULED] Task completed successfully: {result}")
         return result
     except Exception as exc:
@@ -36,7 +49,10 @@ def newsapi_scheduled_task(self, from_date: str | None = None):
         raise self.retry(exc=exc)
 
 
-async def _fetch_and_store_search_results(from_date: str | None = None) -> dict:
+async def _fetch_and_store_search_results(
+    from_date: str | None = None,
+    queries: list[str] | None = None,
+) -> dict:
     """Fetch news articles from NewsAPI about tech from yesterday and store as pending searches."""
     from datetime import datetime, timedelta
 
@@ -50,15 +66,10 @@ async def _fetch_and_store_search_results(from_date: str | None = None) -> dict:
         search_date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
         logger.info(f"[NEWSAPI_SCHEDULED] Using yesterday's date: {search_date}")
 
-    # Tech topics to search for news
-    topics = [
-        "artificial intelligence",
-        "machine learning",
-        "web development",
-        "devops cloud computing",
-        "cybersecurity",
-        "blockchain cryptocurrency",
-    ]
+    topics = [q.strip() for q in (queries or DEFAULT_NEWSAPI_TOPICS) if q and q.strip()]
+    if not topics:
+        topics = DEFAULT_NEWSAPI_TOPICS
+    logger.info(f"[NEWSAPI_SCHEDULED] Search topics: {topics}")
 
     search_repo = PendingSearchRepository()
     search_service = SearchService(ArticleRepository())

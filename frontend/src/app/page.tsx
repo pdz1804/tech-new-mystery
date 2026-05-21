@@ -8,6 +8,7 @@ import { useFeaturedArticles, useTrendingArticles, useLatestArticles } from '@/h
 import { ArticleCard } from '@/components/article/ArticleCard';
 import { ArticleCardSkeleton } from '@/components/ui/Skeleton';
 import { ArticleCreateModal } from '@/components/article/ArticleCreateModal';
+import { AppLoadingState } from '@/components/ui/AppLoadingState';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -32,16 +33,7 @@ export default function HomePage() {
   const latestQuery = useLatestArticles(8);
 
   if (!isHydrated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center relative z-10">
-        <div className="text-center">
-          <div className="inline-block animate-spin">
-            <div className="h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full"></div>
-          </div>
-          <p className="mt-4 text-slate-400">Loading...</p>
-        </div>
-      </div>
-    );
+    return <AppLoadingState />;
   }
 
   if (!isAuthenticated) {
@@ -56,31 +48,55 @@ export default function HomePage() {
       className="relative min-h-screen overflow-hidden"
       id="main-content"
     >
-      {/* Hero Section with Liquid Glass */}
-      <section className="hero-section pt-24">
+      {/* Hero Section with Background Image */}
+      <section className="relative flex min-h-[700px] flex-col items-center justify-center overflow-hidden px-4 pb-12 pt-48">
+
+        {/* Background Image with Overlay */}
+        <div className="absolute inset-0 z-0">
+          <picture>
+            <source media="(max-width: 768px)" srcSet="/img/background-mobile.jpg" />
+            <source media="(min-width: 769px)" srcSet="/img/background-web.jpg" />
+            <img
+              src="/img/background-web.jpg"
+              alt="Tech background"
+              className="w-full h-full object-cover"
+            />
+          </picture>
+          <div className="hero-photo-shade" />
+        </div>
+
+        {/* Content */}
         <motion.div
-          variants={itemVariants}
-          className="hero-content"
+          initial="hidden"
+          animate="visible"
+          variants={containerVariants}
+          className="hero-glass-lens relative z-10 mx-auto max-w-5xl px-5 py-10 text-center sm:px-10 lg:px-14"
         >
           <motion.div
             variants={itemVariants}
             className="mb-6 inline-block"
           >
-            <span className="text-label text-blue-400 uppercase tracking-widest">AI-Powered Tech News</span>
+            <span className="text-label hero-readable text-white/80 uppercase">AI-Powered Tech News</span>
           </motion.div>
 
-          <h1 className="text-display mb-6 max-w-4xl mx-auto">
+          <motion.h1
+            variants={itemVariants}
+            className="hero-readable mx-auto mb-6 max-w-4xl font-sans text-5xl font-bold sm:text-6xl lg:text-7xl"
+          >
             Stay Informed with Curated Tech News
-          </h1>
+          </motion.h1>
 
-          <p className="text-h3 font-normal mb-8 max-w-2xl mx-auto text-[rgba(255,255,255,0.65)]">
+          <motion.p
+            variants={itemVariants}
+            className="hero-readable mx-auto mb-10 max-w-3xl text-lg leading-relaxed text-white/90 sm:text-xl lg:text-2xl"
+          >
             Discover the latest trends in technology, AI, and innovation. Curated just for you with breaking news, in-depth analysis, and expert insights.
-          </p>
+          </motion.p>
 
           {/* CTA Buttons */}
           <motion.div
             variants={itemVariants}
-            className="hero-cta-group"
+            className="flex flex-wrap justify-center gap-4"
           >
             <button
               type="button"
@@ -93,7 +109,7 @@ export default function HomePage() {
             <button
               type="button"
               onClick={() => { window.location.href = '/articles'; }}
-              className="btn-liquid secondary"
+              className="bg-white/14 hover:bg-white/22 inline-flex items-center rounded-2xl border border-white/25 border-t-white/50 px-8 py-4 font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] backdrop-blur-md transition-all duration-300 hover:-translate-y-0.5"
             >
               Browse Articles
               <ArrowRight size={18} className="inline ml-2" />
@@ -101,7 +117,7 @@ export default function HomePage() {
             <button
               type="button"
               onClick={() => { window.location.href = '/profile?tab=saved'; }}
-              className="btn-liquid tertiary"
+              className="bg-white/10 hover:bg-white/18 inline-flex items-center rounded-2xl border border-white/20 border-t-white/45 px-8 py-4 font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.3)] backdrop-blur-md transition-all duration-300 hover:-translate-y-0.5"
             >
               View Saved
             </button>
@@ -109,34 +125,63 @@ export default function HomePage() {
         </motion.div>
       </section>
 
-      {/* Feature Cards - Stats Section */}
-      <section className="section-glass">
-        <motion.div
-          variants={containerVariants}
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, amount: 0.3 }}
-          className="glass-grid max-w-1200 mx-auto px-4"
-        >
-          {[
-            { icon: Zap, label: 'Real-time Updates', value: 'Always Fresh', color: 'from-blue-500 to-cyan-400' },
-            { icon: TrendingUp, label: 'Trending Topics', value: 'Multi-source', color: 'from-purple-500 to-magenta-400' },
-            { icon: Eye, label: 'Community Views', value: '1.2K+', color: 'from-pink-500 to-rose-400' },
-          ].map((stat, idx) => (
-            <motion.div
-              key={idx}
-              variants={itemVariants}
-              whileHover={{ y: -8 }}
-              className="feature-card"
-            >
-              <div className={`feature-card-icon bg-gradient-to-br ${stat.color}`}>
-                <stat.icon size={24} className="text-white" />
-              </div>
-              <h3 className="text-label mb-3">{stat.label}</h3>
-              <p className="text-h2 font-bold text-white">{stat.value}</p>
-            </motion.div>
-          ))}
-        </motion.div>
+      {/* Feature Cards - Light Mode Glass */}
+      <section className="relative py-14">
+        <div className="mx-auto w-full max-w-[1280px] px-4">
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, amount: 0.3 }}
+            className="grid grid-cols-1 gap-5 md:grid-cols-3"
+          >
+            {[
+              {
+                icon: Zap,
+                label: 'Real-time Updates',
+                value: 'Always Fresh',
+                color: 'from-blue-600 to-cyan-600'
+              },
+              {
+                icon: TrendingUp,
+                label: 'Trending Topics',
+                value: 'Multi-source',
+                color: 'from-purple-600 to-pink-600'
+              },
+              {
+                icon: Eye,
+                label: 'Community Views',
+                value: '1.2K+',
+                color: 'from-orange-600 to-red-600'
+              },
+            ].map((stat, idx) => (
+              <motion.div
+                key={idx}
+                variants={itemVariants}
+                whileHover={{ y: -8 }}
+                transition={{ type: 'spring', stiffness: 320, damping: 22 }}
+                className="feature-glass-card group min-h-[168px]"
+              >
+                {/* Content */}
+                <div className="relative z-10 flex h-full items-center gap-5 p-6 md:block md:p-7">
+                  <div className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br ${stat.color} mb-0 shadow-[0_14px_28px_rgba(0,0,0,0.16)] md:mb-6`}>
+                    <stat.icon size={28} className="text-white" />
+                  </div>
+
+                  <div>
+                  <h3 className="mb-2 text-sm font-bold uppercase text-black/60">
+                    {stat.label}
+                  </h3>
+
+                  <p className="text-3xl font-bold text-black transition-colors sm:text-4xl">
+                    {stat.value}
+                  </p>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </motion.div>
+        </div>
       </section>
 
       {/* Featured Articles */}
@@ -149,9 +194,9 @@ export default function HomePage() {
             viewport={{ once: true }}
             className="mb-16"
           >
-            <span className="text-label text-blue-400 mb-4 block">Curated Collection</span>
-            <h2 className="text-h2 mb-4 text-[rgba(255,255,255,0.95)]">Featured Articles</h2>
-            <p className="text-body text-[rgba(255,255,255,0.65)]">Handpicked stories you shouldn&apos;t miss</p>
+            <span className="text-label text-blue-600 mb-4 block">Curated Collection</span>
+            <h2 className="text-h2 mb-4 text-black">Featured Articles</h2>
+            <p className="text-body text-black/60">Handpicked stories you shouldn&apos;t miss</p>
           </motion.div>
 
           {featuredQuery.isLoading ? (
@@ -165,7 +210,7 @@ export default function HomePage() {
               variants={itemVariants}
               className="glass-panel p-6 border-red-500/50"
             >
-              <p className="text-red-300">Failed to load featured articles</p>
+              <p className="text-red-600">Failed to load featured articles</p>
             </motion.div>
           ) : featuredQuery.data?.data && featuredQuery.data.data.length > 0 ? (
             <motion.div
@@ -194,7 +239,7 @@ export default function HomePage() {
               variants={itemVariants}
               className="glass-panel p-12 text-center"
             >
-              <p className="text-slate-400">No featured articles available</p>
+              <p className="text-slate-500">No featured articles available</p>
             </motion.div>
           )}
         </div>
@@ -210,9 +255,9 @@ export default function HomePage() {
             viewport={{ once: true }}
             className="mb-16"
           >
-            <span className="text-label text-purple-400 mb-4 block">Hot Right Now</span>
-            <h2 className="text-h2 mb-4 text-[rgba(255,255,255,0.95)]">Trending Now</h2>
-            <p className="text-body text-[rgba(255,255,255,0.65)]">What everyone is reading today</p>
+            <span className="text-label text-purple-600 mb-4 block">Hot Right Now</span>
+            <h2 className="text-h2 mb-4 text-black">Trending Now</h2>
+            <p className="text-body text-black/60">What everyone is reading today</p>
           </motion.div>
 
           {trendingQuery.isLoading ? (
@@ -226,7 +271,7 @@ export default function HomePage() {
               variants={itemVariants}
               className="glass-panel p-6 border-red-500/50"
             >
-              <p className="text-red-300">Failed to load trending articles</p>
+              <p className="text-red-600">Failed to load trending articles</p>
             </motion.div>
           ) : trendingQuery.data?.data && trendingQuery.data.data.length > 0 ? (
             <motion.div
@@ -255,7 +300,7 @@ export default function HomePage() {
               variants={itemVariants}
               className="glass-panel p-12 text-center"
             >
-              <p className="text-slate-400">No trending articles available</p>
+              <p className="text-slate-500">No trending articles available</p>
             </motion.div>
           )}
         </div>
@@ -271,9 +316,9 @@ export default function HomePage() {
             viewport={{ once: true }}
             className="mb-16"
           >
-            <span className="text-label text-cyan-400 mb-4 block">Latest Drops</span>
-            <h2 className="text-h2 mb-4 text-[rgba(255,255,255,0.95)]">Latest Articles</h2>
-            <p className="text-body text-[rgba(255,255,255,0.65)]">Fresh updates from around the tech world</p>
+            <span className="text-label text-green-600 mb-4 block">Latest Drops</span>
+            <h2 className="text-h2 mb-4 text-black">Latest Articles</h2>
+            <p className="text-body text-black/60">Fresh updates from around the tech world</p>
           </motion.div>
 
           {latestQuery.isLoading ? (
@@ -287,7 +332,7 @@ export default function HomePage() {
               variants={itemVariants}
               className="glass-panel p-6 border-red-500/50"
             >
-              <p className="text-red-300">Failed to load latest articles</p>
+              <p className="text-red-600">Failed to load latest articles</p>
             </motion.div>
           ) : latestQuery.data?.data && latestQuery.data.data.length > 0 ? (
             <motion.div
@@ -315,7 +360,7 @@ export default function HomePage() {
               variants={itemVariants}
               className="glass-panel p-12 text-center"
             >
-              <p className="text-slate-400">No latest articles available</p>
+              <p className="text-slate-500">No latest articles available</p>
             </motion.div>
           )}
         </div>
@@ -332,77 +377,87 @@ function LandingPage() {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.8 }}
-      className="relative min-h-screen flex flex-col items-center justify-center"
+      className="relative min-h-screen"
     >
-      <div className="hero-section">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="hero-content"
-        >
-          <div className="mb-8 flex items-center justify-center gap-2">
-            <Sparkles className="text-blue-400" size={32} />
-            <span className="text-label text-blue-400">WELCOME TO TECH NEWS</span>
-          </div>
+      <section className="landing-photo-shell">
+        <picture>
+          <source media="(max-width: 768px)" srcSet="/img/background-mobile-02.jpg" />
+          <source media="(min-width: 769px)" srcSet="/img/background-web-02.jpg" />
+          <img src="/img/background-web-02.jpg" alt="Tech workspace background" />
+        </picture>
 
-          <h1 className="text-display mb-8">
-            Your AI-Powered Tech News Hub
-          </h1>
-
-          <p className="text-h3 font-normal mb-12 max-w-2xl mx-auto text-[rgba(255,255,255,0.65)] leading-relaxed">
-            Discover curated technology news with AI-powered summaries. Stay ahead of the curve with breaking stories, trend analysis, and expert insights.
-          </p>
-
+        <div className="landing-content-frame">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-            className="hero-cta-group"
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="hero-glass-lens landing-copy-lens"
           >
-            <button
-              type="button"
-              onClick={() => { window.location.href = '/login'; }}
-              className="btn-liquid primary"
-            >
-              Sign In
-            </button>
-            <button
-              type="button"
-              onClick={() => { window.location.href = '/register'; }}
-              className="btn-liquid secondary"
-            >
-              Create Account
-            </button>
-          </motion.div>
-        </motion.div>
+            <div className="mb-6 flex items-center justify-center gap-2">
+              <Sparkles className="text-blue-300" size={28} />
+              <span className="text-label hero-readable text-white/80">WELCOME TO TECH NEWS</span>
+            </div>
 
-        {/* Stats Grid for Landing */}
-        <motion.div
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, delay: 0.6 }}
-          className="glass-grid max-w-4xl mx-auto px-4 mt-20"
-        >
-          {[
-            { icon: Zap, label: 'Real-time Updates', value: 'Always Fresh' },
-            { icon: Eye, label: 'Community Powered', value: 'By Thousands' },
-            { icon: TrendingUp, label: 'Multi-Source', value: 'Best Coverage' },
-          ].map((stat, idx) => (
+            <h1 className="hero-readable mx-auto mb-5 max-w-4xl text-5xl font-bold sm:text-6xl lg:text-7xl">
+              Your AI-Powered Tech News Hub
+            </h1>
+
+            <p className="hero-readable mx-auto mb-8 max-w-2xl text-lg leading-relaxed text-white/90 sm:text-xl">
+              Discover curated technology news with AI-powered summaries. Stay ahead of the curve with breaking stories, trend analysis, and expert insights.
+            </p>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.4 }}
+              className="flex flex-wrap justify-center gap-4"
+            >
+              <button
+                type="button"
+                onClick={() => { window.location.href = '/login'; }}
+                className="btn-liquid primary"
+              >
+                Sign In
+              </button>
+              <button
+                type="button"
+                onClick={() => { window.location.href = '/register'; }}
+                className="bg-white/12 hover:bg-white/20 rounded-2xl border border-white/25 border-t-white/50 px-7 py-3.5 font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] backdrop-blur-md transition-all duration-300 hover:-translate-y-0.5"
+              >
+                Create Account
+              </button>
+            </motion.div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 28 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, delay: 0.45 }}
+            className="landing-card-grid"
+          >
+            {[
+              { icon: Zap, label: 'Real-time Updates', value: 'Always Fresh' },
+              { icon: Eye, label: 'Community Powered', value: 'By Thousands' },
+              { icon: TrendingUp, label: 'Multi-Source', value: 'Best Coverage' },
+            ].map((stat, idx) => (
             <motion.div
               key={idx}
-              whileHover={{ y: -8 }}
-              className="feature-card"
+              whileHover={{ y: -7 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 22 }}
+              className="landing-stat-card"
             >
-              <div className="feature-card-icon bg-gradient-to-br from-blue-500 to-cyan-400">
-                <stat.icon size={24} className="text-white" />
+              <div className="relative z-10 flex h-full flex-col items-center justify-center text-center">
+                <div className="landing-stat-icon mb-3">
+                  <stat.icon size={22} />
+                </div>
+                <h3 className="text-label mb-2 text-black/70">{stat.label}</h3>
+                <p className="m-0 text-base font-bold text-black">{stat.value}</p>
               </div>
-              <h3 className="text-label mb-2">{stat.label}</h3>
-              <p className="text-xl font-bold text-white">{stat.value}</p>
             </motion.div>
-          ))}
-        </motion.div>
-      </div>
+            ))}
+          </motion.div>
+        </div>
+      </section>
     </motion.div>
   );
 }

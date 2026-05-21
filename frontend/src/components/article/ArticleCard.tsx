@@ -4,14 +4,15 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 import { motion } from 'framer-motion';
 import {
-  Eye,
+  ArrowUpRight,
   Bookmark,
-  Share2,
-  Clock,
-  TrendingUp,
-  Heart,
+  Calendar,
   Edit2,
+  Eye,
+  Heart,
+  Share2,
   Trash2,
+  TrendingUp,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
@@ -46,18 +47,11 @@ interface BadgeProps {
 }
 
 function Badge({ type, label, icon }: BadgeProps) {
-  const styles = {
-    featured: 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 text-xs font-medium border border-amber-200',
-    trending: 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-orange-50 text-orange-700 text-xs font-medium border border-orange-200',
-    category: 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary-50 text-primary-600 text-xs font-medium border border-primary-100',
-  };
-
   return (
-    <div className={styles[type]}>
-      {type === 'featured' && <span aria-hidden="true">★</span>}
+    <span className={`article-card-badge ${type}`}>
       {type === 'trending' && icon}
       {label}
-    </div>
+    </span>
   );
 }
 
@@ -79,119 +73,103 @@ export function ArticleCard({
   onEdit,
   onDelete,
 }: ArticleCardProps) {
-  const [isBookmarked, setIsBookmarked] = useState<boolean>(false);
-  const [isLiked, setIsLiked] = useState<boolean>(false);
+  const [isBookmarked, setIsBookmarked] = useState(false);
+  const [isLiked, setIsLiked] = useState(false);
   const [showActionMenu, setShowActionMenu] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const user = useAuthStore((state) => state.user);
   const queryClient = useQueryClient();
 
-  const description = summary || excerpt || content?.substring(0, 150);
-  const estimatedReadingTime = readingTime || Math.ceil((content?.length || 0) / 200);
+  const description = summary || excerpt || content?.substring(0, 180);
+  const estimatedReadingTime = readingTime || Math.max(1, Math.ceil((content?.length || description?.length || 200) / 900));
+  const formattedDate = publishedAt ? format(new Date(publishedAt), 'MMM d, yyyy') : 'Recently';
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
+    <motion.article
+      initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, ease: 'easeOut' }}
-      whileHover={{ y: -4 }}
+      transition={{ duration: 0.28, ease: 'easeOut' }}
+      whileHover={{ y: -6 }}
       className="h-full"
+      aria-label={`Article: ${title}`}
     >
-      <Link href={`/articles/${slug}`}>
+      <Link href={`/articles/${slug}`} className="block h-full">
         <div
           className={cn(
-            'floating-card group relative h-full overflow-hidden glass-container',
+            'article-glass-card group',
             featured && 'md:col-span-2 lg:col-span-2',
           )}
         >
-          <article aria-label={`Article: ${title}`}>
-            {/* Image Section */}
-            {imageUrl && (
-              <div className="relative h-40 overflow-hidden bg-slate-200 md:h-48">
-                <img
-                  src={imageUrl}
-                  alt=""
-                  className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105 animate-fade-in"
-                  loading="lazy"
-                />
-                {featured && <div className="absolute inset-0 bg-gradient-to-t from-slate-900/30 via-transparent to-transparent" />}
-              </div>
-            )}
+          {imageUrl ? (
+            <div className="article-card-media">
+              <img
+                src={imageUrl}
+                alt=""
+                loading="lazy"
+                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+              />
+            </div>
+          ) : null}
 
-            {/* Content Section */}
-            <div className="flex flex-col h-full p-4 md:p-5">
-              {/* Badges */}
-              <div className="mb-3 flex flex-wrap gap-2">
+          <div className="article-card-content">
+            <div className="article-card-topline">
+              <div className="article-card-orb" aria-hidden="true">
+                <span>{(category || title).slice(0, 1).toUpperCase()}</span>
+              </div>
+
+              <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
                 {featured && <Badge type="featured" label="Featured" />}
                 {trending && <Badge type="trending" label="Trending" icon={<TrendingUp size={12} />} />}
                 {category && <Badge type="category" label={category} />}
               </div>
+            </div>
 
-              {/* Title */}
-              <h3 className="h3 mb-2 line-clamp-3 text-gradient group-hover:text-primary-600 transition-smooth flex-grow">
-                {title}
-              </h3>
+            <h3 className="article-card-title line-clamp-3">{title}</h3>
 
-              {/* Description */}
-              {(featured || trending) && description && (
-                <p className="body-sm mb-3 line-clamp-2 text-slate-600 transition-smooth group-hover:text-primary-600">
-                  {description}
-                </p>
+            {description && (
+              <p className="article-card-summary line-clamp-3">{description}</p>
+            )}
+
+            <div className="article-card-meta">
+              {source && <span className="font-semibold text-black/70">{source}</span>}
+              <span>
+                <Calendar size={14} aria-hidden="true" />
+                <time dateTime={publishedAt}>{formattedDate}</time>
+              </span>
+              {views !== undefined && (
+                <span>
+                  <Eye size={14} aria-hidden="true" />
+                  {views.toLocaleString()}
+                </span>
               )}
+              <span>{estimatedReadingTime} min read</span>
+            </div>
 
-              {/* Metadata */}
-              <div className="mb-3 flex items-center gap-2 text-xs text-slate-500">
-                {source && (
-                  <>
-                    <span className="font-semibold text-slate-700">{source}</span>
-                    <span className="text-slate-300">•</span>
-                  </>
-                )}
-                <time dateTime={publishedAt}>
-                  {format(new Date(publishedAt), 'MMM d, yyyy')}
-                </time>
-              </div>
+            <div className="article-card-footer">
+              <span className="article-card-cta">
+                Read article
+                <ArrowUpRight size={16} aria-hidden="true" />
+              </span>
 
-              {/* Stats Row */}
-              {(featured || trending) && (
-                <div className="mb-3 flex flex-wrap gap-3 text-xs text-slate-600 md:gap-4">
-                  {views !== undefined && (
-                    <div className="flex items-center gap-1">
-                      <Eye size={14} className="text-slate-400" aria-hidden="true" />
-                      <span>{views.toLocaleString()} views</span>
-                    </div>
-                  )}
-                  {estimatedReadingTime > 0 && (
-                    <div className="flex items-center gap-1">
-                      <Clock size={14} className="text-slate-400" aria-hidden="true" />
-                      <span>{estimatedReadingTime} min read</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              {(featured || trending) && (
-                <div className="mt-auto flex items-center gap-1 border-t border-slate-100 pt-3">
+              {(featured || trending || user?.is_admin) && (
+                <div className="article-card-actions">
                   <motion.button
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.92 }}
+                    whileHover={{ scale: 1.08 }}
+                    whileTap={{ scale: 0.94 }}
                     onClick={(e) => {
                       e.preventDefault();
                       setIsLiked(!isLiked);
                     }}
                     aria-label={isLiked ? 'Unlike article' : 'Like article'}
                     aria-pressed={isLiked}
-                    className={cn(
-                      'p-2 rounded-lg transition-all duration-150 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2',
-                      isLiked ? 'text-red-500' : 'text-slate-500'
-                    )}
+                    className={cn('article-card-icon-button', isLiked && 'active-red')}
                   >
                     <Heart size={16} fill={isLiked ? 'currentColor' : 'none'} aria-hidden="true" />
                   </motion.button>
+
                   <motion.button
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.92 }}
+                    whileHover={{ scale: 1.08 }}
+                    whileTap={{ scale: 0.94 }}
                     onClick={async (e) => {
                       e.preventDefault();
                       if (isSaving) return;
@@ -213,29 +191,27 @@ export function ArticleCard({
                     disabled={isSaving}
                     aria-label={isBookmarked ? 'Remove from saves' : 'Save article'}
                     aria-pressed={isBookmarked}
-                    className={cn(
-                      'p-2 rounded-lg transition-all duration-150 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 disabled:opacity-50',
-                      isBookmarked ? 'text-blue-600' : 'text-slate-500'
-                    )}
+                    className={cn('article-card-icon-button', isBookmarked && 'active-blue')}
                   >
                     <Bookmark size={16} fill={isBookmarked ? 'currentColor' : 'none'} aria-hidden="true" />
                   </motion.button>
+
                   <motion.button
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.92 }}
+                    whileHover={{ scale: 1.08 }}
+                    whileTap={{ scale: 0.94 }}
+                    onClick={(e) => e.preventDefault()}
                     aria-label="Share article"
-                    className="p-2 rounded-lg transition-all duration-150 hover:bg-slate-100 text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2"
+                    className="article-card-icon-button"
                   >
                     <Share2 size={16} aria-hidden="true" />
                   </motion.button>
 
-                  {/* Admin Actions */}
                   {user?.is_admin && (onEdit || onDelete) && (
-                    <div className="relative ml-auto">
+                    <div className="relative">
                       <motion.button
                         type="button"
-                        whileHover={{ scale: 1.1 }}
-                        whileTap={{ scale: 0.92 }}
+                        whileHover={{ scale: 1.08 }}
+                        whileTap={{ scale: 0.94 }}
                         onClick={(e) => {
                           e.preventDefault();
                           setShowActionMenu(!showActionMenu);
@@ -243,19 +219,17 @@ export function ArticleCard({
                         aria-label="Article options"
                         aria-expanded={showActionMenu}
                         aria-haspopup="menu"
-                        className="p-2 rounded-lg transition-all duration-150 hover:bg-slate-100 text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-600"
+                        className="article-card-icon-button"
                       >
                         <Edit2 size={16} aria-hidden="true" />
                       </motion.button>
 
                       {showActionMenu && (
                         <motion.div
-                          initial={{ opacity: 0, y: -4, scale: 0.95 }}
+                          initial={{ opacity: 0, y: -4, scale: 0.96 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: -4, scale: 0.95 }}
-                          transition={{ duration: 0.1 }}
                           role="menu"
-                          className="absolute right-0 top-full mt-2 w-40 rounded-lg border border-slate-200 bg-white shadow-lg z-10"
+                          className="absolute right-0 top-full z-20 mt-2 w-40 rounded-2xl border border-black/10 bg-white/85 py-2 shadow-[0_16px_40px_rgba(0,0,0,0.16)] backdrop-blur-2xl"
                         >
                           {onEdit && (
                             <button
@@ -265,7 +239,7 @@ export function ArticleCard({
                                 setShowActionMenu(false);
                                 onEdit();
                               }}
-                              className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors border-b border-slate-100 first:rounded-t-lg"
+                              className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-semibold text-black/70 hover:bg-black/5"
                               role="menuitem"
                             >
                               <Edit2 size={14} aria-hidden="true" />
@@ -280,7 +254,7 @@ export function ArticleCard({
                                 setShowActionMenu(false);
                                 onDelete();
                               }}
-                              className="flex w-full items-center gap-2 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors last:rounded-b-lg"
+                              className="flex w-full items-center gap-2 px-4 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-50"
                               role="menuitem"
                             >
                               <Trash2 size={14} aria-hidden="true" />
@@ -294,9 +268,9 @@ export function ArticleCard({
                 </div>
               )}
             </div>
-          </article>
+          </div>
         </div>
       </Link>
-    </motion.div>
+    </motion.article>
   );
 }

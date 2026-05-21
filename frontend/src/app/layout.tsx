@@ -27,7 +27,7 @@ interface RootLayoutProps {
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en" suppressHydrationWarning className={`${inter.variable} ${merriweather.variable}`}>
-      <body className="font-sans bg-[#0B0C10] text-white overflow-x-hidden" suppressHydrationWarning>
+      <body className="font-sans bg-[#FFFFFF] text-black overflow-x-hidden" suppressHydrationWarning>
         {/* Animated Liquid Background */}
         <div className="liquid-background">
           <div className="liquid-blob liquid-blob-1"></div>

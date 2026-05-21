@@ -11,6 +11,7 @@ import { SavedArticleCard } from '@/components/profile/SavedArticleCard';
 import { ProfileHeader } from '@/components/profile/ProfileHeader';
 import { SettingsSection } from '@/components/profile/SettingsSection';
 import { userKeys } from '@/lib/queryKeys';
+import { AppLoadingState } from '@/components/ui/AppLoadingState';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -26,9 +27,9 @@ const itemVariants = {
 };
 
 const tabVariants = {
-  hidden: { opacity: 0, x: 20 },
-  visible: { opacity: 1, x: 0, transition: { duration: 0.3 } },
-  exit: { opacity: 0, x: -20, transition: { duration: 0.2 } },
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { duration: 0.18 } },
+  exit: { opacity: 0, transition: { duration: 0.12 } },
 };
 
 export default function ProfilePage() {
@@ -91,7 +92,7 @@ export default function ProfilePage() {
   };
 
   if (!isHydrated || !isAuthenticated) {
-    return null;
+    return <AppLoadingState variant="profile" />;
   }
 
   const savedArticles = savedArticlesData || [];
@@ -115,8 +116,10 @@ export default function ProfilePage() {
       initial="hidden"
       animate="visible"
       variants={containerVariants}
-      className="min-h-screen bg-white"
+      className="app-page-shell search-stage"
+      id="main-content"
     >
+      <div className="app-page-container">
       {/* Profile Header */}
       <ProfileHeader
         username={user?.username || 'User'}
@@ -129,26 +132,23 @@ export default function ProfilePage() {
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
-        className="sticky top-0 z-40 bg-white shadow-sm border-b border-slate-200"
+        className="my-6 flex justify-center"
       >
-        <div className="mx-auto max-w-6xl px-4">
-          <div className="flex gap-0 md:gap-8 overflow-x-auto">
+        <div className="segmented-glass max-w-full overflow-x-auto">
             {tabs.map(({ id, label, icon: Icon }) => (
               <motion.button
                 key={id}
                 onClick={() => setActiveTab(id)}
-                className={`flex items-center gap-2 border-b-3 px-4 py-4 font-semibold transition-all md:px-0 whitespace-nowrap ${
+                className={`segmented-item whitespace-nowrap ${
                   activeTab === id
-                    ? 'border-blue-600 text-blue-600'
-                    : 'border-transparent text-slate-600 hover:text-slate-900'
+                    ? 'active'
+                    : ''
                 }`}
-                whileHover={{ color: activeTab === id ? '#2563EB' : '#1e293b' }}
               >
                 <Icon className="h-5 w-5" />
                 <span className="hidden sm:inline">{label}</span>
               </motion.button>
             ))}
-          </div>
         </div>
       </motion.div>
 
@@ -157,7 +157,7 @@ export default function ProfilePage() {
         initial="hidden"
         animate="visible"
         variants={containerVariants}
-        className="mx-auto max-w-6xl px-4 py-12"
+        className="py-4"
       >
         {/* Profile Tab */}
         {activeTab === 'profile' && (
@@ -176,7 +176,7 @@ export default function ProfilePage() {
                     <User className="h-4 w-4 text-blue-600" />
                     Username
                   </label>
-                  <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 px-4 py-3 text-slate-900">
+                  <div className="profile-field-glass">
                     <span className="text-base font-semibold">{user?.username}</span>
                     <CheckCircle className="h-4 w-4 text-green-600 ml-auto" />
                   </div>
@@ -188,7 +188,7 @@ export default function ProfilePage() {
                     <Mail className="h-4 w-4 text-blue-600" />
                     Email Address
                   </label>
-                  <div className="flex items-center gap-3 rounded-lg border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 px-4 py-3 text-slate-900">
+                  <div className="profile-field-glass">
                     <span className="text-base font-semibold">{user?.email}</span>
                     <CheckCircle className="h-4 w-4 text-green-600 ml-auto" />
                   </div>
@@ -200,7 +200,7 @@ export default function ProfilePage() {
                     <Lock className="h-4 w-4 text-blue-600" />
                     User ID
                   </label>
-                  <div className="rounded-lg border border-slate-200 bg-gradient-to-br from-slate-50 to-slate-100 px-4 py-3 font-mono text-sm text-slate-600 break-all">
+                  <div className="profile-field-glass break-all font-mono text-sm text-black/60">
                     {user?.user_id}
                   </div>
                 </motion.div>
@@ -235,12 +235,12 @@ export default function ProfilePage() {
                     type="checkbox"
                     checked={notificationsEnabled}
                     onChange={(e) => setNotificationsEnabled(e.target.checked)}
-                    className="mt-1 h-5 w-5 rounded border-slate-300 text-blue-600 transition-colors accent-blue-600"
+                    className="mt-1 h-5 w-5 rounded border-black/20 bg-white/70 text-blue-600 transition-colors accent-blue-600"
                     aria-label="Enable email notifications"
                   />
                   <div className="flex-1">
-                    <div className="font-semibold text-slate-900">Email Notifications</div>
-                    <p className="mt-1 text-sm text-slate-600">
+                    <div className="font-semibold text-black">Email Notifications</div>
+                    <p className="mt-1 text-sm text-black/60">
                       Receive email updates about new articles and trending topics
                     </p>
                   </div>
@@ -275,10 +275,10 @@ export default function ProfilePage() {
                           );
                         }
                       }}
-                      className="h-4 w-4 rounded border-slate-300 text-blue-600 transition-colors accent-blue-600"
+                      className="h-4 w-4 rounded border-black/20 bg-white/70 text-blue-600 transition-colors accent-blue-600"
                       aria-label={`Select ${category} as a preferred category`}
                     />
-                    <span className="font-medium text-slate-700">{category}</span>
+                    <span className="font-medium text-black/70">{category}</span>
                   </motion.label>
                 ))}
               </div>
@@ -287,14 +287,14 @@ export default function ProfilePage() {
             {/* Digest Frequency */}
             <SettingsSection title="Digest Frequency">
               <div className="space-y-4">
-                <label htmlFor="frequency" className="block font-medium text-slate-900">
+                <label htmlFor="frequency" className="block font-medium text-black">
                   How often would you like to receive digests?
                 </label>
                 <select
                   id="frequency"
                   value={digestFrequency}
                   onChange={(e) => setDigestFrequency(e.target.value)}
-                  className="w-full md:w-64 rounded-lg border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 px-4 py-2.5 text-slate-900 font-medium transition-colors focus:border-blue-600 focus:ring-2 focus:ring-blue-600 focus:ring-opacity-20"
+                  className="auth-field w-full bg-white/70 text-black md:w-64"
                 >
                   <option value="daily">Daily</option>
                   <option value="weekly">Weekly</option>
@@ -310,7 +310,7 @@ export default function ProfilePage() {
                 whileTap={{ scale: 0.98 }}
                 onClick={handleSavePreferences}
                 disabled={updatePreferencesMutation.isPending}
-                className="rounded-lg bg-blue-600 px-8 py-3 font-semibold text-white transition-all hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="btn-liquid primary flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {updatePreferencesMutation.isPending ? (
                   <>
@@ -335,7 +335,7 @@ export default function ProfilePage() {
           >
             <motion.h2
               variants={itemVariants}
-              className="mb-8 text-2xl font-bold text-slate-900"
+              className="mb-8 text-2xl font-bold text-black"
             >
               Saved Articles
             </motion.h2>
@@ -361,19 +361,19 @@ export default function ProfilePage() {
             ) : (
               <motion.div
                 variants={itemVariants}
-                className="relative overflow-hidden rounded-xl border-2 border-dashed border-slate-300 bg-gradient-to-br from-blue-50 to-indigo-50 p-12 text-center shadow-sm"
+                className="apple-empty-state p-12 text-center"
               >
                 <div>
                   <Bookmark className="mx-auto h-12 w-12 text-blue-600 mb-4" />
-                  <p className="text-lg font-bold text-slate-900">No Saved Articles Yet</p>
-                  <p className="mt-2 text-slate-600">
+                  <p className="text-lg font-bold text-black">No Saved Articles Yet</p>
+                  <p className="mt-2 text-black/60">
                     Start exploring articles and save your favorites to read later.
                   </p>
                   <motion.a
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     href="/articles"
-                    className="btn-primary mt-6 inline-flex items-center justify-center"
+                    className="btn-liquid primary mt-6 inline-flex items-center justify-center"
                   >
                     Explore Articles
                   </motion.a>
@@ -383,6 +383,7 @@ export default function ProfilePage() {
           </motion.div>
         )}
       </motion.div>
+      </div>
     </motion.main>
   );
 }

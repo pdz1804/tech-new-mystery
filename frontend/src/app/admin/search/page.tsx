@@ -7,6 +7,7 @@ import { useAuthStore } from '@/lib/stores/authStore';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api/client';
 import { Alert } from '@/components/ui/Alert';
+import { AppLoadingState } from '@/components/ui/AppLoadingState';
 
 interface SearchResult {
   id: string;
@@ -140,11 +141,11 @@ export default function AdminSearchPage() {
   if (isHydrated && (!isAuthenticated || !isAdmin)) {
     setIntendedDestination('/admin/search');
     router.push('/login');
-    return null;
+    return <AppLoadingState variant="search" />;
   }
 
   if (!isHydrated) {
-    return null;
+    return <AppLoadingState variant="search" />;
   }
 
   return (

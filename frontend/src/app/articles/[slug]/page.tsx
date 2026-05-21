@@ -12,7 +12,7 @@ import { MarkdownContent } from '@/components/article/MarkdownContent';
 import { CommentThread } from '@/components/article/CommentThread';
 import { RelatedArticles } from '@/components/article/RelatedArticles';
 import SquircleButton from '@/components/ui/SquircleButton';
-import GlassContainer from '@/components/ui/GlassContainer';
+import { AppLoadingState } from '@/components/ui/AppLoadingState';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -45,31 +45,11 @@ export default function ArticleDetailPage({ params }: { params: { slug: string }
   }, [isAuthenticated, isHydrated, router, setIntendedDestination, params.slug]);
 
   if (!isHydrated || !isAuthenticated) {
-    return null;
+    return <AppLoadingState variant="article" />;
   }
 
   if (isLoading) {
-    return (
-      <motion.main
-        initial="hidden"
-        animate="visible"
-        variants={containerVariants}
-        className="min-h-screen bg-white"
-      >
-        <div className="mx-auto max-w-4xl px-4 py-12">
-          <motion.div variants={itemVariants} className="animate-pulse space-y-6">
-            <div className="h-8 w-32 rounded-lg bg-slate-300" />
-            <div className="h-12 w-3/4 rounded-lg bg-slate-300" />
-            <div className="h-6 w-1/2 rounded-lg bg-slate-300" />
-            <div className="space-y-3">
-              {[...Array(10)].map((_, i) => (
-                <div key={i} className="h-4 rounded-lg bg-slate-200" />
-              ))}
-            </div>
-          </motion.div>
-        </div>
-      </motion.main>
-    );
+    return <AppLoadingState variant="article" />;
   }
 
   if (error) {
@@ -131,14 +111,15 @@ export default function ArticleDetailPage({ params }: { params: { slug: string }
       initial="hidden"
       animate="visible"
       variants={containerVariants}
-      className="min-h-screen bg-white"
+      className="article-detail-stage app-page-shell search-stage"
+      id="main-content"
     >
-      {/* Back Button Bar */}
-      <motion.div
-        variants={itemVariants}
-        className="sticky top-16 border-b border-slate-200 backdrop-blur-sm z-40"
-      >
-        <div className="mx-auto max-w-4xl px-4 py-4">
+      <div className="article-detail-container">
+        {/* Back Button */}
+        <motion.div
+          variants={itemVariants}
+          className="article-detail-backbar"
+        >
           <SquircleButton
             variant="secondary"
             size="sm"
@@ -147,13 +128,12 @@ export default function ArticleDetailPage({ params }: { params: { slug: string }
             <ArrowLeft className="h-5 w-5" />
             Back
           </SquircleButton>
-        </div>
-      </motion.div>
+        </motion.div>
 
       {/* Article Content */}
       <motion.article
         variants={containerVariants}
-        className="mx-auto max-w-4xl px-4 py-12"
+          className="article-reading-panel"
       >
         {/* Article Header */}
         <ArticleHeader
@@ -168,24 +148,23 @@ export default function ArticleDetailPage({ params }: { params: { slug: string }
         {article.summary && (
           <motion.div
             variants={itemVariants}
-            className="mb-12"
+              className="mb-10"
           >
-            <GlassContainer variant="elevated" className="floating-card p-8">
-              <div className="border-l-4 border-blue-600 pl-6">
-                <p className="text-lg font-medium text-slate-900 leading-relaxed">
+              <div className="article-summary-panel">
+                <p className="article-summary-label">Summary</p>
+                <p className="article-summary-text">
                   {article.summary}
                 </p>
               </div>
-            </GlassContainer>
           </motion.div>
         )}
 
         {/* Content */}
-        <motion.div variants={itemVariants} className="mb-12">
+          <motion.div variants={itemVariants} className="article-body mb-12">
           {article.markdown_content ? (
-            <MarkdownContent content={article.markdown_content} />
+              <MarkdownContent content={article.markdown_content} className="article-markdown" />
           ) : article.content ? (
-            <div className="space-y-6 text-slate-800 leading-relaxed whitespace-pre-wrap">
+              <div className="space-y-6 whitespace-pre-wrap text-base leading-8 text-black/75 sm:text-lg">
               {article.content}
             </div>
           ) : (
@@ -197,13 +176,13 @@ export default function ArticleDetailPage({ params }: { params: { slug: string }
         {article.tags && article.tags.length > 0 && (
           <motion.div
             variants={itemVariants}
-            className="mb-12 flex flex-wrap gap-2 border-b border-slate-200 pb-8"
+              className="mb-10 flex flex-wrap gap-2 border-b border-black/10 pb-8"
           >
             {article.tags.map((tag) => (
               <motion.span
                 key={tag}
                 whileHover={{ scale: 1.05 }}
-                className="inline-flex items-center gap-1 rounded-full bg-primary-50 px-4 py-2 text-sm font-semibold text-primary-600 transition-colors hover:bg-primary-100 border border-primary-200"
+                  className="article-tag-pill"
               >
                 <TagIcon className="h-4 w-4" />
                 {tag}
@@ -216,30 +195,30 @@ export default function ArticleDetailPage({ params }: { params: { slug: string }
         {article.original_url && (
           <motion.div
             variants={itemVariants}
-            className="mb-12"
+              className="mb-10"
           >
-            <GlassContainer variant="elevated" className="floating-card p-6">
-              <p className="mb-3 text-xs font-semibold text-slate-600">SOURCE</p>
+              <div className="article-source-panel">
+                <p className="mb-3 text-xs font-bold uppercase tracking-[0.14em] text-black/45">Source</p>
               <a
                 href={article.original_url}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-2 text-blue-600 font-semibold transition-colors hover:text-blue-700 break-all"
+                  className="flex items-center gap-2 break-all font-semibold text-[#007AFF] transition-colors hover:text-[#0A84FF]"
               >
                 {article.original_url}
                 <ExternalLink className="h-5 w-5 flex-shrink-0" />
               </a>
-            </GlassContainer>
+              </div>
           </motion.div>
         )}
 
         {/* Article Actions - CRUD Operations */}
         <motion.div
           variants={itemVariants}
-          className="mb-12"
+            className="mb-10"
         >
-          <GlassContainer variant="elevated" className="floating-card p-6">
-            <p className="mb-4 text-xs font-semibold text-slate-600">ACTIONS</p>
+            <div className="article-source-panel">
+              <p className="mb-4 text-xs font-bold uppercase tracking-[0.14em] text-black/45">Actions</p>
             <div className="flex flex-wrap gap-3">
               {/* Edit Button */}
               <SquircleButton
@@ -332,7 +311,7 @@ export default function ArticleDetailPage({ params }: { params: { slug: string }
                 {isDeleting ? 'Deleting...' : 'Delete'}
               </SquircleButton>
             </div>
-          </GlassContainer>
+            </div>
         </motion.div>
 
         {/* Comments Section */}
@@ -347,6 +326,7 @@ export default function ArticleDetailPage({ params }: { params: { slug: string }
           />
         )}
       </motion.article>
+      </div>
     </motion.main>
   );
 }

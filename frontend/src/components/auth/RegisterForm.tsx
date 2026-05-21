@@ -5,8 +5,6 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { UserPlus, Mail, Lock, User, CheckCircle2, ChevronRight } from 'lucide-react';
 import { useRegister } from '@/hooks/useAuth';
-import SquircleButton from '@/components/ui/SquircleButton';
-import GlassContainer from '@/components/ui/GlassContainer';
 
 const containerVariants = {
   hidden: { opacity: 0, y: 20 },
@@ -45,28 +43,31 @@ export function RegisterForm() {
       initial="hidden"
       animate="visible"
       variants={containerVariants}
-      className="min-h-screen flex items-center justify-center bg-white px-4 py-12"
+      className="auth-photo-shell"
     >
-      <motion.div variants={containerVariants} className="relative w-full max-w-md">
+      <picture>
+        <source media="(max-width: 768px)" srcSet="/img/background-mobile-02.jpg" />
+        <source media="(min-width: 769px)" srcSet="/img/background-web-02.jpg" />
+        <img src="/img/background-web-02.jpg" alt="Tech workspace background" />
+      </picture>
+
+      <motion.div variants={containerVariants} className="auth-panel">
         {/* Header Section */}
-        <div className="mb-8 text-center">
+        <div className="mb-6 text-center">
           <motion.div
             variants={containerVariants}
-            className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600 mb-4"
+            className="auth-icon mb-4"
           >
-            <UserPlus className="w-8 h-8 text-white" />
+            <UserPlus className="h-7 w-7" />
           </motion.div>
-          <motion.h1 variants={containerVariants} className="text-3xl font-bold text-slate-900">
+          <motion.h1 variants={containerVariants} className="text-3xl font-bold text-black">
             Create Account
           </motion.h1>
-          <motion.p variants={containerVariants} className="mt-2 text-slate-600 text-base">
+          <motion.p variants={containerVariants} className="mt-2 text-base text-black/62">
             Join us in a few quick steps
           </motion.p>
         </div>
 
-        {/* Clean Card Container */}
-        <motion.div variants={containerVariants}>
-          <GlassContainer variant="elevated" className="floating-card p-8">
             {/* Error Alert */}
             {(registerMutation.error || passwordError) && (
               <motion.div
@@ -74,7 +75,7 @@ export function RegisterForm() {
                 role="alert"
                 aria-live="polite"
                 aria-atomic="true"
-                className="mb-6 rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-red-700 text-sm"
+                className="mb-5 rounded-2xl border border-red-500/20 bg-red-50/80 px-4 py-3 text-sm font-medium text-red-700"
               >
                 {passwordError || errorMessage}
               </motion.div>
@@ -84,9 +85,9 @@ export function RegisterForm() {
             <form onSubmit={handleSubmit} className="space-y-4" aria-label="Create account form">
               {/* Username Field */}
               <motion.div variants={containerVariants}>
-                <label htmlFor="username" className="block text-sm font-medium text-slate-900 mb-2">
+                <label htmlFor="username" className="mb-2 block text-sm font-semibold text-black/82">
                   <div className="flex items-center gap-2">
-                    <User className="w-4 h-4 text-blue-600" aria-hidden="true" />
+                    <User className="h-4 w-4 text-blue-600" aria-hidden="true" />
                     Username
                   </div>
                 </label>
@@ -97,15 +98,15 @@ export function RegisterForm() {
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="Choose a username"
                   required
-                  className="input-base"
+                  className="auth-field"
                 />
               </motion.div>
 
               {/* Email Field */}
               <motion.div variants={containerVariants}>
-                <label htmlFor="email" className="block text-sm font-medium text-slate-900 mb-2">
+                <label htmlFor="email" className="mb-2 block text-sm font-semibold text-black/82">
                   <div className="flex items-center gap-2">
-                    <Mail className="w-4 h-4 text-blue-600" aria-hidden="true" />
+                    <Mail className="h-4 w-4 text-blue-600" aria-hidden="true" />
                     Email Address
                   </div>
                 </label>
@@ -116,15 +117,15 @@ export function RegisterForm() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Enter your email"
                   required
-                  className="input-base"
+                  className="auth-field"
                 />
               </motion.div>
 
               {/* Password Field */}
               <motion.div variants={containerVariants}>
-                <label htmlFor="password" className="block text-sm font-medium text-slate-900 mb-2">
+                <label htmlFor="password" className="mb-2 block text-sm font-semibold text-black/82">
                   <div className="flex items-center gap-2">
-                    <Lock className="w-4 h-4 text-blue-600" aria-hidden="true" />
+                    <Lock className="h-4 w-4 text-blue-600" aria-hidden="true" />
                     Password
                   </div>
                 </label>
@@ -135,7 +136,7 @@ export function RegisterForm() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Create a strong password"
                   required
-                  className="input-base"
+                  className="auth-field"
                 />
                 {password && (
                   <div className="mt-2 text-xs flex items-center gap-2" role="status" aria-live="polite">
@@ -144,7 +145,7 @@ export function RegisterForm() {
                     ) : (
                       <div className="w-4 h-4 rounded-full bg-slate-300 flex-shrink-0" aria-hidden="true" />
                     )}
-                    <span className={passwordStrengthOk ? 'text-green-700' : 'text-slate-600'}>
+                    <span className={passwordStrengthOk ? 'text-green-700' : 'text-black/56'}>
                       At least 8 characters
                     </span>
                   </div>
@@ -153,9 +154,9 @@ export function RegisterForm() {
 
               {/* Confirm Password Field */}
               <motion.div variants={containerVariants}>
-                <label htmlFor="confirm-password" className="block text-sm font-medium text-slate-900 mb-2">
+                <label htmlFor="confirm-password" className="mb-2 block text-sm font-semibold text-black/82">
                   <div className="flex items-center gap-2">
-                    <Lock className="w-4 h-4 text-blue-600" aria-hidden="true" />
+                    <Lock className="h-4 w-4 text-blue-600" aria-hidden="true" />
                     Confirm Password
                   </div>
                 </label>
@@ -174,7 +175,7 @@ export function RegisterForm() {
                   placeholder="Confirm your password"
                   required
                   aria-describedby={passwordError ? 'password-error' : undefined}
-                  className="input-base"
+                  className="auth-field"
                 />
                 {confirmPassword && (
                   <div id="password-status" className="mt-2 text-xs flex items-center gap-2" role="status" aria-live="polite">
@@ -196,24 +197,24 @@ export function RegisterForm() {
               {/* Terms Checkbox */}
               <motion.div
                 variants={containerVariants}
-                className="flex items-start gap-2 text-xs text-slate-700"
+                className="flex items-start gap-2 text-xs text-black/62"
               >
                 <input
                   id="terms"
                   type="checkbox"
                   checked={termsAccepted}
                   onChange={(e) => setTermsAccepted(e.target.checked)}
-                  className="rounded w-4 h-4 mt-0.5 border border-slate-300 bg-white checked:bg-blue-600 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-600 accent-blue-600"
+                  className="mt-0.5 h-4 w-4 cursor-pointer rounded border border-black/20 bg-white/70 accent-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-400"
                   required
                   aria-label="I agree to the Terms of Service and Privacy Policy"
                 />
                 <label htmlFor="terms" className="cursor-pointer">
                   I agree to the{' '}
-                  <Link href="/terms" className="text-blue-600 hover:text-blue-700 transition focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 rounded px-1">
+                  <Link href="/terms" className="rounded px-1 font-medium text-blue-700 transition hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-400">
                     Terms of Service
                   </Link>
                   {' '}and{' '}
-                  <Link href="/privacy" className="text-blue-600 hover:text-blue-700 transition focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 rounded px-1">
+                  <Link href="/privacy" className="rounded px-1 font-medium text-blue-700 transition hover:text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-400">
                     Privacy Policy
                   </Link>
                 </label>
@@ -221,12 +222,10 @@ export function RegisterForm() {
 
               {/* Create Account Button */}
               <motion.div variants={containerVariants}>
-                <SquircleButton
+                <button
                   type="submit"
                   disabled={registerMutation.isPending || !passwordsMatch || !termsAccepted || !passwordStrengthOk}
-                  variant="primary"
-                  size="lg"
-                  className="w-full justify-center"
+                  className="btn-liquid primary flex w-full items-center justify-center gap-2"
                 >
                   {registerMutation.isPending ? (
                     <>
@@ -239,24 +238,22 @@ export function RegisterForm() {
                       <ChevronRight className="w-4 h-4" aria-hidden="true" />
                     </>
                   )}
-                </SquircleButton>
+                </button>
               </motion.div>
             </form>
 
             {/* Sign In Link */}
-            <motion.div variants={containerVariants} className="mt-6 pt-6 border-t border-slate-200">
-              <p className="text-center text-sm text-slate-700">
+            <motion.div variants={containerVariants} className="auth-divider mt-6 border-t pt-6">
+              <p className="text-center text-sm text-black/62">
                 Already have an account?{' '}
                 <Link
                   href="/login"
-                  className="font-semibold text-blue-600 hover:text-blue-700 transition"
+                  className="font-semibold text-blue-700 transition hover:text-blue-900"
                 >
                   Sign in
                 </Link>
               </p>
             </motion.div>
-          </GlassContainer>
-        </motion.div>
       </motion.div>
     </motion.div>
   );

@@ -52,10 +52,10 @@ export function SavedArticleCard({
       <Link href={`/articles/${slug}`}>
         <article
           className={cn(
-            'group relative h-full overflow-hidden rounded-xl border transition-all duration-300 bg-white',
+            'queue-card group relative h-full overflow-hidden transition-all duration-300',
             featured
-              ? 'border-blue-200 border-t-4 border-t-blue-600 shadow-sm hover:shadow-lg'
-              : 'border-slate-200 shadow-sm hover:shadow-lg'
+              ? 'border-t-4 border-t-blue-600'
+              : ''
           )}
         >
           {/* Badge Section */}
@@ -84,17 +84,17 @@ export function SavedArticleCard({
             </div>
 
             {/* Title */}
-            <h3 className="mb-2 line-clamp-2 text-base font-bold text-slate-900 transition-colors group-hover:text-blue-600">
+            <h3 className="mb-2 line-clamp-2 text-base font-bold text-black transition-colors group-hover:text-blue-600">
               {title}
             </h3>
 
             {/* Description */}
             {summary && (
-              <p className="mb-3 line-clamp-2 text-sm text-slate-600">{summary}</p>
+              <p className="mb-3 line-clamp-2 text-sm text-black/60">{summary}</p>
             )}
 
             {/* Meta Information */}
-            <div className="mb-4 flex items-center gap-3 text-xs text-slate-500">
+            <div className="mb-4 flex items-center gap-3 text-xs text-black/50">
               <span>{format(new Date(publishedAt), 'MMM d, yyyy')}</span>
               {views !== undefined && (
                 <>
@@ -117,7 +117,7 @@ export function SavedArticleCard({
             </div>
 
             {/* Action Buttons */}
-            <div className="flex items-center gap-2 border-t border-slate-100 pt-3 text-slate-400">
+            <div className="flex items-center gap-2 border-t border-black/8 pt-3 text-black/40">
               <motion.button
                 whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.95 }}

@@ -12,14 +12,19 @@ export function Skeleton({ className, ...props }: React.HTMLAttributes<HTMLDivEl
 
 export function ArticleCardSkeleton() {
   return (
-    <div className="h-full rounded-lg border border-slate-200 bg-white p-6">
-      <Skeleton className="mb-3 h-6 w-24 rounded-full" />
-      <Skeleton className="mb-3 h-6 w-full" />
-      <Skeleton className="mb-3 h-4 w-full" />
-      <Skeleton className="mb-4 h-4 w-3/4" />
-      <div className="flex items-center justify-between">
-        <Skeleton className="h-4 w-24" />
-        <Skeleton className="h-4 w-16" />
+    <div className="article-glass-card h-full p-5 sm:p-6">
+      <div className="mr-4">
+        <Skeleton className="h-12 w-12 rounded-2xl bg-white/70" />
+      </div>
+      <div className="flex flex-1 flex-col">
+        <Skeleton className="mb-4 h-7 w-24 rounded-full bg-white/70" />
+        <Skeleton className="mb-3 h-8 w-4/5 rounded-2xl bg-white/75" />
+        <Skeleton className="mb-3 h-4 w-full rounded-full bg-white/60" />
+        <Skeleton className="mb-6 h-4 w-3/4 rounded-full bg-white/60" />
+        <div className="mt-auto flex items-center justify-between border-t border-black/5 pt-4">
+          <Skeleton className="h-5 w-28 rounded-full bg-white/65" />
+          <Skeleton className="h-9 w-24 rounded-2xl bg-white/65" />
+        </div>
       </div>
     </div>
   );

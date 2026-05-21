@@ -25,16 +25,16 @@ export function SettingsSection({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5 }}
       className={cn(
-        'rounded-xl border border-slate-200 bg-white p-6 shadow-sm md:p-8',
+        'glass-panel p-5 md:p-7',
         className
       )}
     >
       <div className="mb-6">
         <div className="flex items-center gap-3">
           {icon && <div className="text-blue-600">{icon}</div>}
-          <h2 className="text-2xl font-bold text-slate-900">{title}</h2>
+          <h2 className="font-sans text-2xl font-bold text-black">{title}</h2>
         </div>
-        {subtitle && <p className="mt-2 text-sm text-slate-600">{subtitle}</p>}
+        {subtitle && <p className="mt-2 text-sm text-black/60">{subtitle}</p>}
       </div>
       <div>{children}</div>
     </motion.div>

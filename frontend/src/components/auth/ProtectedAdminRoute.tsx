@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import { useAuthStore } from '@/lib/stores/authStore';
+import { AppLoadingState } from '@/components/ui/AppLoadingState';
 
 interface ProtectedAdminRouteProps {
   children: React.ReactNode;
@@ -24,7 +25,7 @@ export function ProtectedAdminRoute({ children }: ProtectedAdminRouteProps) {
   }, [isAuthenticated, user, router]);
 
   if (!isAuthenticated || !user?.is_admin) {
-    return null;
+    return <AppLoadingState variant="default" />;
   }
 
   return <>{children}</>;

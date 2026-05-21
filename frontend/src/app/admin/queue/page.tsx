@@ -7,6 +7,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { apiClient } from '@/lib/api/client';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { AppLoadingState } from '@/components/ui/AppLoadingState';
+import { SearchQueryModal } from '@/components/admin/SearchQueryModal';
 import { Check, X, ExternalLink, Loader2, Zap, Eye, Clock } from 'lucide-react';
 
 interface PendingSearch {
@@ -33,6 +35,23 @@ const itemVariants = {
   visible: { opacity: 1, y: 0, transition: { duration: 0.4 } },
 };
 
+const DEFAULT_TAVILY_QUERIES = [
+  'artificial intelligence breakthroughs',
+  'AI agents autonomous systems',
+  'machine learning innovation',
+  'AWS cloud technology',
+  'Google Cloud Platform GCP',
+];
+
+const DEFAULT_NEWSAPI_QUERIES = [
+  'artificial intelligence breakthroughs',
+  'AI agents autonomous systems',
+  'machine learning innovation',
+  'AWS cloud technology',
+  'Microsoft Azure cloud',
+  'LLM language model news',
+];
+
 export default function AdminQueuePage() {
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
@@ -45,6 +64,8 @@ export default function AdminQueuePage() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [selectedSearch, setSelectedSearch] = useState<PendingSearch | null>(null);
+  const [queryModalOpen, setQueryModalOpen] = useState(false);
+  const [queryModalSource, setQueryModalSource] = useState<'tavily' | 'newsapi'>('tavily');
 
   useEffect(() => {
     if (isHydrated && !user?.is_admin) {
@@ -88,7 +109,7 @@ export default function AdminQueuePage() {
       if (data.success) {
         setSearches(searches.filter((s) => s.search_id !== searchId));
         setSelectedSearch(null);
-        setSuccessMessage('✓ Search approved and article created');
+        setSuccessMessage('Search approved and article created');
         setTimeout(() => setSuccessMessage(null), 5000);
       } else {
         setError('Failed to approve search');
@@ -114,7 +135,7 @@ export default function AdminQueuePage() {
       if (data.success) {
         setSearches(searches.filter((s) => s.search_id !== searchId));
         setSelectedSearch(null);
-        setSuccessMessage('✓ Search rejected successfully');
+        setSuccessMessage('Search rejected successfully');
         setTimeout(() => setSuccessMessage(null), 5000);
       } else {
         setError('Failed to reject search');
@@ -128,19 +149,31 @@ export default function AdminQueuePage() {
     }
   };
 
-  const handleTriggerScheduler = async (source: 'tavily' | 'newsapi') => {
+  const handleOpenQueryModal = (source: 'tavily' | 'newsapi') => {
+    setQueryModalSource(source);
+    setQueryModalOpen(true);
+  };
+
+  const handleConfirmSearch = async (queries: string[]) => {
     try {
-      setTriggeringScheduler(source);
+      setTriggeringScheduler(queryModalSource);
       setError(null);
       setSuccessMessage(null);
+      setQueryModalOpen(false);
 
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
       const dateParam = yesterday.toISOString().split('T')[0];
 
-      const endpoint = source === 'tavily' ? '/admin/tavily/trigger' : '/admin/newsapi/trigger';
+      const endpoint = queryModalSource === 'tavily' ? '/admin/tavily/trigger' : '/admin/newsapi/trigger';
       const params = new URLSearchParams();
-      params.append(source === 'tavily' ? 'start_date' : 'from_date', dateParam);
+      params.append(queryModalSource === 'tavily' ? 'start_date' : 'from_date', dateParam);
+
+      // Add queries as comma-separated if newsapi supports it
+      if (queryModalSource === 'newsapi') {
+        params.append('queries', queries.join(','));
+      }
+
       const { data } = await apiClient.post(`${endpoint}?${params.toString()}`);
 
       if (data.success) {
@@ -189,7 +222,7 @@ export default function AdminQueuePage() {
   };
 
   if (!isHydrated) {
-    return null;
+    return <AppLoadingState variant="queue" />;
   }
 
   return (
@@ -197,66 +230,76 @@ export default function AdminQueuePage() {
       initial="hidden"
       animate="visible"
       variants={containerVariants}
-      className="relative min-h-screen"
+      className="queue-stage app-page-shell"
     >
       {/* Hero Section */}
-      <section className="section-glass pt-24">
+      <section className="pb-8">
         <motion.div
           variants={itemVariants}
-          className="container-glass text-center mb-12"
+          className="app-page-container"
         >
-          <span className="text-label text-blue-400 mb-4 block uppercase">Admin Control</span>
-          <h1 className="text-display mb-6 text-[rgba(255,255,255,0.95)]">Search Queue</h1>
-          <p className="text-h3 font-normal mb-8 max-w-2xl mx-auto text-[rgba(255,255,255,0.65)]">
-            Review and approve search results ({searches.length} pending)
-          </p>
+          <div className="app-hero-panel p-4 sm:p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="text-left">
+                <h1 className="mb-1 font-sans text-3xl font-bold text-black sm:text-4xl">Search Queue</h1>
+                <p className="max-w-2xl text-sm text-black/60 sm:text-base">
+                  Review and approve search results ({searches.length} pending)
+                </p>
+              </div>
 
-          {/* Trigger Buttons */}
-          <motion.div
-            variants={itemVariants}
-            className="flex gap-4 justify-center flex-wrap"
-          >
-            <button
-              type="button"
-              onClick={() => handleTriggerScheduler('tavily')}
-              disabled={triggeringScheduler !== null || loading}
-              className="btn-liquid primary flex items-center gap-2"
-              title="Fetch articles from Tavily"
-            >
-              <Zap size={20} />
-              {triggeringScheduler === 'tavily' ? (
-                <>
-                  <Loader2 size={18} className="animate-spin" />
-                  <span>Tavily...</span>
-                </>
-              ) : (
-                <span>Tavily Search</span>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleTriggerScheduler('newsapi')}
-              disabled={triggeringScheduler !== null || loading}
-              className="btn-liquid secondary flex items-center gap-2"
-              title="Fetch articles from NewsAPI"
-            >
-              <Zap size={20} />
-              {triggeringScheduler === 'newsapi' ? (
-                <>
-                  <Loader2 size={18} className="animate-spin" />
-                  <span>NewsAPI...</span>
-                </>
-              ) : (
-                <span>NewsAPI Search</span>
-              )}
-            </button>
-          </motion.div>
+              {/* Trigger Buttons */}
+              <motion.div
+                variants={itemVariants}
+                className="flex flex-wrap gap-3 lg:justify-end"
+              >
+                <button
+                  type="button"
+                  onClick={() => handleOpenQueryModal('tavily')}
+                  disabled={triggeringScheduler !== null || loading}
+                  className="bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-semibold
+                    px-6 py-3 rounded-xl flex items-center gap-2 shadow-lg shadow-blue-500/20
+                    hover:shadow-lg hover:shadow-blue-500/40 hover:-translate-y-1 transition-all
+                    disabled:opacity-50 disabled:hover:translate-y-0"
+                  title="Review and search Tavily"
+                >
+                  <Zap size={20} />
+                  {triggeringScheduler === 'tavily' ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      <span>Searching...</span>
+                    </>
+                  ) : (
+                    <span>Tavily Search</span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleOpenQueryModal('newsapi')}
+                  disabled={triggeringScheduler !== null || loading}
+                  className="bg-white/80 backdrop-blur-md border border-black/10 text-black font-semibold
+                    px-6 py-3 rounded-xl flex items-center gap-2 hover:bg-white/90 hover:border-black/20
+                    transition-all disabled:opacity-50"
+                  title="Review and search NewsAPI"
+                >
+                  <Zap size={20} />
+                  {triggeringScheduler === 'newsapi' ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      <span>Searching...</span>
+                    </>
+                  ) : (
+                    <span>NewsAPI Search</span>
+                  )}
+                </button>
+              </motion.div>
+            </div>
+          </div>
         </motion.div>
       </section>
 
       {/* Content Section */}
-      <section className="section-glass pb-20">
-        <div className="container-glass">
+      <section className="pb-20">
+        <div className="app-page-container">
           {/* Messages */}
           <AnimatePresence>
             {successMessage && (
@@ -265,9 +308,9 @@ export default function AdminQueuePage() {
                 initial="hidden"
                 animate="visible"
                 exit={{ opacity: 0, y: -20 }}
-                className="glass-panel p-4 border-green-500/50 mb-6 bg-gradient-to-r from-green-500/20 to-emerald-500/20"
+                className="glass-panel mb-6 border-green-500/30 p-4"
               >
-                <p className="text-green-300 font-semibold">{successMessage}</p>
+                <p className="text-green-700 font-semibold">{successMessage}</p>
               </motion.div>
             )}
             {error && (
@@ -276,9 +319,9 @@ export default function AdminQueuePage() {
                 initial="hidden"
                 animate="visible"
                 exit={{ opacity: 0, y: -20 }}
-                className="glass-panel p-4 border-red-500/50 mb-6 bg-gradient-to-r from-red-500/20 to-rose-500/20"
+                className="glass-panel mb-6 border-red-500/30 p-4"
               >
-                <p className="text-red-300 font-semibold">{error}</p>
+                <p className="text-red-700 font-semibold">{error}</p>
               </motion.div>
             )}
           </AnimatePresence>
@@ -287,7 +330,7 @@ export default function AdminQueuePage() {
           {loading ? (
             <div className="space-y-4">
               {[...Array(3)].map((_, i) => (
-                <div key={i} className="glass-panel p-6">
+                <div key={i} className="queue-card p-6">
                   <Skeleton className="mb-3 h-6 w-1/2" />
                   <Skeleton className="mb-2 h-4 w-full" />
                   <Skeleton className="h-4 w-2/3" />
@@ -297,11 +340,11 @@ export default function AdminQueuePage() {
           ) : searches.length === 0 ? (
             <motion.div
               variants={itemVariants}
-              className="glass-panel p-12 text-center"
+              className="queue-card p-12 text-center"
             >
-              <Eye size={48} className="mx-auto mb-4 text-[rgba(255,255,255,0.45)] opacity-50" />
-              <p className="text-h3 mb-2 text-[rgba(255,255,255,0.95)]">No Pending Searches</p>
-              <p className="text-body text-[rgba(255,255,255,0.65)]">
+              <Eye size={48} className="mx-auto mb-4 text-black/30 opacity-50" />
+              <p className="text-h3 mb-2 text-black">No Pending Searches</p>
+              <p className="text-body text-black/60">
                 Trigger Tavily or NewsAPI to fetch search results
               </p>
             </motion.div>
@@ -311,24 +354,25 @@ export default function AdminQueuePage() {
               initial="hidden"
               whileInView="visible"
               viewport={{ once: true }}
-              className="space-y-4"
+              className="queue-review-list"
             >
               {searches.map((search) => (
                 <motion.div
                   key={search.search_id}
                   variants={itemVariants}
-                  className="glass-panel p-6 cursor-pointer hover:bg-white/[0.1]"
+                  className="queue-review-row cursor-pointer"
                   onClick={() => setSelectedSearch(search)}
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <h3 className="text-h3 font-bold text-[rgba(255,255,255,0.95)] mb-2 hover:text-blue-400 transition-colors line-clamp-2">
+                    <div className="min-w-0">
+                      <h3 className="queue-review-title line-clamp-2 transition-colors hover:text-blue-600">
                         {search.title}
                       </h3>
-                      <p className="text-body text-[rgba(255,255,255,0.65)] mb-4 line-clamp-2">
-                        {cleanSnippet(search.snippet, 120)}
+                      <p className="queue-review-preview line-clamp-2">
+                        {cleanSnippet(search.snippet, 180)}
                       </p>
-                      <div className="flex flex-wrap gap-2 mb-4">
+                    </div>
+
+                    <div className="queue-review-meta">
                         {search.source && (
                           <Badge variant="info" size="sm">
                             {search.source}
@@ -338,12 +382,10 @@ export default function AdminQueuePage() {
                           <Clock size={12} className="inline mr-1" />
                           {new Date(search.created_at).toLocaleDateString()}
                         </Badge>
-                      </div>
                     </div>
-                  </div>
 
                   {/* Action Buttons */}
-                  <div className="flex gap-2 mt-4">
+                  <div className="flex shrink-0 justify-start gap-2 lg:justify-end">
                     <button
                       type="button"
                       onClick={(e) => {
@@ -390,7 +432,7 @@ export default function AdminQueuePage() {
                       href={search.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="btn-liquid tertiary sm text-sm ml-auto"
+                      className="btn-liquid tertiary sm text-sm"
                       title="Open article in new tab"
                     >
                       <ExternalLink size={16} className="inline" />
@@ -402,6 +444,16 @@ export default function AdminQueuePage() {
           )}
         </div>
       </section>
+
+      {/* Search Query Modal */}
+      <SearchQueryModal
+        isOpen={queryModalOpen}
+        source={queryModalSource}
+        defaultQueries={queryModalSource === 'tavily' ? DEFAULT_TAVILY_QUERIES : DEFAULT_NEWSAPI_QUERIES}
+        onConfirm={handleConfirmSearch}
+        onCancel={() => setQueryModalOpen(false)}
+        isLoading={triggeringScheduler !== null}
+      />
 
       {/* Detail Modal */}
       <AnimatePresence>
@@ -418,29 +470,32 @@ export default function AdminQueuePage() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="glass-panel floating max-w-2xl w-full max-h-[80vh] overflow-y-auto p-8 backdrop-blur-3xl backdrop-saturate-200"
+              className="glass-modal queue-preview-modal p-6 sm:p-7"
             >
-              <div className="mb-6">
-                <h2 className="text-h2 font-bold text-[rgba(255,255,255,0.95)] mb-4">{selectedSearch.title}</h2>
-                <p className="text-body text-[rgba(255,255,255,0.65)] mb-4 leading-relaxed">
-                  {selectedSearch.snippet}
+              <div className="mb-6 border-b border-black/10 pb-5">
+                <span className="text-label mb-3 block text-blue-600">Queue Preview</span>
+                <h2 className="mb-3 font-sans text-2xl font-bold leading-tight text-black sm:text-3xl">
+                  {selectedSearch.title}
+                </h2>
+                <p className="text-base leading-relaxed text-black/62">
+                  {cleanSnippet(selectedSearch.snippet, 520)}
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4 mb-8">
+              <div className="mb-7 grid gap-4 sm:grid-cols-2">
                 <div className="glass-panel p-4">
-                  <p className="text-label text-[rgba(255,255,255,0.65)] mb-2">Source</p>
-                  <p className="text-body font-semibold text-[rgba(255,255,255,0.95)]">{selectedSearch.source || 'Unknown'}</p>
+                  <p className="text-label text-black/60 mb-2">Source</p>
+                  <p className="text-body font-semibold text-black">{selectedSearch.source || 'Unknown'}</p>
                 </div>
                 <div className="glass-panel p-4">
-                  <p className="text-label text-[rgba(255,255,255,0.65)] mb-2">Date</p>
-                  <p className="text-body font-semibold text-[rgba(255,255,255,0.95)]">
+                  <p className="text-label text-black/60 mb-2">Date</p>
+                  <p className="text-body font-semibold text-black">
                     {new Date(selectedSearch.created_at).toLocaleDateString()}
                   </p>
                 </div>
               </div>
 
-              <div className="flex gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row">
                 <button
                   type="button"
                   onClick={() => handleApprove(selectedSearch.search_id)}

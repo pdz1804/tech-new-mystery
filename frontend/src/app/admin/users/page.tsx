@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api/client';
 import { Button } from '@/components/ui/Button';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { AppLoadingState } from '@/components/ui/AppLoadingState';
 import { Shield, Loader2 } from 'lucide-react';
 
 interface User {
@@ -86,7 +87,7 @@ export default function AdminUsersPage() {
   };
 
   if (!isHydrated) {
-    return null;
+    return <AppLoadingState variant="profile" />;
   }
 
   return (

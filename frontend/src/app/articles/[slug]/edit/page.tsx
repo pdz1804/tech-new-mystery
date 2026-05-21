@@ -7,6 +7,7 @@ import { ArrowLeft, Save, X } from 'lucide-react';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { useArticleBySlug } from '@/hooks/useArticles';
 import { apiClient } from '@/lib/api/client';
+import { AppLoadingState } from '@/components/ui/AppLoadingState';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -54,26 +55,11 @@ export default function EditArticlePage({ params }: { params: { slug: string } }
   }, [data]);
 
   if (!isHydrated || !isAuthenticated) {
-    return null;
+    return <AppLoadingState variant="article" />;
   }
 
   if (isLoading) {
-    return (
-      <motion.main
-        initial="hidden"
-        animate="visible"
-        variants={containerVariants}
-        className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 py-12"
-      >
-        <div className="mx-auto max-w-2xl px-4">
-          <motion.div variants={itemVariants} className="animate-pulse space-y-6">
-            <div className="h-8 w-32 rounded-lg bg-slate-300" />
-            <div className="h-12 w-full rounded-lg bg-slate-300" />
-            <div className="h-32 w-full rounded-lg bg-slate-300" />
-          </motion.div>
-        </div>
-      </motion.main>
-    );
+    return <AppLoadingState variant="article" />;
   }
 
   if (error || !data?.data) {

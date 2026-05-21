@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { ReactNode } from 'react';
+import { AppLoadingState } from '@/components/ui/AppLoadingState';
 
 interface AuthLayoutProps {
   children: ReactNode;
@@ -20,7 +21,7 @@ export default function AuthLayout({ children }: AuthLayoutProps) {
   }, [isAuthenticated, router]);
 
   if (isAuthenticated) {
-    return null;
+    return <AppLoadingState />;
   }
 
   return <>{children}</>;

@@ -3,12 +3,13 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Search, ChevronLeft, ChevronRight, Zap, Clock, TrendingUp } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Clock, TrendingUp } from 'lucide-react';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { useSearchArticles } from '@/hooks/useSearch';
 import { useFilterMetadata } from '@/hooks/useFilterMetadata';
 import { ArticleCard } from '@/components/article/ArticleCard';
 import { ArticleCardSkeleton } from '@/components/ui/Skeleton';
+import { AppLoadingState } from '@/components/ui/AppLoadingState';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -44,6 +45,7 @@ function SearchContent() {
   );
 
   const categories = filterData?.data?.categories || [];
+  const suggestions = ['Agentic AI', 'AI infrastructure', 'Model safety', 'Edge AI', 'Robotics', 'AI chips'];
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -90,7 +92,7 @@ function SearchContent() {
   const totalPages = Math.ceil(totalResults / itemsPerPage);
 
   if (!isHydrated || !isAuthenticated) {
-    return null;
+    return <AppLoadingState variant="search" />;
   }
 
   return (
@@ -98,59 +100,70 @@ function SearchContent() {
       initial="hidden"
       animate="visible"
       variants={containerVariants}
-      className="relative min-h-screen"
+      className="search-stage relative min-h-screen"
       id="main-content"
     >
+      <div className="browse-image-backdrop" aria-hidden="true">
+        <picture>
+          <source media="(max-width: 768px)" srcSet="/img/background-mobile-03.jpg" />
+          <source media="(min-width: 769px)" srcSet="/img/background-web-03.jpg" />
+          <img src="/img/background-web-03.jpg" alt="" />
+        </picture>
+      </div>
+
       {/* Hero Search Section */}
-      <section className="section-glass pt-24">
+      <section className="app-page-shell pb-10">
         <motion.div
           variants={itemVariants}
-          className="container-glass"
+          className="app-page-container"
         >
-          <div className="text-center mb-12">
-            <span className="text-label text-blue-400 mb-4 block">DISCOVERY</span>
-            <h1 className="text-display mb-6 text-[rgba(255,255,255,0.95)]">Find Your Tech Stories</h1>
-            <p className="text-h3 font-normal mb-8 max-w-2xl mx-auto text-[rgba(255,255,255,0.65)]">
-              Search across curated technology articles
-            </p>
-          </div>
-
-          {/* Search Input */}
-          <motion.form
-            variants={itemVariants}
-            onSubmit={handleSearch}
-            className="max-w-2xl mx-auto mb-16"
-          >
-            <div className="relative">
-              <input
-                type="text"
-                placeholder="Search articles..."
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onFocus={() => setIsFocused(true)}
-                onBlur={() => setTimeout(() => setIsFocused(false), 200)}
-                className="w-full input-glass pl-14 pr-6 py-4 text-lg"
-              />
-              <Search size={24} className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-400 pointer-events-none" />
-              <button
-                type="submit"
-                className="absolute right-2 top-1/2 -translate-y-1/2 btn-liquid primary px-6 py-2"
-                aria-label="Search articles"
-                title="Search articles"
-              >
-                <Zap size={18} />
-              </button>
-
-              {/* Dropdown: Recent Searches & Quick Categories */}
-              {isFocused && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="absolute top-full left-0 right-0 mt-2 glass-panel p-6 z-50"
+          <div className={`browse-search-stage ${query ? 'min-h-0 place-items-stretch' : ''}`}>
+          <div className="browse-entry-panel mb-8">
+            <div className="mx-auto mb-6 max-w-2xl">
+              <span className="text-label mb-3 block text-blue-600">Browse</span>
+              <h1 className="mb-3 font-sans text-4xl font-bold leading-tight text-black sm:text-5xl">Search the tech signal</h1>
+              <p className="text-base text-black/60 sm:text-lg">
+                Track AI systems, infrastructure, safety, chips, robotics, and emerging research.
+              </p>
+            </div>
+            {/* Search Input */}
+            <motion.form
+              variants={itemVariants}
+              onSubmit={handleSearch}
+              className="browse-search-card"
+            >
+              <div className="relative flex w-full flex-col gap-3 sm:block">
+                <input
+                  type="text"
+                  placeholder="Search agentic AI, model safety, AI chips..."
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onFocus={() => setIsFocused(true)}
+                  onBlur={() => setTimeout(() => setIsFocused(false), 200)}
+                  className="input-glass w-full py-4 text-base sm:text-lg"
+                />
+                <span className="browse-search-icon">
+                  <Search size={18} />
+                </span>
+                <button
+                  type="submit"
+                  className="browse-search-submit"
+                  aria-label="Search articles"
+                  title="Search articles"
                 >
+                  Search
+                </button>
+
+                {/* Dropdown: Recent Searches & Quick Categories */}
+                {isFocused && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="glass-panel absolute left-0 right-0 top-full z-50 mt-2 p-6 text-left"
+                  >
                   {recentSearches.length > 0 && (
                     <>
-                      <p className="text-label text-[rgba(255,255,255,0.65)] mb-3 block">Recent Searches</p>
+                      <p className="text-label text-black/60 mb-3 block">Recent Searches</p>
                       <div className="space-y-2 mb-6">
                         {recentSearches.map((s) => (
                           <button
@@ -160,7 +173,7 @@ function SearchContent() {
                               setQuery(s);
                               setIsFocused(false);
                             }}
-                            className="block w-full text-left px-3 py-2 text-body text-[rgba(255,255,255,0.65)] hover:text-white hover:bg-white/10 rounded-lg transition-all"
+                            className="block w-full text-left px-3 py-2 text-body text-black/60 hover:text-black hover:bg-black/5 rounded-lg transition-all"
                           >
                             <Clock size={16} className="inline mr-2 opacity-50" />
                             {s}
@@ -170,7 +183,7 @@ function SearchContent() {
                     </>
                   )}
 
-                  <p className="text-label text-[rgba(255,255,255,0.65)] mb-3 block">Quick Categories</p>
+                  <p className="text-label text-black/60 mb-3 block">Quick Categories</p>
                   <div className="flex flex-wrap gap-2">
                     {categories.slice(0, 5).map((cat) => (
                       <button
@@ -191,33 +204,51 @@ function SearchContent() {
                       </button>
                     ))}
                   </div>
-                </motion.div>
-              )}
+                  </motion.div>
+                )}
+              </div>
+            </motion.form>
+
+            <div className="browse-suggestion-row mt-4">
+              {suggestions.map((suggestion) => (
+                <button
+                  key={suggestion}
+                  type="button"
+                  onClick={() => {
+                    setQuery(suggestion);
+                    setPage(1);
+                  }}
+                  className="compact-chip"
+                >
+                  {suggestion}
+                </button>
+              ))}
             </div>
-          </motion.form>
+          </div>
+          </div>
 
           {/* Quick Category Buttons */}
-          {categories.length > 0 && !query && (
+          {categories.length > 0 && query && (
             <motion.div
               variants={itemVariants}
-              className="text-center"
+              className="glass-panel mx-auto mb-8 max-w-5xl p-5"
             >
-              <p className="text-label text-[rgba(255,255,255,0.65)] mb-4 block">OR BROWSE BY CATEGORY</p>
-              <div className="flex flex-wrap justify-center gap-3">
+              <p className="text-label mb-4 block text-black/60">Browse By Category</p>
+              <div className="grid gap-3 sm:grid-cols-3">
                 {categories.slice(0, 3).map((cat) => (
                   <button
                     key={cat.name}
                     type="button"
                     onClick={() => handleCategoryClick(cat)}
                     disabled={cat.count === 0}
-                    className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+                    className={`apple-filter-button justify-center ${
                       cat.count > 0
-                        ? 'btn-liquid primary'
+                        ? ''
                         : 'opacity-50 cursor-not-allowed'
                     }`}
                   >
-                    <TrendingUp size={18} className="inline mr-2" />
-                    Explore {cat.name} ({cat.count})
+                      <TrendingUp size={18} className="inline mr-2" />
+                    {cat.name} ({cat.count})
                   </button>
                 ))}
               </div>
@@ -228,15 +259,15 @@ function SearchContent() {
 
       {/* Search Results */}
       {query && (
-        <section className="section-glass pb-20">
-          <div className="container-glass">
+        <section className="pb-20">
+          <div className="app-page-container">
             {/* Category Filter Bar */}
             {categories.length > 0 && (
               <motion.div
                 variants={itemVariants}
-                className="glass-panel p-6 mb-12"
+                className="glass-panel mb-8 p-5"
               >
-                <p className="text-label text-[rgba(255,255,255,0.65)] mb-4 block">FILTER BY CATEGORY</p>
+                <p className="text-label text-black/60 mb-4 block">FILTER BY CATEGORY</p>
                 <div className="flex flex-wrap gap-2">
                   <motion.button
                     type="button"
@@ -280,12 +311,12 @@ function SearchContent() {
               variants={itemVariants}
               className="mb-8"
             >
-              <p className="text-h3 font-bold text-[rgba(255,255,255,0.95)] mb-2">
+              <p className="text-h3 font-bold text-black mb-2">
                 Found {totalResults} result{totalResults !== 1 ? 's' : ''} for &quot;{query}&quot;
               </p>
               {category && (
-                <p className="text-body text-[rgba(255,255,255,0.65)]">
-                  in <span className="text-blue-400 font-semibold">{category}</span>
+                <p className="text-body text-black/60">
+                  in <span className="text-blue-600 font-semibold">{category}</span>
                 </p>
               )}
             </motion.div>
@@ -302,8 +333,8 @@ function SearchContent() {
                 variants={itemVariants}
                 className="glass-panel p-8 text-center border-red-500/50"
               >
-                <p className="text-red-300 font-semibold">Error loading results</p>
-                <p className="text-red-200 mt-2">{error.toString()}</p>
+                <p className="text-red-600 font-semibold">Error loading results</p>
+                <p className="text-red-500 mt-2">{error.toString()}</p>
               </motion.div>
             ) : results.length > 0 ? (
               <>
@@ -384,9 +415,9 @@ function SearchContent() {
                 variants={itemVariants}
                 className="glass-panel p-12 text-center"
               >
-                <Search size={48} className="mx-auto mb-4 text-[rgba(255,255,255,0.45)] opacity-50" />
-                <p className="text-h3 text-[rgba(255,255,255,0.65)] mb-2">No articles found</p>
-                <p className="text-body text-[rgba(255,255,255,0.65)]">
+                <Search size={48} className="mx-auto mb-4 text-black/30 opacity-50" />
+                <p className="text-h3 text-black/60 mb-2">No articles found</p>
+                <p className="text-body text-black/60">
                   Try adjusting your search terms or category filters
                 </p>
               </motion.div>
@@ -395,23 +426,6 @@ function SearchContent() {
         </section>
       )}
 
-      {/* Empty State: Suggestions */}
-      {!query && (
-        <section className="section-glass pb-20">
-          <div className="container-glass">
-            <motion.div
-              variants={itemVariants}
-              className="text-center"
-            >
-              <Search size={64} className="mx-auto mb-6 text-[rgba(255,255,255,0.45)] opacity-30" />
-              <h2 className="text-h2 mb-4 text-[rgba(255,255,255,0.95)]">Start Exploring</h2>
-              <p className="text-body text-[rgba(255,255,255,0.65)] max-w-2xl mx-auto">
-                Enter a search term above or choose a category to discover amazing tech articles
-              </p>
-            </motion.div>
-          </div>
-        </section>
-      )}
     </motion.main>
   );
 }
