@@ -3,11 +3,11 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { useRouter } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
 import { apiClient } from '@/lib/api/client';
-import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { Check, X, ExternalLink, Loader2, Zap, Eye } from 'lucide-react';
+import { Check, X, ExternalLink, Loader2, Zap, Eye, Clock } from 'lucide-react';
 
 interface PendingSearch {
   search_id: string;
@@ -19,6 +19,19 @@ interface PendingSearch {
   created_at: string;
   status: string;
 }
+
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: { staggerChildren: 0.1, delayChildren: 0.2 },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.4 } },
+};
 
 export default function AdminQueuePage() {
   const router = useRouter();
@@ -34,7 +47,6 @@ export default function AdminQueuePage() {
   const [selectedSearch, setSelectedSearch] = useState<PendingSearch | null>(null);
 
   useEffect(() => {
-    // Protect route - redirect if not admin
     if (isHydrated && !user?.is_admin) {
       router.push('/');
       return;
@@ -76,17 +88,16 @@ export default function AdminQueuePage() {
       if (data.success) {
         setSearches(searches.filter((s) => s.search_id !== searchId));
         setSelectedSearch(null);
-        setSuccessMessage('Search approved and article created successfully');
+        setSuccessMessage('✓ Search approved and article created');
         setTimeout(() => setSuccessMessage(null), 5000);
       } else {
         setError('Failed to approve search');
       }
-    } catch (err: any) {
-      // Handle duplicate URL (409 Conflict)
-      if (err?.response?.status === 409) {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error occurred';
+      if (message.includes('409') || message.includes('already exists')) {
         setError('This article already exists. Click Delete to remove this search result.');
       } else {
-        const message = err instanceof Error ? err.message : 'Unknown error occurred';
         setError(message);
       }
       console.error('Error approving search:', err);
@@ -103,7 +114,7 @@ export default function AdminQueuePage() {
       if (data.success) {
         setSearches(searches.filter((s) => s.search_id !== searchId));
         setSelectedSearch(null);
-        setSuccessMessage('Search rejected successfully');
+        setSuccessMessage('✓ Search rejected successfully');
         setTimeout(() => setSuccessMessage(null), 5000);
       } else {
         setError('Failed to reject search');
@@ -123,14 +134,18 @@ export default function AdminQueuePage() {
       setError(null);
       setSuccessMessage(null);
 
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const dateParam = yesterday.toISOString().split('T')[0];
+
       const endpoint = source === 'tavily' ? '/admin/tavily/trigger' : '/admin/newsapi/trigger';
-      const { data } = await apiClient.post(endpoint);
+      const params = new URLSearchParams();
+      params.append(source === 'tavily' ? 'start_date' : 'from_date', dateParam);
+      const { data } = await apiClient.post(`${endpoint}?${params.toString()}`);
 
       if (data.success) {
         setSuccessMessage(data.message);
-        // Auto-dismiss success message after 5 seconds
         setTimeout(() => setSuccessMessage(null), 5000);
-        // Poll every 5 seconds for up to 2 minutes for new results (Tavily takes ~30s)
         let pollCount = 0;
         const pollInterval = setInterval(async () => {
           pollCount++;
@@ -162,13 +177,11 @@ export default function AdminQueuePage() {
 
   const cleanSnippet = (text: string | null, limit: number = 150) => {
     if (!text) return '';
-    // Remove markdown links and HTML tags, keep just plain text
     const cleaned = text
-      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1') // [text](url) → text
-      .replace(/<[^>]+>/g, '') // remove HTML tags
-      .replace(/\n+/g, ' ') // replace newlines with space
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
+      .replace(/<[^>]+>/g, '')
+      .replace(/\n+/g, ' ')
       .trim();
-
     if (limit && cleaned.length > limit) {
       return cleaned.substring(0, limit);
     }
@@ -180,304 +193,304 @@ export default function AdminQueuePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4 sm:p-6 lg:p-8">
-      <div className="mx-auto max-w-4xl">
-        {/* Header */}
-        <div className="mb-8 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold text-slate-900">Search Queue</h1>
-            <p className="mt-2 text-slate-600">
-              Review and approve search results ({searches.length} pending)
-            </p>
-          </div>
-          <div className="flex gap-2 flex-shrink-0">
+    <motion.div
+      initial="hidden"
+      animate="visible"
+      variants={containerVariants}
+      className="relative min-h-screen"
+    >
+      {/* Hero Section */}
+      <section className="section-glass pt-24">
+        <motion.div
+          variants={itemVariants}
+          className="container-glass text-center mb-12"
+        >
+          <span className="text-label text-blue-400 mb-4 block uppercase">Admin Control</span>
+          <h1 className="text-display mb-6 text-[rgba(255,255,255,0.95)]">Search Queue</h1>
+          <p className="text-h3 font-normal mb-8 max-w-2xl mx-auto text-[rgba(255,255,255,0.65)]">
+            Review and approve search results ({searches.length} pending)
+          </p>
+
+          {/* Trigger Buttons */}
+          <motion.div
+            variants={itemVariants}
+            className="flex gap-4 justify-center flex-wrap"
+          >
             <button
               type="button"
               onClick={() => handleTriggerScheduler('tavily')}
               disabled={triggeringScheduler !== null || loading}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all whitespace-nowrap"
-              title="Manually trigger Tavily scheduler to fetch articles now"
+              className="btn-liquid primary flex items-center gap-2"
+              title="Fetch articles from Tavily"
             >
+              <Zap size={20} />
               {triggeringScheduler === 'tavily' ? (
                 <>
                   <Loader2 size={18} className="animate-spin" />
-                  <span className="hidden sm:inline">Tavily...</span>
+                  <span>Tavily...</span>
                 </>
               ) : (
-                <>
-                  <Zap size={18} />
-                  <span className="hidden sm:inline">Tavily</span>
-                </>
+                <span>Tavily Search</span>
               )}
             </button>
             <button
               type="button"
               onClick={() => handleTriggerScheduler('newsapi')}
               disabled={triggeringScheduler !== null || loading}
-              className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white font-medium rounded-lg hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all whitespace-nowrap"
-              title="Manually trigger NewsAPI scheduler to fetch articles now"
+              className="btn-liquid secondary flex items-center gap-2"
+              title="Fetch articles from NewsAPI"
             >
+              <Zap size={20} />
               {triggeringScheduler === 'newsapi' ? (
                 <>
                   <Loader2 size={18} className="animate-spin" />
-                  <span className="hidden sm:inline">NewsAPI...</span>
+                  <span>NewsAPI...</span>
                 </>
               ) : (
-                <>
-                  <Zap size={18} />
-                  <span className="hidden sm:inline">NewsAPI</span>
-                </>
+                <span>NewsAPI Search</span>
               )}
             </button>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
+      </section>
 
-        {/* Success Message */}
-        {successMessage && (
-          <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-4 text-green-700">
-            {successMessage}
-          </div>
-        )}
-
-        {/* Error Message */}
-        {error && (
-          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
-            {error}
-          </div>
-        )}
-
-        {/* Loading State */}
-        {loading ? (
-          <div className="space-y-3">
-            {[...Array(3)].map((_, i) => (
-              <div
-                key={i}
-                className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+      {/* Content Section */}
+      <section className="section-glass pb-20">
+        <div className="container-glass">
+          {/* Messages */}
+          <AnimatePresence>
+            {successMessage && (
+              <motion.div
+                variants={itemVariants}
+                initial="hidden"
+                animate="visible"
+                exit={{ opacity: 0, y: -20 }}
+                className="glass-panel p-4 border-green-500/50 mb-6 bg-gradient-to-r from-green-500/20 to-emerald-500/20"
               >
-                <Skeleton className="mb-3 h-5 w-1/3" />
-                <Skeleton className="mb-2 h-4 w-full" />
-                <Skeleton className="h-4 w-2/3" />
-              </div>
-            ))}
-          </div>
-        ) : searches.length === 0 ? (
-          <div className="rounded-lg border border-slate-200 bg-white p-12 text-center shadow-sm">
-            <p className="text-lg text-slate-600">No pending searches</p>
-            <p className="mt-2 text-sm text-slate-500">
-              Trigger Tavily or NewsAPI to fetch search results
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {searches.map((search) => (
-              <div
-                key={search.search_id}
-                className="rounded-lg border border-slate-200 bg-white shadow-sm hover:shadow-md transition-shadow overflow-hidden"
+                <p className="text-green-300 font-semibold">{successMessage}</p>
+              </motion.div>
+            )}
+            {error && (
+              <motion.div
+                variants={itemVariants}
+                initial="hidden"
+                animate="visible"
+                exit={{ opacity: 0, y: -20 }}
+                className="glass-panel p-4 border-red-500/50 mb-6 bg-gradient-to-r from-red-500/20 to-rose-500/20"
               >
-                <div className="p-5">
-                  {/* Title Row */}
-                  <div className="flex items-start justify-between gap-4 mb-3">
+                <p className="text-red-300 font-semibold">{error}</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Queue List */}
+          {loading ? (
+            <div className="space-y-4">
+              {[...Array(3)].map((_, i) => (
+                <div key={i} className="glass-panel p-6">
+                  <Skeleton className="mb-3 h-6 w-1/2" />
+                  <Skeleton className="mb-2 h-4 w-full" />
+                  <Skeleton className="h-4 w-2/3" />
+                </div>
+              ))}
+            </div>
+          ) : searches.length === 0 ? (
+            <motion.div
+              variants={itemVariants}
+              className="glass-panel p-12 text-center"
+            >
+              <Eye size={48} className="mx-auto mb-4 text-[rgba(255,255,255,0.45)] opacity-50" />
+              <p className="text-h3 mb-2 text-[rgba(255,255,255,0.95)]">No Pending Searches</p>
+              <p className="text-body text-[rgba(255,255,255,0.65)]">
+                Trigger Tavily or NewsAPI to fetch search results
+              </p>
+            </motion.div>
+          ) : (
+            <motion.div
+              variants={containerVariants}
+              initial="hidden"
+              whileInView="visible"
+              viewport={{ once: true }}
+              className="space-y-4"
+            >
+              {searches.map((search) => (
+                <motion.div
+                  key={search.search_id}
+                  variants={itemVariants}
+                  className="glass-panel p-6 cursor-pointer hover:bg-white/[0.1]"
+                  onClick={() => setSelectedSearch(search)}
+                >
+                  <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
-                      <h3 className="text-lg font-semibold text-slate-900 line-clamp-2 hover:text-blue-600 cursor-pointer"
-                        onClick={() => setSelectedSearch(search)}
-                      >
+                      <h3 className="text-h3 font-bold text-[rgba(255,255,255,0.95)] mb-2 hover:text-blue-400 transition-colors line-clamp-2">
                         {search.title}
                       </h3>
+                      <p className="text-body text-[rgba(255,255,255,0.65)] mb-4 line-clamp-2">
+                        {cleanSnippet(search.snippet, 120)}
+                      </p>
+                      <div className="flex flex-wrap gap-2 mb-4">
+                        {search.source && (
+                          <Badge variant="info" size="sm">
+                            {search.source}
+                          </Badge>
+                        )}
+                        <Badge variant="info" size="sm">
+                          <Clock size={12} className="inline mr-1" />
+                          {new Date(search.created_at).toLocaleDateString()}
+                        </Badge>
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedSearch(search)}
-                      className="flex-shrink-0 p-2 text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
-                      title="Preview article details"
-                    >
-                      <Eye size={20} />
-                    </button>
                   </div>
 
-                  {/* Snippet Preview */}
-                  {search.snippet && (
-                    <p className="text-sm text-slate-600 mb-3 line-clamp-2">
-                      {cleanSnippet(search.snippet)}...
-                    </p>
-                  )}
-
-                  {/* Metadata Row */}
-                  <div className="flex flex-wrap items-center gap-2 mb-4">
-                    <Badge className="bg-slate-100 text-slate-800 text-xs">
-                      {search.query}
-                    </Badge>
-                    {search.source && (
-                      <Badge className="bg-blue-100 text-blue-800 text-xs">
-                        {search.source}
-                      </Badge>
-                    )}
-                    <span className="text-xs text-slate-500">
-                      {new Date(search.created_at).toLocaleDateString()}
-                    </span>
-                  </div>
-
-                  {/* Actions Row */}
-                  <div className="flex gap-2">
+                  {/* Action Buttons */}
+                  <div className="flex gap-2 mt-4">
                     <button
                       type="button"
-                      onClick={() => handleApprove(search.search_id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleApprove(search.search_id);
+                      }}
                       disabled={actionLoading === search.search_id}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm"
+                      className="btn-liquid primary sm text-sm"
                     >
                       {actionLoading === search.search_id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <>
+                          <Loader2 size={16} className="animate-spin inline mr-1" />
+                          Approving...
+                        </>
                       ) : (
-                        <Check className="h-4 w-4" />
+                        <>
+                          <Check size={16} className="inline mr-1" />
+                          Approve
+                        </>
                       )}
-                      Approve
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleReject(search.search_id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleReject(search.search_id);
+                      }}
                       disabled={actionLoading === search.search_id}
-                      className="flex items-center gap-1.5 px-3 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-sm"
+                      className="btn-liquid secondary sm text-sm"
                     >
                       {actionLoading === search.search_id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <>
+                          <Loader2 size={16} className="animate-spin inline mr-1" />
+                          Rejecting...
+                        </>
                       ) : (
-                        <X className="h-4 w-4" />
+                        <>
+                          <X size={16} className="inline mr-1" />
+                          Reject
+                        </>
                       )}
-                      Reject
                     </button>
                     <a
                       href={search.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="ml-auto flex items-center gap-1.5 px-3 py-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors text-sm"
-                      title="Open source article in new tab"
+                      className="btn-liquid tertiary sm text-sm ml-auto"
+                      title="Open article in new tab"
                     >
-                      View
-                      <ExternalLink className="h-4 w-4" />
+                      <ExternalLink size={16} className="inline" />
                     </a>
                   </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Preview Modal */}
-      {selectedSearch && (
-        <div
-          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-          onClick={() => setSelectedSearch(null)}
-        >
-          <div
-            className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="sticky top-0 bg-white border-b border-slate-200 p-6 flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <h2 className="text-2xl font-bold text-slate-900 mb-3">
-                  {selectedSearch.title}
-                </h2>
-                <div className="flex flex-wrap gap-2">
-                  <Badge className="bg-slate-100 text-slate-800">
-                    {selectedSearch.query}
-                  </Badge>
-                  {selectedSearch.source && (
-                    <Badge className="bg-blue-100 text-blue-800">
-                      {selectedSearch.source}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedSearch(null)}
-                className="text-slate-400 hover:text-slate-600 p-2 hover:bg-slate-100 rounded-lg transition-colors flex-shrink-0"
-                title="Close preview"
-              >
-                <X size={24} />
-              </button>
-            </div>
-
-            {/* Modal Content */}
-            <div className="p-6 space-y-5">
-              {/* Source Link */}
-              <a
-                href={selectedSearch.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 text-blue-600 hover:underline break-all text-sm"
-              >
-                {selectedSearch.url.substring(0, 70)}...
-                <ExternalLink size={16} className="flex-shrink-0" />
-              </a>
-
-              {/* Content Preview */}
-              {selectedSearch.snippet && (
-                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 max-h-96 overflow-y-auto">
-                  <p className="text-slate-700 leading-relaxed whitespace-pre-wrap break-words">
-                    {cleanSnippet(selectedSearch.snippet, 0)}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-4 sticky bottom-0 bg-slate-50 py-2">
-                    Review this content, then click Approve to create article or Reject to discard
-                  </p>
-                </div>
-              )}
-
-              {/* Metadata */}
-              <div className="text-sm text-slate-600 py-4 border-y border-slate-200">
-                <p>Found: {new Date(selectedSearch.created_at).toLocaleString()}</p>
-              </div>
-            </div>
-
-            {/* Modal Actions */}
-            <div className="bg-slate-50 border-t border-slate-200 p-6 flex gap-3">
-              <button
-                type="button"
-                onClick={() => handleApprove(selectedSearch.search_id)}
-                disabled={actionLoading === selectedSearch.search_id}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              >
-                {actionLoading === selectedSearch.search_id ? (
-                  <>
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    <span>Creating...</span>
-                  </>
-                ) : (
-                  <>
-                    <Check className="h-5 w-5" />
-                    <span>Approve & Create</span>
-                  </>
-                )}
-              </button>
-              <button
-                type="button"
-                onClick={() => handleReject(selectedSearch.search_id)}
-                disabled={actionLoading === selectedSearch.search_id}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-              >
-                {actionLoading === selectedSearch.search_id ? (
-                  <>
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                  </>
-                ) : (
-                  <>
-                    <X className="h-5 w-5" />
-                  </>
-                )}
-                Delete
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedSearch(null)}
-                className="flex-1 px-4 py-3 bg-slate-200 text-slate-900 font-medium rounded-lg hover:bg-slate-300 transition-all"
-              >
-                Close
-              </button>
-            </div>
-          </div>
+                </motion.div>
+              ))}
+            </motion.div>
+          )}
         </div>
-      )}
-    </div>
+      </section>
+
+      {/* Detail Modal */}
+      <AnimatePresence>
+        {selectedSearch && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-[32px] z-50 flex items-center justify-center p-4"
+            onClick={() => setSelectedSearch(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="glass-panel floating max-w-2xl w-full max-h-[80vh] overflow-y-auto p-8 backdrop-blur-3xl backdrop-saturate-200"
+            >
+              <div className="mb-6">
+                <h2 className="text-h2 font-bold text-[rgba(255,255,255,0.95)] mb-4">{selectedSearch.title}</h2>
+                <p className="text-body text-[rgba(255,255,255,0.65)] mb-4 leading-relaxed">
+                  {selectedSearch.snippet}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mb-8">
+                <div className="glass-panel p-4">
+                  <p className="text-label text-[rgba(255,255,255,0.65)] mb-2">Source</p>
+                  <p className="text-body font-semibold text-[rgba(255,255,255,0.95)]">{selectedSearch.source || 'Unknown'}</p>
+                </div>
+                <div className="glass-panel p-4">
+                  <p className="text-label text-[rgba(255,255,255,0.65)] mb-2">Date</p>
+                  <p className="text-body font-semibold text-[rgba(255,255,255,0.95)]">
+                    {new Date(selectedSearch.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleApprove(selectedSearch.search_id)}
+                  disabled={actionLoading === selectedSearch.search_id}
+                  className="btn-liquid primary flex-1"
+                >
+                  {actionLoading === selectedSearch.search_id ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin inline mr-2" />
+                      Approving...
+                    </>
+                  ) : (
+                    <>
+                      <Check size={18} className="inline mr-2" />
+                      Approve & Create
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleReject(selectedSearch.search_id)}
+                  disabled={actionLoading === selectedSearch.search_id}
+                  className="btn-liquid secondary flex-1"
+                >
+                  {actionLoading === selectedSearch.search_id ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin inline mr-2" />
+                      Rejecting...
+                    </>
+                  ) : (
+                    <>
+                      <X size={18} className="inline mr-2" />
+                      Reject
+                    </>
+                  )}
+                </button>
+                <a
+                  href={selectedSearch.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn-liquid tertiary"
+                  title="Open in new tab"
+                >
+                  <ExternalLink size={18} />
+                </a>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 }

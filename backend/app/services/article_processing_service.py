@@ -238,12 +238,15 @@ JSON Response:"""
         max_retries = 3
         for attempt in range(max_retries):
             try:
-                logger.info(f"Bedrock API call (attempt {attempt + 1}/{max_retries})")
+                attempt_start = time.time()
+                logger.info(f"LLM API call (attempt {attempt + 1}/{max_retries})")
                 response = await llm_client.generate(
                     prompt=prompt,
                     max_tokens=3000,
                     temperature=0.5,
                 )
+                attempt_elapsed = time.time() - attempt_start
+                logger.info(f"LLM API call succeeded in {attempt_elapsed:.2f}s")
 
                 logger.debug(f"Raw response length: {len(response)} chars")
                 logger.debug(f"First 500 chars of response: {response[:500]}")

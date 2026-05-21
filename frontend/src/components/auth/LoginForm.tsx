@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { LogIn, Mail, Lock, ChevronRight } from 'lucide-react';
 import { useLogin } from '@/hooks/useAuth';
+import SquircleButton from '@/components/ui/SquircleButton';
+import GlassContainer from '@/components/ui/GlassContainer';
 
 const containerVariants = {
   hidden: { opacity: 0, y: 20 },
@@ -53,7 +55,7 @@ export function LoginForm() {
 
         {/* Clean Card Container */}
         <motion.div variants={containerVariants}>
-          <div className="rounded-2xl bg-white shadow-2xl border border-slate-100 p-8">
+          <GlassContainer variant="elevated" className="floating-card p-8">
             {/* Error Alert */}
             {loginMutation.error && (
               <motion.div
@@ -132,10 +134,12 @@ export function LoginForm() {
 
               {/* Sign In Button */}
               <motion.div variants={containerVariants}>
-                <button
+                <SquircleButton
                   type="submit"
                   disabled={loginMutation.isPending}
-                  className="btn-primary w-full justify-center gap-2"
+                  variant="primary"
+                  size="lg"
+                  className="w-full justify-center"
                 >
                   {loginMutation.isPending ? (
                     <>
@@ -148,7 +152,7 @@ export function LoginForm() {
                       <ChevronRight className="w-4 h-4" aria-hidden="true" />
                     </>
                   )}
-                </button>
+                </SquircleButton>
               </motion.div>
             </form>
 
@@ -165,7 +169,7 @@ export function LoginForm() {
                 </Link>
               </p>
             </motion.div>
-          </div>
+          </GlassContainer>
         </motion.div>
 
         {/* Footer Text */}

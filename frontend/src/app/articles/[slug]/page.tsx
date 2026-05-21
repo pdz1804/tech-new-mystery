@@ -11,6 +11,8 @@ import { ArticleHeader } from '@/components/article/ArticleHeader';
 import { MarkdownContent } from '@/components/article/MarkdownContent';
 import { CommentThread } from '@/components/article/CommentThread';
 import { RelatedArticles } from '@/components/article/RelatedArticles';
+import SquircleButton from '@/components/ui/SquircleButton';
+import GlassContainer from '@/components/ui/GlassContainer';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -134,18 +136,17 @@ export default function ArticleDetailPage({ params }: { params: { slug: string }
       {/* Back Button Bar */}
       <motion.div
         variants={itemVariants}
-        className="sticky top-16 bg-white border-b border-slate-200 shadow-sm"
+        className="sticky top-16 border-b border-slate-200 backdrop-blur-sm z-40"
       >
         <div className="mx-auto max-w-4xl px-4 py-4">
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
+          <SquircleButton
+            variant="secondary"
+            size="sm"
             onClick={() => router.back()}
-            className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 font-semibold text-blue-600 transition-all hover:bg-slate-50 hover:shadow-sm"
           >
             <ArrowLeft className="h-5 w-5" />
             Back
-          </motion.button>
+          </SquircleButton>
         </div>
       </motion.div>
 
@@ -167,13 +168,15 @@ export default function ArticleDetailPage({ params }: { params: { slug: string }
         {article.summary && (
           <motion.div
             variants={itemVariants}
-            className="mb-12 rounded-xl border border-blue-200 bg-blue-50 p-8"
+            className="mb-12"
           >
-            <div className="border-l-4 border-blue-600 pl-6">
-              <p className="text-lg font-medium text-slate-900 leading-relaxed">
-                {article.summary}
-              </p>
-            </div>
+            <GlassContainer variant="elevated" className="floating-card p-8">
+              <div className="border-l-4 border-blue-600 pl-6">
+                <p className="text-lg font-medium text-slate-900 leading-relaxed">
+                  {article.summary}
+                </p>
+              </div>
+            </GlassContainer>
           </motion.div>
         )}
 
@@ -213,126 +216,123 @@ export default function ArticleDetailPage({ params }: { params: { slug: string }
         {article.original_url && (
           <motion.div
             variants={itemVariants}
-            className="rounded-lg border border-slate-200 bg-white p-6 mb-12 shadow-sm"
+            className="mb-12"
           >
-            <p className="mb-3 text-xs font-semibold text-slate-600">SOURCE</p>
-            <a
-              href={article.original_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 text-blue-600 font-semibold transition-colors hover:text-blue-700 break-all"
-            >
-              {article.original_url}
-              <ExternalLink className="h-5 w-5 flex-shrink-0" />
-            </a>
+            <GlassContainer variant="elevated" className="floating-card p-6">
+              <p className="mb-3 text-xs font-semibold text-slate-600">SOURCE</p>
+              <a
+                href={article.original_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 text-blue-600 font-semibold transition-colors hover:text-blue-700 break-all"
+              >
+                {article.original_url}
+                <ExternalLink className="h-5 w-5 flex-shrink-0" />
+              </a>
+            </GlassContainer>
           </motion.div>
         )}
 
         {/* Article Actions - CRUD Operations */}
         <motion.div
           variants={itemVariants}
-          className="rounded-lg border border-slate-200 bg-white p-6 mb-12 shadow-sm"
+          className="mb-12"
         >
-          <p className="mb-4 text-xs font-semibold text-slate-600">ACTIONS</p>
-          <div className="flex flex-wrap gap-3">
-            {/* Edit Button */}
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => router.push(`/articles/${params.slug}/edit`)}
-              className="btn-primary flex items-center gap-2"
-              aria-label="Edit article"
-              title="Edit this article"
-            >
-              <Edit2 className="h-4 w-4" />
-              Edit
-            </motion.button>
+          <GlassContainer variant="elevated" className="floating-card p-6">
+            <p className="mb-4 text-xs font-semibold text-slate-600">ACTIONS</p>
+            <div className="flex flex-wrap gap-3">
+              {/* Edit Button */}
+              <SquircleButton
+                variant="primary"
+                size="md"
+                onClick={() => router.push(`/articles/${params.slug}/edit`)}
+                aria-label="Edit article"
+                title="Edit this article"
+              >
+                <Edit2 className="h-4 w-4" />
+                Edit
+              </SquircleButton>
 
-            {/* Share Button */}
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={async () => {
-                if (navigator.share) {
-                  try {
-                    await navigator.share({
-                      title: article.title,
-                      text: article.summary || article.title,
-                      url: window.location.href,
-                    });
-                  } catch (err) {
-                    console.log('Share cancelled');
+              {/* Share Button */}
+              <SquircleButton
+                variant="secondary"
+                size="md"
+                onClick={async () => {
+                  if (navigator.share) {
+                    try {
+                      await navigator.share({
+                        title: article.title,
+                        text: article.summary || article.title,
+                        url: window.location.href,
+                      });
+                    } catch {
+                      console.log('Share cancelled');
+                    }
+                  } else {
+                    // Fallback: copy to clipboard
+                    await navigator.clipboard.writeText(window.location.href);
+                    alert('Link copied to clipboard!');
                   }
-                } else {
-                  // Fallback: copy to clipboard
-                  await navigator.clipboard.writeText(window.location.href);
-                  alert('Link copied to clipboard!');
-                }
-              }}
-              className="flex items-center gap-2 rounded-lg bg-green-50 px-4 py-2.5 text-green-700 font-semibold hover:bg-green-100 transition-colors focus:outline-none focus:ring-2 focus:ring-green-500"
-              aria-label="Share article"
-              title="Share this article"
-            >
-              <Share2 className="h-4 w-4" />
-              Share
-            </motion.button>
+                }}
+                aria-label="Share article"
+                title="Share this article"
+              >
+                <Share2 className="h-4 w-4" />
+                Share
+              </SquircleButton>
 
-            {/* Bookmark Button */}
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => {
-                setIsBookmarked(!isBookmarked);
-                // Save to localStorage
-                const bookmarks = JSON.parse(localStorage.getItem('bookmarkedArticles') || '[]');
-                if (!isBookmarked) {
-                  bookmarks.push(article.article_id);
-                } else {
-                  bookmarks.splice(bookmarks.indexOf(article.article_id), 1);
-                }
-                localStorage.setItem('bookmarkedArticles', JSON.stringify(bookmarks));
-              }}
-              className={`flex items-center gap-2 rounded-lg px-4 py-2.5 font-semibold transition-colors focus:outline-none focus:ring-2 ${
-                isBookmarked
-                  ? 'bg-amber-50 text-amber-700 hover:bg-amber-100 focus:ring-amber-500'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200 focus:ring-slate-500'
-              }`}
-              aria-label={isBookmarked ? 'Remove bookmark' : 'Bookmark article'}
-              title={isBookmarked ? 'Remove bookmark' : 'Bookmark this article'}
-            >
-              <Bookmark className={`h-4 w-4 ${isBookmarked ? 'fill-current' : ''}`} />
-              {isBookmarked ? 'Saved' : 'Save'}
-            </motion.button>
+              {/* Bookmark Button */}
+              <SquircleButton
+                variant={isBookmarked ? 'primary' : 'secondary'}
+                size="md"
+                onClick={() => {
+                  setIsBookmarked(!isBookmarked);
+                  // Save to localStorage
+                  const bookmarks = JSON.parse(localStorage.getItem('bookmarkedArticles') || '[]');
+                  if (!isBookmarked) {
+                    bookmarks.push(article.article_id);
+                  } else {
+                    bookmarks.splice(bookmarks.indexOf(article.article_id), 1);
+                  }
+                  localStorage.setItem('bookmarkedArticles', JSON.stringify(bookmarks));
+                }}
+                aria-label={isBookmarked ? 'Remove bookmark' : 'Bookmark article'}
+                title={isBookmarked ? 'Remove bookmark' : 'Bookmark this article'}
+              >
+                <Bookmark className={`h-4 w-4 ${isBookmarked ? 'fill-current' : ''}`} />
+                {isBookmarked ? 'Saved' : 'Save'}
+              </SquircleButton>
 
-            {/* Delete Button */}
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={async () => {
-                if (!confirm('Are you sure you want to delete this article? This action cannot be undone.')) {
-                  return;
-                }
-                setIsDeleting(true);
-                try {
-                  await apiClient.delete(`/articles/${params.slug}`);
-                  alert('Article deleted successfully!');
-                  router.push('/articles');
-                } catch (err: any) {
-                  console.error('Delete failed:', err);
-                  alert(err.response?.data?.detail || 'Failed to delete article');
-                } finally {
-                  setIsDeleting(false);
-                }
-              }}
-              disabled={isDeleting}
-              className="flex items-center gap-2 rounded-lg bg-red-50 px-4 py-2.5 text-red-700 font-semibold hover:bg-red-100 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              aria-label="Delete article"
-              title="Delete this article permanently"
-            >
-              <Trash2 className="h-4 w-4" />
-              {isDeleting ? 'Deleting...' : 'Delete'}
-            </motion.button>
-          </div>
+              {/* Delete Button */}
+              <SquircleButton
+                variant="secondary"
+                size="md"
+                onClick={async () => {
+                  if (!confirm('Are you sure you want to delete this article? This action cannot be undone.')) {
+                    return;
+                  }
+                  setIsDeleting(true);
+                  try {
+                    await apiClient.delete(`/articles/${params.slug}`);
+                    alert('Article deleted successfully!');
+                    router.push('/articles');
+                  } catch (err) {
+                    console.error('Delete failed:', err);
+                    const errorMessage = err instanceof Error ? err.message : 'Failed to delete article';
+                    alert(errorMessage);
+                  } finally {
+                    setIsDeleting(false);
+                  }
+                }}
+                disabled={isDeleting}
+                aria-label="Delete article"
+                title="Delete this article permanently"
+              >
+                <Trash2 className="h-4 w-4" />
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </SquircleButton>
+            </div>
+          </GlassContainer>
         </motion.div>
 
         {/* Comments Section */}

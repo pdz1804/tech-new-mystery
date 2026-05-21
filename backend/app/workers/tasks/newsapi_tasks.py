@@ -17,14 +17,18 @@ logger = logging.getLogger(__name__)
 
 
 @celery_app.task(bind=True, max_retries=2, default_retry_delay=60)
-def newsapi_scheduled_task(self):
+def newsapi_scheduled_task(self, from_date: str | None = None):
     """Scheduled task to discover articles via NewsAPI every 6 hours.
 
     Searches tech topics and stores results as pending searches for admin review.
+
+    Args:
+        from_date: Optional ISO format date (YYYY-MM-DD) to search from.
+                   If not provided, defaults to yesterday.
     """
     logger.info("[NEWSAPI_SCHEDULED] Task started - executing async search")
     try:
-        result = asyncio.run(_fetch_and_store_search_results())
+        result = asyncio.run(_fetch_and_store_search_results(from_date=from_date))
         logger.info(f"[NEWSAPI_SCHEDULED] Task completed successfully: {result}")
         return result
     except Exception as exc:
@@ -32,15 +36,19 @@ def newsapi_scheduled_task(self):
         raise self.retry(exc=exc)
 
 
-async def _fetch_and_store_search_results() -> dict:
+async def _fetch_and_store_search_results(from_date: str | None = None) -> dict:
     """Fetch news articles from NewsAPI about tech from yesterday and store as pending searches."""
     from datetime import datetime, timedelta
 
     logger.info("[NEWSAPI_SCHEDULED] Starting scheduled NewsAPI article discovery")
 
-    # Get yesterday's date for dynamic search
-    yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
-    logger.info(f"[NEWSAPI_SCHEDULED] Searching for news from {yesterday}")
+    # Get date for search (use provided date or yesterday)
+    if from_date:
+        search_date = from_date
+        logger.info(f"[NEWSAPI_SCHEDULED] Using provided date: {search_date}")
+    else:
+        search_date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+        logger.info(f"[NEWSAPI_SCHEDULED] Using yesterday's date: {search_date}")
 
     # Tech topics to search for news
     topics = [
@@ -78,7 +86,7 @@ async def _fetch_and_store_search_results() -> dict:
                 search_result = await search_service.newsapi_search(
                     query=topic,
                     limit=5,  # Get 5 results per topic
-                    from_date=yesterday,  # Only news from yesterday
+                    from_date=search_date,  # Only news from specified date
                     sort_by="popularity",  # Sort by popularity
                 )
 

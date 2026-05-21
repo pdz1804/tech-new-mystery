@@ -50,17 +50,6 @@ export default function AdminSearchPage() {
   const [errorMessages, setErrorMessages] = useState<Record<string, string>>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
 
-  // Protect route - redirect if not admin
-  if (isHydrated && (!isAuthenticated || !isAdmin)) {
-    setIntendedDestination('/admin/search');
-    router.push('/login');
-    return null;
-  }
-
-  if (!isHydrated) {
-    return null;
-  }
-
   const handleSearch = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -80,12 +69,12 @@ export default function AdminSearchPage() {
       });
 
       if (data.success && data.results) {
-        const mappedResults = data.results.map((result: any, index: number) => ({
+        const mappedResults = data.results.map((result: Record<string, unknown>, index: number) => ({
           id: `${index}-${result.url}`,
-          title: result.title || 'Untitled',
-          snippet: result.snippet || result.content?.substring(0, 200) || '',
-          source: result.source || new URL(result.url).hostname,
-          date: result.published_at || new Date().toISOString().split('T')[0],
+          title: (result.title as string) || 'Untitled',
+          snippet: ((result.snippet as string) || (result.content as string)?.substring(0, 200)) || '',
+          source: (result.source as string) || new URL(result.url as string).hostname,
+          date: (result.published_at as string) || new Date().toISOString().split('T')[0],
           url: result.url,
         }));
         setSearchResults(mappedResults);
@@ -146,6 +135,17 @@ export default function AdminSearchPage() {
       });
     }
   }, [searchQuery]);
+
+  // Protect route - redirect if not admin
+  if (isHydrated && (!isAuthenticated || !isAdmin)) {
+    setIntendedDestination('/admin/search');
+    router.push('/login');
+    return null;
+  }
+
+  if (!isHydrated) {
+    return null;
+  }
 
   return (
     <motion.main
@@ -250,7 +250,7 @@ export default function AdminSearchPage() {
                 Search Results
               </h2>
               <p className="text-slate-600">
-                Found {searchResults.length} article{searchResults.length !== 1 ? 's' : ''} for "{searchQuery}"
+                Found {searchResults.length} article{searchResults.length !== 1 ? 's' : ''} for &quot;{searchQuery}&quot;
               </p>
             </motion.div>
 

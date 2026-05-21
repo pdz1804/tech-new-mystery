@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Edit2, Eye, Plus } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useArticles } from '@/hooks/useArticles';
 import { ArticleCreateModal } from '@/components/article/ArticleCreateModal';

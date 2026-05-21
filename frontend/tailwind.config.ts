@@ -61,6 +61,7 @@ const config: Config = {
       backdropBlur: {
         glass: '8px',
         heavy: '12px',
+        '3xl': '48px',
       },
       backgroundImage: {
         'gradient-primary': 'linear-gradient(135deg, #0066FF 0%, #0084FF 100%)',

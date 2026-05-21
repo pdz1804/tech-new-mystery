@@ -25,6 +25,23 @@ from app.workers.tasks.summary_tasks import summarize_article_task
 router = APIRouter(prefix="/articles", tags=["articles"])
 
 
+@router.get("/filters")
+async def get_filter_metadata():
+    """Get filter metadata (category and source counts) for UI filtering."""
+    logger.info("[FILTERS] Fetching filter metadata")
+    try:
+        article_repo = ArticleRepository()
+        metadata = await article_repo.get_filter_metadata()
+        logger.info(f"[FILTERS] Returned {len(metadata['categories'])} categories and {len(metadata['sources'])} sources")
+        return {
+            "success": True,
+            "data": metadata
+        }
+    except Exception as e:
+        logger.error(f"[FILTERS] Error fetching metadata: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch filter metadata")
+
+
 @router.get("", response_model=ArticleListResponse)
 async def list_articles(
     limit: int = Query(20, ge=1, le=100),

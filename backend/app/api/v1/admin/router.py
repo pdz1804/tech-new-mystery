@@ -493,20 +493,31 @@ async def reject_search(
 
 @router.post("/tavily/trigger", response_model=GenericSuccessResponse)
 async def trigger_tavily_scheduler(
+    start_date: str | None = None,
     _: dict = Depends(require_admin),
 ) -> GenericSuccessResponse:
     """Manually trigger Tavily scheduler task (admin only).
 
     Queues the Tavily scheduler task to fetch articles immediately
     instead of waiting for the next scheduled run (6 hours).
+
+    Args:
+        start_date: Optional ISO format date (YYYY-MM-DD) to search from.
+                    If not provided, defaults to yesterday.
     """
     try:
         from app.workers.tasks.tavily_tasks import tavily_scheduled_task
+        from datetime import datetime, timedelta
 
         logger.info("[TAVILY_TRIGGER] Admin manually triggering Tavily scheduler")
+        if start_date:
+            logger.info(f"[TAVILY_TRIGGER] Using custom date: {start_date}")
+        else:
+            start_date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+            logger.info(f"[TAVILY_TRIGGER] Using yesterday's date: {start_date}")
 
-        # Dispatch the task asynchronously
-        task = tavily_scheduled_task.delay()
+        # Dispatch the task asynchronously with the date parameter
+        task = tavily_scheduled_task.delay(start_date=start_date)
 
         logger.info(f"[TAVILY_TRIGGER] Task queued with ID: {task.id}")
 
@@ -521,20 +532,31 @@ async def trigger_tavily_scheduler(
 
 @router.post("/newsapi/trigger", response_model=GenericSuccessResponse)
 async def trigger_newsapi_scheduler(
+    from_date: str | None = None,
     _: dict = Depends(require_admin),
 ) -> GenericSuccessResponse:
     """Manually trigger NewsAPI scheduler task (admin only).
 
     Queues the NewsAPI scheduler task to fetch articles immediately
     instead of waiting for the next scheduled run (6 hours).
+
+    Args:
+        from_date: Optional ISO format date (YYYY-MM-DD) to search from.
+                   If not provided, defaults to yesterday.
     """
     try:
         from app.workers.tasks.newsapi_tasks import newsapi_scheduled_task
+        from datetime import datetime, timedelta
 
         logger.info("[NEWSAPI_TRIGGER] Admin manually triggering NewsAPI scheduler")
+        if from_date:
+            logger.info(f"[NEWSAPI_TRIGGER] Using custom date: {from_date}")
+        else:
+            from_date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+            logger.info(f"[NEWSAPI_TRIGGER] Using yesterday's date: {from_date}")
 
-        # Dispatch the task asynchronously
-        task = newsapi_scheduled_task.delay()
+        # Dispatch the task asynchronously with the date parameter
+        task = newsapi_scheduled_task.delay(from_date=from_date)
 
         logger.info(f"[NEWSAPI_TRIGGER] Task queued with ID: {task.id}")
 

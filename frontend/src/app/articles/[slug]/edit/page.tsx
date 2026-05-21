@@ -103,7 +103,7 @@ export default function EditArticlePage({ params }: { params: { slug: string } }
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const updateData: any = {};
+      const updateData: Record<string, unknown> = {};
       if (title) updateData.title = title;
       if (summary) updateData.summary = summary;
       if (content) updateData.content = content;
@@ -113,9 +113,10 @@ export default function EditArticlePage({ params }: { params: { slug: string } }
       await apiClient.put(`/articles/${params.slug}`, updateData);
       alert('Article updated successfully!');
       router.push(`/articles/${params.slug}`);
-    } catch (err: any) {
+    } catch (err) {
       console.error('Save failed:', err);
-      alert(err.response?.data?.detail || 'Failed to save article');
+      const message = err instanceof Error ? err.message : 'Failed to save article';
+      alert(message);
     } finally {
       setIsSaving(false);
     }

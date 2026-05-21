@@ -6,6 +6,7 @@ import { AuthHydration } from '@/components/providers/AuthHydration';
 import { ScrollToTop } from '@/components/providers/ScrollToTop';
 import { Header } from '@/components/layout/Header';
 import '@/styles/globals.css';
+import '@/styles/liquid-glass.css';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });
 const merriweather = Merriweather({
@@ -25,8 +26,15 @@ interface RootLayoutProps {
 
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
-    <html lang="en" suppressHydrationWarning style={{ ...inter.style.variables, ...merriweather.style.variables }}>
-      <body className="font-sans bg-white" suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning className={`${inter.variable} ${merriweather.variable}`}>
+      <body className="font-sans bg-[#0B0C10] text-white overflow-x-hidden" suppressHydrationWarning>
+        {/* Animated Liquid Background */}
+        <div className="liquid-background">
+          <div className="liquid-blob liquid-blob-1"></div>
+          <div className="liquid-blob liquid-blob-2"></div>
+          <div className="liquid-blob liquid-blob-3"></div>
+        </div>
+
         <ReactQueryProvider>
           <AuthHydration />
           <ScrollToTop />

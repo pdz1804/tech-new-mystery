@@ -109,20 +109,20 @@ export function ArticleEditModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg bg-white p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-md p-4">
+      <div className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white/5 backdrop-blur-3xl backdrop-saturate-200 border border-white/20 glass-modal p-6">
         {/* Close Button */}
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-4 top-4 text-slate-500 hover:text-slate-700"
+          className="absolute right-4 top-4 text-white/65 hover:text-white transition-colors"
           aria-label="Close modal"
         >
           <X size={24} />
         </button>
 
         {/* Header */}
-        <h2 className="mb-6 text-2xl font-bold text-slate-900">Edit Article</h2>
+        <h2 className="mb-6 text-2xl font-bold text-white">Edit Article</h2>
 
         {/* Success Message */}
         {successMessage && <Alert variant="success">{successMessage}</Alert>}
@@ -132,8 +132,8 @@ export function ArticleEditModal({
 
         {/* Delete Confirmation Modal */}
         {showDeleteConfirm && (
-          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4">
-            <p className="mb-4 text-sm text-red-900">
+          <div className="mb-6 rounded-lg border border-red-500/30 bg-red-500/10 p-4">
+            <p className="mb-4 text-sm text-white/80">
               Are you sure you want to delete this article? This action cannot be undone.
             </p>
             <div className="flex gap-3">
@@ -156,7 +156,7 @@ export function ArticleEditModal({
                 type="button"
                 onClick={() => setShowDeleteConfirm(false)}
                 disabled={isLoading}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="rounded-lg border border-white/20 px-4 py-2 text-sm font-semibold text-white/80 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Cancel
               </button>
@@ -192,7 +192,7 @@ export function ArticleEditModal({
             />
 
             <div>
-              <label htmlFor="category" className="block text-sm font-medium text-slate-700 mb-1.5">
+              <label htmlFor="category" className="block text-sm font-medium text-white/65 mb-1.5">
                 Category
               </label>
               <select
@@ -200,7 +200,7 @@ export function ArticleEditModal({
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 disabled={isLoading}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 transition-colors focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2"
+                className="w-full rounded-lg border border-white/20 px-3 py-2 bg-black/20 text-white transition-colors focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
               >
                 <option value="">Select category...</option>
                 <option value="AI & ML">AI & ML</option>
@@ -215,7 +215,7 @@ export function ArticleEditModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              <label className="block text-sm font-medium text-white/65 mb-1.5">
                 Content
               </label>
               <textarea
@@ -224,7 +224,7 @@ export function ArticleEditModal({
                 onChange={(e) => setContent(e.target.value)}
                 disabled={isLoading}
                 rows={6}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 placeholder-slate-500 transition-colors focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 disabled:opacity-50"
+                className="w-full rounded-lg border border-white/20 px-3 py-2 bg-black/20 text-white placeholder-white/45 transition-colors focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 disabled:opacity-50"
               />
             </div>
 
@@ -257,7 +257,7 @@ export function ArticleEditModal({
                 type="button"
                 onClick={() => setShowDeleteConfirm(true)}
                 disabled={isLoading}
-                className="flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-red-600 font-semibold hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-2 text-red-400 font-semibold hover:bg-red-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <Trash2 size={16} />
                 Delete

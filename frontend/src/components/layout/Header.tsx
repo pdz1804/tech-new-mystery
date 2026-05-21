@@ -18,6 +18,8 @@ import {
   CheckSquare,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/stores/authStore';
+import GlassContainer from '@/components/ui/GlassContainer';
+import SquircleButton from '@/components/ui/SquircleButton';
 
 export function Header() {
   const router = useRouter();
@@ -45,7 +47,7 @@ export function Header() {
   // Show public header if not authenticated
   if (!isAuthenticated) {
     return (
-      <header className="sticky top-0 z-50 glass-base shadow-glass">
+      <header className="sticky top-0 z-50 glass-base shadow-glass backdrop-blur-3xl">
         <nav className="mx-auto max-w-7xl px-4 py-3 md:py-4">
           <div className="flex items-center justify-between">
             <Link
@@ -56,24 +58,26 @@ export function Header() {
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white font-bold text-sm">
                 T
               </div>
-              <span className="hidden sm:inline text-lg font-bold text-slate-900">
+              <span className="hidden sm:inline text-lg font-bold text-white">
                 Tech News
               </span>
             </Link>
 
             <div className="flex items-center gap-4 flex-shrink-0">
-              <Link
-                href="/login"
-                className="text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 px-4 py-2 rounded-lg hover:bg-slate-100"
+              <SquircleButton
+                variant="tertiary"
+                size="sm"
+                onClick={() => { window.location.href = '/login'; }}
               >
                 Sign In
-              </Link>
-              <Link
-                href="/register"
-                className="btn-primary text-sm px-4 py-2 inline-flex"
+              </SquircleButton>
+              <SquircleButton
+                variant="primary"
+                size="sm"
+                onClick={() => { window.location.href = '/register'; }}
               >
                 Get Started
-              </Link>
+              </SquircleButton>
             </div>
           </div>
         </nav>
@@ -82,7 +86,7 @@ export function Header() {
   }
 
   return (
-    <header className="sticky top-0 z-50 glass-base shadow-glass">
+    <header className="sticky top-0 z-50 glass-base shadow-glass backdrop-blur-3xl">
       <nav className="mx-auto max-w-7xl px-4 py-3 md:py-4">
         {/* Desktop Navigation */}
         <div className="hidden md:flex md:flex-col md:gap-3">
@@ -97,7 +101,7 @@ export function Header() {
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 text-white font-bold text-sm">
                 T
               </div>
-              <span className="hidden sm:inline text-lg font-bold text-slate-900">
+              <span className="hidden sm:inline text-lg font-bold text-white">
                 Tech News
               </span>
             </Link>
@@ -105,13 +109,13 @@ export function Header() {
             {/* Search Bar */}
             <form onSubmit={handleSearch} className="hidden sm:flex flex-1 max-w-sm lg:max-w-md mx-6 lg:mx-8">
               <div className="w-full relative group">
-                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-primary-500 transition-colors duration-micro flex-shrink-0 pointer-events-none" size={18} aria-hidden="true" />
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/45 group-focus-within:text-white transition-colors duration-micro flex-shrink-0 pointer-events-none" size={18} aria-hidden="true" />
                 <input
                   type="search"
                   placeholder="Search articles..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="input-base pl-10"
+                  className="input-glass pl-10"
                   aria-label="Search articles"
                   autoComplete="off"
                 />
@@ -123,7 +127,7 @@ export function Header() {
               <button
                 type="button"
                 aria-label="Notifications (no new messages)"
-                className="relative p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all duration-100"
+                className="relative p-2 text-white/65 hover:text-white hover:bg-white/10 rounded-lg transition-all duration-100"
               >
                 <Bell size={20} aria-hidden="true" />
                 <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" aria-hidden="true" />
@@ -137,12 +141,12 @@ export function Header() {
                   aria-label={`User menu for ${user?.username}`}
                   aria-expanded={showUserMenu}
                   aria-haspopup="menu"
-                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-slate-100 transition-all duration-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600"
+                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-white/10 transition-all duration-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500/50"
                 >
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-blue-600 text-white text-xs font-bold flex-shrink-0">
                     {user?.username?.charAt(0).toUpperCase()}
                   </div>
-                  <span className="hidden lg:inline text-sm font-medium text-slate-900">
+                  <span className="hidden lg:inline text-sm font-medium text-white">
                     {user?.username}
                   </span>
                 </button>
@@ -155,37 +159,39 @@ export function Header() {
                       exit={{ opacity: 0, y: -8, scale: 0.95 }}
                       transition={{ duration: 0.15 }}
                       role="menu"
-                      className="absolute right-0 mt-2 w-48 rounded-lg border border-slate-200 bg-white shadow-lg"
+                      className="absolute right-0 mt-2 w-48 rounded-lg overflow-hidden z-50"
                     >
-                      <Link
-                        href="/profile"
-                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors duration-150 border-b border-slate-100 focus:outline-none focus:bg-slate-50"
-                        onClick={() => setShowUserMenu(false)}
-                        role="menuitem"
-                      >
-                        <User size={16} aria-hidden="true" />
-                        My Profile
-                      </Link>
-                      <Link
-                        href="/profile?tab=saved"
-                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-slate-700 hover:bg-slate-50 transition-colors duration-150 border-b border-slate-100 focus:outline-none focus:bg-slate-50"
-                        onClick={() => setShowUserMenu(false)}
-                        role="menuitem"
-                      >
-                        <Bookmark size={16} aria-hidden="true" />
-                        Saved Articles
-                      </Link>
-                      <button
-                        onClick={() => {
-                          setShowUserMenu(false);
-                          handleLogout();
-                        }}
-                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors duration-150 focus:outline-none focus:bg-red-50 rounded-b-lg"
-                        role="menuitem"
-                      >
-                        <LogOut size={16} aria-hidden="true" />
-                        Logout
-                      </button>
+                      <GlassContainer variant="elevated" className="w-full">
+                        <Link
+                          href="/profile"
+                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-white/80 hover:bg-white/20 hover:text-white transition-colors duration-150 border-b border-white/10 focus:outline-none focus:bg-white/20"
+                          onClick={() => setShowUserMenu(false)}
+                          role="menuitem"
+                        >
+                          <User size={16} aria-hidden="true" />
+                          My Profile
+                        </Link>
+                        <Link
+                          href="/profile?tab=saved"
+                          className="flex items-center gap-3 px-4 py-2.5 text-sm text-white/80 hover:bg-white/20 hover:text-white transition-colors duration-150 border-b border-white/10 focus:outline-none focus:bg-white/20"
+                          onClick={() => setShowUserMenu(false)}
+                          role="menuitem"
+                        >
+                          <Bookmark size={16} aria-hidden="true" />
+                          Saved Articles
+                        </Link>
+                        <button
+                          onClick={() => {
+                            setShowUserMenu(false);
+                            handleLogout();
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/30 hover:text-red-200 transition-colors duration-150 focus:outline-none focus:bg-red-500/30 rounded-b-lg"
+                          role="menuitem"
+                        >
+                          <LogOut size={16} aria-hidden="true" />
+                          Logout
+                        </button>
+                      </GlassContainer>
                     </motion.div>
                   )}
                 </AnimatePresence>
@@ -194,7 +200,7 @@ export function Header() {
           </div>
 
           {/* Navigation Links */}
-          <nav className="flex gap-8 border-t border-slate-100 pt-3 -mx-4 px-4" aria-label="Main navigation">
+          <nav className="flex gap-8 border-t border-white/10 pt-3 -mx-4 px-4" aria-label="Main navigation">
             <NavLink href="/" icon={<Home size={18} />} label="Home" />
             <NavLink href="/articles" icon={<List size={18} />} label="Articles" />
             <NavLink href="/search" icon={<Compass size={18} />} label="Browse" />
@@ -213,7 +219,7 @@ export function Header() {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white font-bold text-sm">
                 T
               </div>
-              <span className="text-base font-bold text-slate-900">Tech News</span>
+              <span className="text-base font-bold text-white">Tech News</span>
             </Link>
 
             <button
@@ -222,7 +228,7 @@ export function Header() {
               aria-label="Toggle navigation menu"
               aria-expanded={isMenuOpen}
               aria-controls="mobile-menu"
-              className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-all duration-100 focus:outline-none focus:ring-2 focus:ring-blue-600"
+              className="p-2 text-white/65 hover:bg-white/10 rounded-lg transition-all duration-100 focus:outline-none focus:ring-2 focus:ring-cyan-500/50"
             >
               {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
@@ -231,13 +237,13 @@ export function Header() {
           {/* Mobile Search Bar */}
           <form onSubmit={handleSearch} className="w-full">
             <div className="relative group">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors duration-150 flex-shrink-0 pointer-events-none" size={18} aria-hidden="true" />
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/45 group-focus-within:text-white transition-colors duration-150 flex-shrink-0 pointer-events-none" size={18} aria-hidden="true" />
               <input
                 type="search"
                 placeholder="Search articles..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full h-10 pl-10 pr-4 text-sm bg-slate-50 border border-slate-200 rounded-lg transition-all duration-150 placeholder-slate-500 focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 hover:border-slate-300"
+                className="input-glass pl-10"
                 aria-label="Search articles"
                 autoComplete="off"
               />
@@ -254,7 +260,7 @@ export function Header() {
               exit={{ opacity: 0, height: 0 }}
               transition={{ duration: 0.2 }}
               id="mobile-menu"
-              className="md:hidden mt-3 border-t border-slate-100 pt-3"
+              className="md:hidden mt-3 border-t border-white/10 pt-3"
             >
               <div className="space-y-1">
                 <MobileNavLink href="/" icon={<Home size={18} />} label="Home" />
@@ -292,7 +298,7 @@ function NavLink({
   return (
     <Link
       href={href}
-      className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 transition-colors duration-150 hover:text-blue-600 hover:font-semibold focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 rounded px-2 py-1"
+      className="inline-flex items-center gap-2 text-sm font-medium text-white/65 transition-colors duration-150 hover:text-white border-b-2 border-transparent hover:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:ring-offset-2 rounded px-2 py-1"
     >
       {icon}
       {label}
@@ -312,7 +318,7 @@ function MobileNavLink({
   return (
     <Link
       href={href}
-      className="flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-slate-700 rounded-lg hover:bg-slate-100 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-600"
+      className="flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-white/65 rounded-lg hover:bg-white/10 hover:text-white transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-cyan-500"
     >
       {icon}
       {label}

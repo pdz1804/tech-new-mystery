@@ -219,3 +219,51 @@ class ArticleRepository:
             logger.error(f"Error listing pending articles: {type(e).__name__}: {str(e)}")
             logger.debug("Error details:", exc_info=True)
             raise
+
+    async def get_filter_metadata(self) -> dict:
+        """Get aggregated metadata for filters (category and source counts).
+
+        Returns:
+            Dict with categories and sources lists, each with name and count
+        """
+        logger.debug("Fetching filter metadata (category and source counts)")
+        try:
+            # Scan all articles
+            articles = await asyncio.to_thread(
+                lambda: list(ArticleModel.scan(limit=10000))
+            )
+            logger.debug(f"Scanned {len(articles)} articles for filter metadata")
+
+            # Count by category
+            category_counts = {}
+            source_counts = {}
+            for article in articles:
+                # Count categories
+                if article.category:
+                    category_counts[article.category] = category_counts.get(article.category, 0) + 1
+
+                # Count sources
+                if article.source_id:
+                    source_counts[article.source_id] = source_counts.get(article.source_id, 0) + 1
+
+            # Convert to sorted lists
+            categories = sorted(
+                [{"name": cat, "count": count} for cat, count in category_counts.items()],
+                key=lambda x: x["count"],
+                reverse=True
+            )
+            sources = sorted(
+                [{"name": src, "count": count} for src, count in source_counts.items()],
+                key=lambda x: x["count"],
+                reverse=True
+            )
+
+            logger.info(f"Filter metadata: {len(categories)} categories, {len(sources)} sources")
+            return {
+                "categories": categories,
+                "sources": sources
+            }
+        except Exception as e:
+            logger.error(f"Error fetching filter metadata: {type(e).__name__}: {str(e)}")
+            logger.debug("Error details:", exc_info=True)
+            raise

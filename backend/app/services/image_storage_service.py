@@ -154,3 +154,67 @@ class ImageStorageService:
             Markdown formatted image
         """
         return f"![{alt_text}]({image_url})\n"
+
+    def delete_from_s3(self, s3_url: str) -> bool:
+        """Delete image from S3 by URL.
+
+        Args:
+            s3_url: Full S3 URL of image to delete
+
+        Returns:
+            True if deleted, False if delete fails
+        """
+        if not s3_url or self.bucket not in s3_url:
+            return False
+
+        try:
+            # Extract S3 key from URL - handle various URL formats
+            # Formats: https://bucket.s3.region.amazonaws.com/key or https://bucket.s3.amazonaws.com/key
+            if ".amazonaws.com/" in s3_url:
+                s3_key = s3_url.split(".amazonaws.com/", 1)[1]
+            else:
+                logger.warning(f"Invalid S3 URL format: {s3_url}")
+                return False
+
+            if not s3_key:
+                logger.warning(f"Could not extract key from S3 URL: {s3_url}")
+                return False
+
+            logger.debug(f"Deleting image from S3: {s3_key}")
+            self.s3_client.delete_object(Bucket=self.bucket, Key=s3_key)
+            logger.info(f"Image deleted from S3: {s3_url}")
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting image from S3: {str(e)}")
+            return False
+
+    async def delete_images_from_markdown(self, markdown_content: str) -> int:
+        """Delete all S3 images embedded in markdown content.
+
+        Args:
+            markdown_content: Markdown text with embedded ![alt](url) images
+
+        Returns:
+            Number of images successfully deleted
+        """
+        if not markdown_content:
+            return 0
+
+        try:
+            import re
+            # Extract image URLs from markdown: ![alt](url)
+            image_pattern = r'!\[([^\]]*)\]\(([^)]+)\)'
+            matches = re.findall(image_pattern, markdown_content)
+
+            deleted_count = 0
+            for alt_text, url in matches:
+                if self.bucket in url and url.startswith('https://'):
+                    if self.delete_from_s3(url):
+                        deleted_count += 1
+
+            if deleted_count > 0:
+                logger.info(f"Cleaned up {deleted_count} images from S3 for article")
+            return deleted_count
+        except Exception as e:
+            logger.error(f"Error deleting images from markdown: {str(e)}")
+            return 0

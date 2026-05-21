@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Search, ChevronLeft, ChevronRight, Zap, X, Clock } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Search, ChevronLeft, ChevronRight, Zap, Clock, TrendingUp } from 'lucide-react';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { useSearchArticles } from '@/hooks/useSearch';
+import { useFilterMetadata } from '@/hooks/useFilterMetadata';
 import { ArticleCard } from '@/components/article/ArticleCard';
 import { ArticleCardSkeleton } from '@/components/ui/Skeleton';
 
@@ -18,8 +19,8 @@ const containerVariants = {
 };
 
 const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
+  hidden: { opacity: 0, y: 30 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.6 } },
 };
 
 function SearchContent() {
@@ -28,6 +29,8 @@ function SearchContent() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isHydrated = useAuthStore((s) => s.isHydrated);
   const setIntendedDestination = useAuthStore((s) => s.setIntendedDestination);
+
+  const { data: filterData, isLoading: filterLoading } = useFilterMetadata();
 
   const [query, setQuery] = useState(searchParams.get('q') || '');
   const [category, setCategory] = useState(searchParams.get('category') || '');
@@ -39,6 +42,8 @@ function SearchContent() {
     { q: query, category: category || undefined, page },
     !!query
   );
+
+  const categories = filterData?.data?.categories || [];
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -70,411 +75,350 @@ function SearchContent() {
       setRecentSearches(updated);
       localStorage.setItem('recentSearches', JSON.stringify(updated));
     }
-    const params = new URLSearchParams();
-    if (query) params.set('q', query);
-    if (category) params.set('category', category);
-    router.push(`/search?${params.toString()}`);
   };
 
-  const removeRecentSearch = (search: string) => {
-    const updated = recentSearches.filter(s => s !== search);
-    setRecentSearches(updated);
-    localStorage.setItem('recentSearches', JSON.stringify(updated));
+  const handleCategoryClick = (cat: { name: string; count: number }) => {
+    if (cat.count > 0) {
+      setCategory(cat.name);
+      setPage(1);
+    }
   };
 
-  const clearSearch = () => {
-    setQuery('');
-    setCategory('');
-    setPage(1);
-  };
+  const results = data?.data || [];
+  const totalResults = data?.meta?.total || 0;
+  const itemsPerPage = data?.meta?.limit || 12;
+  const totalPages = Math.ceil(totalResults / itemsPerPage);
 
   if (!isHydrated || !isAuthenticated) {
     return null;
   }
-
-  const categories = [
-    'AI',
-    'Web Development',
-    'DevOps',
-    'Security',
-    'Mobile',
-    'Cloud Computing',
-    'Data Science',
-    'Infrastructure',
-    'Blockchain',
-  ];
 
   return (
     <motion.main
       initial="hidden"
       animate="visible"
       variants={containerVariants}
-      className="min-h-screen bg-gradient-to-b from-slate-50 to-white"
+      className="relative min-h-screen"
+      id="main-content"
     >
-      {/* Hero Section */}
-      <motion.section
-        variants={itemVariants}
-        className="relative overflow-hidden bg-gradient-to-br from-blue-600 via-blue-500 to-indigo-600 px-4 py-20 md:py-28"
-      >
-        {/* Decorative background elements */}
-        <div className="absolute inset-0 opacity-20">
-          <div className="absolute -top-40 -right-40 w-80 h-80 rounded-full bg-white blur-3xl"></div>
-          <div className="absolute -bottom-40 -left-40 w-80 h-80 rounded-full bg-blue-400 blur-3xl"></div>
-        </div>
-
-        <div className="relative mx-auto max-w-4xl">
-          {/* Header */}
-          <motion.div variants={itemVariants} className="text-center mb-12">
-            <h1 className="text-5xl md:text-6xl font-bold mb-4 text-white">
-              Find Articles
-            </h1>
-            <p className="text-lg md:text-xl text-blue-100 max-w-2xl mx-auto">
-              Search across thousands of curated tech articles and stay ahead of the curve
+      {/* Hero Search Section */}
+      <section className="section-glass pt-24">
+        <motion.div
+          variants={itemVariants}
+          className="container-glass"
+        >
+          <div className="text-center mb-12">
+            <span className="text-label text-blue-400 mb-4 block">DISCOVERY</span>
+            <h1 className="text-display mb-6 text-[rgba(255,255,255,0.95)]">Find Your Tech Stories</h1>
+            <p className="text-h3 font-normal mb-8 max-w-2xl mx-auto text-[rgba(255,255,255,0.65)]">
+              Search across curated technology articles
             </p>
-          </motion.div>
+          </div>
 
-          {/* Search Form */}
+          {/* Search Input */}
           <motion.form
             variants={itemVariants}
             onSubmit={handleSearch}
-            className="space-y-6"
+            className="max-w-2xl mx-auto mb-16"
           >
-            {/* Search Input */}
-            <div className="flex flex-col gap-4 mx-auto max-w-3xl">
-              <div className="relative">
-                <div className={`relative flex items-center rounded-xl transition-all duration-300 ${
-                  isFocused
-                    ? 'bg-white shadow-2xl ring-2 ring-blue-300'
-                    : 'bg-white/95 shadow-lg hover:shadow-xl'
-                }`}>
-                  <Search
-                    size={24}
-                    className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 pointer-events-none flex-shrink-0"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Search articles by keyword, topic, title..."
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    onFocus={() => setIsFocused(true)}
-                    onBlur={() => setIsFocused(false)}
-                    className="w-full pl-14 pr-14 py-4 text-lg text-slate-900 placeholder-slate-500 bg-transparent outline-none font-medium"
-                    aria-label="Search articles"
-                  />
-                  {query && (
-                    <motion.button
-                      whileHover={{ scale: 1.1 }}
-                      whileTap={{ scale: 0.95 }}
-                      type="button"
-                      onClick={() => setQuery('')}
-                      className="absolute right-4 p-2 text-slate-400 hover:text-slate-600 transition-colors"
-                      aria-label="Clear search"
-                    >
-                      <X size={20} />
-                    </motion.button>
-                  )}
-                </div>
-              </div>
-
-              {/* Category Filter Pills */}
-              <motion.div
-                variants={itemVariants}
-                className="flex flex-wrap gap-2 justify-center"
+            <div className="relative">
+              <input
+                type="text"
+                placeholder="Search articles..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onFocus={() => setIsFocused(true)}
+                onBlur={() => setTimeout(() => setIsFocused(false), 200)}
+                className="w-full input-glass pl-14 pr-6 py-4 text-lg"
+              />
+              <Search size={24} className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-400 pointer-events-none" />
+              <button
+                type="submit"
+                className="absolute right-2 top-1/2 -translate-y-1/2 btn-liquid primary px-6 py-2"
+                aria-label="Search articles"
+                title="Search articles"
               >
-                {categories.map((cat) => {
-                  const isActive = category === cat;
-                  return (
-                    <motion.button
-                      key={cat}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      type="button"
-                      onClick={() => {
-                        setCategory(isActive ? '' : cat);
-                        setPage(1);
-                      }}
-                      className={`px-4 py-2.5 rounded-full text-sm font-semibold transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-300 ${
-                        isActive
-                          ? 'bg-white text-blue-600 shadow-lg'
-                          : 'bg-white/20 text-white backdrop-blur-sm hover:bg-white/30 border border-white/30'
-                      }`}
-                      aria-pressed={isActive}
-                      aria-label={`Filter by ${cat}`}
-                    >
-                      {cat}
-                    </motion.button>
-                  );
-                })}
-              </motion.div>
+                <Zap size={18} />
+              </button>
 
-              {/* Active Filter Display */}
-              {(query || category) && (
+              {/* Dropdown: Recent Searches & Quick Categories */}
+              {isFocused && (
                 <motion.div
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="flex items-center justify-center gap-2"
+                  className="absolute top-full left-0 right-0 mt-2 glass-panel p-6 z-50"
                 >
-                  <button
-                    onClick={clearSearch}
-                    className="text-sm font-medium text-white/80 hover:text-white transition-colors flex items-center gap-2 bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-lg backdrop-blur-sm"
-                  >
-                    Clear search
-                    <X size={16} />
-                  </button>
+                  {recentSearches.length > 0 && (
+                    <>
+                      <p className="text-label text-[rgba(255,255,255,0.65)] mb-3 block">Recent Searches</p>
+                      <div className="space-y-2 mb-6">
+                        {recentSearches.map((s) => (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => {
+                              setQuery(s);
+                              setIsFocused(false);
+                            }}
+                            className="block w-full text-left px-3 py-2 text-body text-[rgba(255,255,255,0.65)] hover:text-white hover:bg-white/10 rounded-lg transition-all"
+                          >
+                            <Clock size={16} className="inline mr-2 opacity-50" />
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  <p className="text-label text-[rgba(255,255,255,0.65)] mb-3 block">Quick Categories</p>
+                  <div className="flex flex-wrap gap-2">
+                    {categories.slice(0, 5).map((cat) => (
+                      <button
+                        key={cat.name}
+                        type="button"
+                        onClick={() => {
+                          handleCategoryClick(cat);
+                          setIsFocused(false);
+                        }}
+                        disabled={cat.count === 0}
+                        className={`px-3 py-1 rounded-lg text-sm transition-all ${
+                          cat.count > 0
+                            ? 'btn-liquid secondary'
+                            : 'opacity-50 cursor-not-allowed'
+                        }`}
+                      >
+                        {cat.name} ({cat.count})
+                      </button>
+                    ))}
+                  </div>
                 </motion.div>
               )}
             </div>
           </motion.form>
-        </div>
-      </motion.section>
 
-      {/* Results Section */}
-      <motion.section
-        variants={itemVariants}
-        className="mx-auto max-w-6xl px-4 py-16"
-      >
-        {!query ? (
-          <motion.div variants={containerVariants} className="space-y-16">
-            {/* Recent Searches */}
-            {recentSearches.length > 0 && (
-              <motion.div variants={itemVariants}>
-                <div className="flex items-center gap-3 mb-8">
-                  <Clock size={24} className="text-blue-600" />
-                  <h2 className="text-2xl font-bold text-slate-900">Recent Searches</h2>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {recentSearches.map((search) => (
+          {/* Quick Category Buttons */}
+          {categories.length > 0 && !query && (
+            <motion.div
+              variants={itemVariants}
+              className="text-center"
+            >
+              <p className="text-label text-[rgba(255,255,255,0.65)] mb-4 block">OR BROWSE BY CATEGORY</p>
+              <div className="flex flex-wrap justify-center gap-3">
+                {categories.slice(0, 3).map((cat) => (
+                  <button
+                    key={cat.name}
+                    type="button"
+                    onClick={() => handleCategoryClick(cat)}
+                    disabled={cat.count === 0}
+                    className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+                      cat.count > 0
+                        ? 'btn-liquid primary'
+                        : 'opacity-50 cursor-not-allowed'
+                    }`}
+                  >
+                    <TrendingUp size={18} className="inline mr-2" />
+                    Explore {cat.name} ({cat.count})
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </motion.div>
+      </section>
+
+      {/* Search Results */}
+      {query && (
+        <section className="section-glass pb-20">
+          <div className="container-glass">
+            {/* Category Filter Bar */}
+            {categories.length > 0 && (
+              <motion.div
+                variants={itemVariants}
+                className="glass-panel p-6 mb-12"
+              >
+                <p className="text-label text-[rgba(255,255,255,0.65)] mb-4 block">FILTER BY CATEGORY</p>
+                <div className="flex flex-wrap gap-2">
+                  <motion.button
+                    type="button"
+                    onClick={() => {
+                      setCategory('');
+                      setPage(1);
+                    }}
+                    whileHover={{ scale: 1.05 }}
+                    className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                      !category
+                        ? 'btn-liquid primary'
+                        : 'btn-liquid secondary'
+                    }`}
+                  >
+                    All
+                  </motion.button>
+                  {categories.map((cat) => (
                     <motion.button
-                      key={search}
-                      whileHover={{ scale: 1.02, y: -2 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => {
-                        setQuery(search);
-                        const params = new URLSearchParams();
-                        params.set('q', search);
-                        if (category) params.set('category', category);
-                        router.push(`/search?${params.toString()}`);
-                      }}
-                      className="group relative overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-4 text-left transition-all hover:border-blue-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      key={cat.name}
+                      type="button"
+                      onClick={() => handleCategoryClick(cat)}
+                      whileHover={{ scale: 1.05 }}
+                      disabled={cat.count === 0}
+                      className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                        category === cat.name
+                          ? 'btn-liquid primary'
+                          : cat.count > 0
+                          ? 'btn-liquid secondary'
+                          : 'opacity-50 cursor-not-allowed'
+                      }`}
                     >
-                      <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 via-blue-500/0 to-blue-500/0 group-hover:from-blue-500/5 group-hover:via-blue-500/5 group-hover:to-blue-500/5 transition-all"></div>
-                      <div className="relative flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-slate-900 truncate group-hover:text-blue-600 transition-colors">{search}</p>
-                          <p className="text-sm text-slate-500 mt-1">Search again</p>
-                        </div>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeRecentSearch(search);
-                          }}
-                          className="ml-2 flex-shrink-0 p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-colors"
-                          aria-label={`Remove ${search} from recent searches`}
-                        >
-                          <X size={16} />
-                        </button>
-                      </div>
+                      {cat.name} ({cat.count})
                     </motion.button>
                   ))}
                 </div>
               </motion.div>
             )}
 
-            {/* Empty State */}
+            {/* Results Info */}
             <motion.div
               variants={itemVariants}
-              className="rounded-2xl border-2 border-dashed border-slate-300 bg-gradient-to-br from-slate-50 to-slate-100 p-16 text-center"
+              className="mb-8"
             >
-              <motion.div
-                animate={{ y: [0, -8, 0] }}
-                transition={{ duration: 3, repeat: Infinity }}
-                className="inline-block mb-4"
-              >
-                <div className="rounded-full bg-blue-100 p-6">
-                  <Search size={40} className="text-blue-600" />
-                </div>
-              </motion.div>
-              <h3 className="text-2xl font-bold text-slate-900 mb-2">Start Searching</h3>
-              <p className="text-lg text-slate-600 mb-8">
-                Enter keywords or browse by category to find articles that matter to you
+              <p className="text-h3 font-bold text-[rgba(255,255,255,0.95)] mb-2">
+                Found {totalResults} result{totalResults !== 1 ? 's' : ''} for &quot;{query}&quot;
               </p>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                {categories.slice(0, 3).map((cat) => (
-                  <motion.button
-                    key={cat}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => setCategory(cat)}
-                    className="px-4 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors"
-                  >
-                    Explore {cat}
-                  </motion.button>
+              {category && (
+                <p className="text-body text-[rgba(255,255,255,0.65)]">
+                  in <span className="text-blue-400 font-semibold">{category}</span>
+                </p>
+              )}
+            </motion.div>
+
+            {/* Results Grid or Loading/Error States */}
+            {isLoading || filterLoading ? (
+              <div className="glass-grid">
+                {[...Array(12)].map((_, i) => (
+                  <ArticleCardSkeleton key={i} />
                 ))}
               </div>
-            </motion.div>
-          </motion.div>
-        ) : isLoading ? (
-          <motion.div
-            variants={containerVariants}
-            className="grid gap-6 md:grid-cols-2 lg:grid-cols-3"
-          >
-            {[...Array(6)].map((_, i) => (
-              <ArticleCardSkeleton key={i} />
-            ))}
-          </motion.div>
-        ) : error ? (
-          <motion.div
-            variants={itemVariants}
-            className="rounded-2xl border border-red-200 bg-red-50 p-12 text-center"
-          >
-            <div className="inline-block mb-4 rounded-full bg-red-100 p-4">
-              <Zap size={32} className="text-red-600" />
-            </div>
-            <h3 className="text-xl font-bold text-red-900 mb-2">Search Error</h3>
-            <p className="text-red-700 mb-6">
-              Something went wrong while searching. Please try again.
-            </p>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => setQuery('')}
-              className="px-6 py-3 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700 transition-colors"
-            >
-              Try Again
-            </motion.button>
-          </motion.div>
-        ) : data?.data && data.data.length > 0 ? (
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-          >
-            {/* Results Header */}
-            <motion.div variants={itemVariants} className="mb-12">
-              <div className="flex items-baseline gap-2 mb-4">
-                <h2 className="text-3xl font-bold text-slate-900">Results</h2>
-                <span className="text-lg text-slate-500">
-                  {data.meta.total || 0} {data.meta.total === 1 ? 'article' : 'articles'} found
-                </span>
-              </div>
-              <p className="text-slate-600">
-                {category && (
-                  <>
-                    Showing <span className="font-semibold">{category}</span> articles for &quot;
-                    <span className="font-semibold">{query}</span>&quot;
-                  </>
-                )}
-                {!category && (
-                  <>
-                    Results for &quot;<span className="font-semibold">{query}</span>&quot;
-                  </>
-                )}
-              </p>
-            </motion.div>
-
-            {/* Articles Grid */}
-            <motion.div
-              variants={containerVariants}
-              className="mb-16 grid gap-6 md:grid-cols-2 lg:grid-cols-3"
-            >
-              {data.data.map((article) => (
-                <ArticleCard
-                  key={article.article_id}
-                  id={article.article_id}
-                  title={article.title}
-                  slug={article.slug}
-                  publishedAt={article.published_at || article.created_at}
-                  category={article.category || undefined}
-                  views={article.view_count}
-                  summary={article.summary || undefined}
-                />
-              ))}
-            </motion.div>
-
-            {/* Pagination */}
-            {data.meta.total && data.meta.total > (data.meta.limit || 10) && (
+            ) : error ? (
               <motion.div
                 variants={itemVariants}
-                className="flex items-center justify-center gap-4"
+                className="glass-panel p-8 text-center border-red-500/50"
               >
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => setPage(Math.max(1, page - 1))}
-                  disabled={page === 1}
-                  className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-3 font-semibold text-slate-700 transition-all hover:shadow-md hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  aria-label={`Go to previous page`}
+                <p className="text-red-300 font-semibold">Error loading results</p>
+                <p className="text-red-200 mt-2">{error.toString()}</p>
+              </motion.div>
+            ) : results.length > 0 ? (
+              <>
+                <motion.div
+                  variants={containerVariants}
+                  initial="hidden"
+                  whileInView="visible"
+                  viewport={{ once: true, amount: 0.1 }}
+                  className="glass-grid mb-12"
                 >
-                  <ChevronLeft size={20} />
-                  Previous
-                </motion.button>
-                <span className="rounded-lg border border-slate-300 bg-blue-50 px-6 py-3 font-semibold text-slate-900">
-                  Page {page}
-                </span>
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={() => setPage(page + 1)}
-                  disabled={!data.meta.last_key}
-                  className="flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-3 font-semibold text-slate-700 transition-all hover:shadow-md hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  aria-label={`Go to next page`}
-                >
-                  Next
-                  <ChevronRight size={20} />
-                </motion.button>
+                  {results.map((article) => (
+                    <ArticleCard
+                      key={article.article_id}
+                      id={article.article_id}
+                      title={article.title}
+                      slug={article.slug}
+                      publishedAt={article.published_at || article.created_at}
+                      category={article.category || undefined}
+                      views={article.view_count}
+                      summary={article.summary || undefined}
+                    />
+                  ))}
+                </motion.div>
+
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <motion.div
+                    variants={itemVariants}
+                    className="flex items-center justify-center gap-4"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setPage(Math.max(1, page - 1))}
+                      disabled={page === 1}
+                      className="btn-liquid secondary p-2"
+                      aria-label="Previous page"
+                      title="Previous page"
+                    >
+                      <ChevronLeft size={20} />
+                    </button>
+
+                    <div className="flex gap-2">
+                      {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                        const pageNum = Math.max(1, page - 2) + i;
+                        return pageNum <= totalPages ? pageNum : null;
+                      }).filter((p): p is number => p !== null).map((p) => (
+                        <motion.button
+                          key={p}
+                          type="button"
+                          onClick={() => setPage(p)}
+                          whileHover={{ scale: 1.1 }}
+                          className={`w-10 h-10 rounded-lg font-bold ${
+                            page === p
+                              ? 'btn-liquid primary'
+                              : 'btn-liquid secondary'
+                          }`}
+                        >
+                          {p}
+                        </motion.button>
+                      ))}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setPage(Math.min(totalPages, page + 1))}
+                      disabled={page === totalPages}
+                      className="btn-liquid secondary p-2"
+                      aria-label="Next page"
+                      title="Next page"
+                    >
+                      <ChevronRight size={20} />
+                    </button>
+                  </motion.div>
+                )}
+              </>
+            ) : (
+              <motion.div
+                variants={itemVariants}
+                className="glass-panel p-12 text-center"
+              >
+                <Search size={48} className="mx-auto mb-4 text-[rgba(255,255,255,0.45)] opacity-50" />
+                <p className="text-h3 text-[rgba(255,255,255,0.65)] mb-2">No articles found</p>
+                <p className="text-body text-[rgba(255,255,255,0.65)]">
+                  Try adjusting your search terms or category filters
+                </p>
               </motion.div>
             )}
-          </motion.div>
-        ) : (
-          <motion.div
-            variants={itemVariants}
-            className="rounded-2xl border-2 border-dashed border-slate-300 bg-gradient-to-br from-slate-50 to-slate-100 p-16 text-center"
-          >
+          </div>
+        </section>
+      )}
+
+      {/* Empty State: Suggestions */}
+      {!query && (
+        <section className="section-glass pb-20">
+          <div className="container-glass">
             <motion.div
-              animate={{ opacity: [1, 0.5, 1] }}
-              transition={{ duration: 2, repeat: Infinity }}
-              className="inline-block mb-4"
+              variants={itemVariants}
+              className="text-center"
             >
-              <div className="rounded-full bg-slate-200 p-6">
-                <Search size={40} className="text-slate-500" />
-              </div>
+              <Search size={64} className="mx-auto mb-6 text-[rgba(255,255,255,0.45)] opacity-30" />
+              <h2 className="text-h2 mb-4 text-[rgba(255,255,255,0.95)]">Start Exploring</h2>
+              <p className="text-body text-[rgba(255,255,255,0.65)] max-w-2xl mx-auto">
+                Enter a search term above or choose a category to discover amazing tech articles
+              </p>
             </motion.div>
-            <h3 className="text-2xl font-bold text-slate-900 mb-2">No Articles Found</h3>
-            <p className="text-lg text-slate-600 mb-8">
-              Try different keywords, adjust your filters, or explore popular categories
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => {
-                  setQuery('');
-                  setCategory('');
-                }}
-                className="px-6 py-3 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors"
-              >
-                Clear All Filters
-              </motion.button>
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                onClick={() => router.push('/articles')}
-                className="px-6 py-3 rounded-lg border-2 border-blue-600 text-blue-600 font-medium hover:bg-blue-50 transition-colors"
-              >
-                Browse All Articles
-              </motion.button>
-            </div>
-          </motion.div>
-        )}
-      </motion.section>
+          </div>
+        </section>
+      )}
     </motion.main>
   );
 }
 
 export default function SearchPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-50 flex items-center justify-center">Loading...</div>}>
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
       <SearchContent />
     </Suspense>
   );

@@ -125,8 +125,18 @@ class BedrockClient(LLMProvider):
         self.model = model
         try:
             import boto3
+            from botocore.config import Config
 
-            self.client = boto3.client("bedrock-runtime", region_name=region)
+            bedrock_config = Config(
+                read_timeout=30,
+                connect_timeout=10,
+                retries={"max_attempts": 1},
+            )
+            self.client = boto3.client(
+                "bedrock-runtime",
+                region_name=region,
+                config=bedrock_config,
+            )
         except ImportError:
             raise ImportError("boto3 is required for Bedrock support")
 
@@ -134,6 +144,8 @@ class BedrockClient(LLMProvider):
         self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7
     ) -> str:
         """Generate text using Bedrock API."""
+        import asyncio
+
         payload = {
             "anthropic_version": "bedrock-2023-06-01",
             "max_tokens": max_tokens,
@@ -146,20 +158,31 @@ class BedrockClient(LLMProvider):
             "temperature": temperature,
         }
 
-        response = self.client.invoke_model(
-            modelId=self.model,
-            contentType="application/json",
-            accept="application/json",
-            body=json.dumps(payload),
-        )
+        async def _invoke():
+            def sync_invoke():
+                return self.client.invoke_model(
+                    modelId=self.model,
+                    contentType="application/json",
+                    accept="application/json",
+                    body=json.dumps(payload),
+                )
+            return await asyncio.to_thread(sync_invoke)
 
+        response = await _invoke()
         result = json.loads(response["body"].read())
         return result["content"][0]["text"]
 
     async def health_check(self) -> bool:
         """Check Bedrock availability."""
+        import asyncio
+
+        async def _check():
+            def sync_check():
+                return self.client.list_foundation_models()
+            return await asyncio.to_thread(sync_check)
+
         try:
-            self.client.list_foundation_models()
+            await _check()
             return True
         except Exception:
             return False
@@ -250,15 +273,28 @@ class LLMClient:
         temperature: float = 0.7,
     ) -> str:
         """Generate text using configured providers with fallback."""
+        import logging
+
+        logger = logging.getLogger(__name__)
         last_error = None
         for i, provider in enumerate(self.providers):
+            provider_name = provider.__class__.__name__
             try:
-                return await provider.generate(prompt, max_tokens, temperature)
+                logger.debug(f"Attempting LLM generation with {provider_name}")
+                result = await provider.generate(prompt, max_tokens, temperature)
+                logger.info(f"Successfully generated with {provider_name}")
+                return result
             except Exception as e:
                 last_error = e
+                logger.warning(
+                    f"{provider_name} failed (attempt {i + 1}/{len(self.providers)}): "
+                    f"{type(e).__name__}: {str(e)}"
+                )
                 if i < len(self.providers) - 1:
+                    logger.info(f"Falling back to next provider...")
                     continue
                 else:
+                    logger.error(f"All LLM providers exhausted. Last error: {str(last_error)}")
                     raise last_error
 
     async def health_check(self) -> bool:

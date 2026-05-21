@@ -169,21 +169,21 @@ export function ArticleCreateModal({ isOpen, onClose }: ArticleCreateModalProps)
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl border border-slate-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-md p-4">
+      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-white/5 backdrop-blur-3xl backdrop-saturate-200 border border-white/20 glass-modal">
         {/* Close Button */}
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-4 top-4 text-slate-400 hover:text-slate-600 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-lg p-1"
+          className="absolute right-4 top-4 text-white/65 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-cyan-500 rounded-lg p-1"
           aria-label="Close modal"
         >
           <X size={24} />
         </button>
 
         {/* Header */}
-        <div className="border-b border-slate-100 px-8 py-6">
-          <h2 className="text-3xl font-bold text-slate-900">Create Article</h2>
+        <div className="border-b border-white/20 px-8 py-6">
+          <h2 className="text-3xl font-bold text-white">Create Article</h2>
         </div>
 
         {/* Content */}
@@ -196,7 +196,7 @@ export function ArticleCreateModal({ isOpen, onClose }: ArticleCreateModalProps)
         {errors.submit && <Alert variant="error">{errors.submit}</Alert>}
 
         {/* Tabs */}
-        <div className="mb-6 flex gap-0 border-b border-slate-200">
+        <div className="mb-6 flex gap-0 border-b border-white/20">
           <button
             type="button"
             onClick={() => {
@@ -205,8 +205,8 @@ export function ArticleCreateModal({ isOpen, onClose }: ArticleCreateModalProps)
             }}
             className={`px-6 py-3 font-semibold transition-all text-sm ${
               activeTab === 'url'
-                ? 'border-b-2 border-blue-600 text-blue-600'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'border-b-2 border-cyan-500 text-white'
+                : 'text-white/65 hover:text-white'
             }`}
           >
             From URL
@@ -219,8 +219,8 @@ export function ArticleCreateModal({ isOpen, onClose }: ArticleCreateModalProps)
             }}
             className={`px-6 py-3 font-semibold transition-all text-sm ${
               activeTab === 'manual'
-                ? 'border-b-2 border-blue-600 text-blue-600'
-                : 'text-slate-600 hover:text-slate-900'
+                ? 'border-b-2 border-cyan-500 text-white'
+                : 'text-white/65 hover:text-white'
             }`}
           >
             Manual Entry
@@ -270,9 +270,9 @@ export function ArticleCreateModal({ isOpen, onClose }: ArticleCreateModalProps)
                 checked={urlAutoSummarize}
                 onChange={(e) => setUrlAutoSummarize(e.target.checked)}
                 disabled={isUrlLoading}
-                className="h-4 w-4 cursor-pointer accent-blue-600"
+                className="h-4 w-4 cursor-pointer accent-blue-500"
               />
-              <label htmlFor="autoSummarize" className="text-sm font-medium text-slate-700 cursor-pointer">
+              <label htmlFor="autoSummarize" className="text-sm font-medium text-white/65 cursor-pointer">
                 Generate AI summary automatically
               </label>
             </div>
@@ -338,7 +338,7 @@ export function ArticleCreateModal({ isOpen, onClose }: ArticleCreateModalProps)
             />
 
             <div>
-              <label htmlFor="manualCategory" className="block text-sm font-medium text-slate-700 mb-1.5">
+              <label htmlFor="manualCategory" className="block text-sm font-medium text-white/65 mb-1.5">
                 Category (Optional)
               </label>
               <select
@@ -346,7 +346,7 @@ export function ArticleCreateModal({ isOpen, onClose }: ArticleCreateModalProps)
                 value={manualCategory}
                 onChange={(e) => setManualCategory(e.target.value)}
                 disabled={isManualLoading}
-                className="w-full px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-lg transition-all duration-150 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 hover:border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full px-4 py-2.5 text-sm bg-black/20 border border-white/20 rounded-lg transition-all duration-150 placeholder-white/45 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 hover:border-white/30 disabled:opacity-50 disabled:cursor-not-allowed text-white"
               >
                 <option value="">Select category...</option>
                 <option value="AI & ML">AI & ML</option>
@@ -361,7 +361,7 @@ export function ArticleCreateModal({ isOpen, onClose }: ArticleCreateModalProps)
             </div>
 
             <div>
-              <label htmlFor="manualContent" className="block text-sm font-medium text-slate-700 mb-1.5">
+              <label htmlFor="manualContent" className="block text-sm font-medium text-white/65 mb-1.5">
                 Content (Optional)
               </label>
               <textarea
@@ -371,7 +371,7 @@ export function ArticleCreateModal({ isOpen, onClose }: ArticleCreateModalProps)
                 onChange={(e) => setManualContent(e.target.value)}
                 disabled={isManualLoading}
                 rows={6}
-                className="w-full px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-lg transition-all duration-150 placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 hover:border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed resize-none"
+                className="w-full px-4 py-2.5 text-sm bg-black/20 border border-white/20 rounded-lg transition-all duration-150 placeholder-white/45 focus:outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20 hover:border-white/30 disabled:opacity-50 disabled:cursor-not-allowed resize-none text-white"
               />
             </div>
 

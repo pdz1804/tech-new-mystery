@@ -17,14 +17,18 @@ logger = logging.getLogger(__name__)
 
 
 @celery_app.task(bind=True, max_retries=2, default_retry_delay=60)
-def tavily_scheduled_task(self):
+def tavily_scheduled_task(self, start_date: str | None = None):
     """Scheduled task to discover articles via Tavily every 6 hours.
 
     Searches tech topics and stores results as pending searches for admin review.
+
+    Args:
+        start_date: Optional ISO format date (YYYY-MM-DD) to search from.
+                    If not provided, defaults to yesterday.
     """
     logger.info("[TAVILY_SCHEDULED] Task started - executing async search")
     try:
-        result = asyncio.run(_fetch_and_store_search_results())
+        result = asyncio.run(_fetch_and_store_search_results(start_date=start_date))
         logger.info(f"[TAVILY_SCHEDULED] Task completed successfully: {result}")
         return result
     except Exception as exc:
@@ -32,15 +36,19 @@ def tavily_scheduled_task(self):
         raise self.retry(exc=exc)
 
 
-async def _fetch_and_store_search_results() -> dict:
+async def _fetch_and_store_search_results(start_date: str | None = None) -> dict:
     """Fetch articles from Tavily news about tech from yesterday and store as pending searches."""
     from datetime import datetime, timedelta
 
     logger.info("[TAVILY_SCHEDULED] Starting scheduled Tavily article discovery")
 
-    # Get yesterday's date for dynamic search
-    yesterday = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
-    logger.info(f"[TAVILY_SCHEDULED] Searching for news from {yesterday}")
+    # Get date for search (use provided date or yesterday)
+    if start_date:
+        search_date = start_date
+        logger.info(f"[TAVILY_SCHEDULED] Using provided date: {search_date}")
+    else:
+        search_date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+        logger.info(f"[TAVILY_SCHEDULED] Using yesterday's date: {search_date}")
 
     # Tech topics to search for news
     topics = [
@@ -78,7 +86,7 @@ async def _fetch_and_store_search_results() -> dict:
                 search_result = await search_service.tavily_search(
                     query=topic,
                     limit=5,  # Get 5 results per topic
-                    start_date=yesterday,  # Only news from yesterday
+                    start_date=search_date,  # Only news from specified date
                     topic="news",  # Search news specifically
                     search_depth="advanced",  # Use advanced search
                 )

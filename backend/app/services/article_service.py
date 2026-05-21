@@ -218,10 +218,16 @@ class ArticleService:
         return self._serialize_article_detail(updated_article)
 
     async def delete_article(self, slug: str) -> bool:
-        """Delete an article by slug."""
+        """Delete an article by slug and clean up associated S3 images."""
         article = await self._article_repo.get_by_slug(slug)
         if not article:
             return False
+
+        # Clean up S3 images before deleting article
+        if article.markdown_content:
+            from app.services.image_storage_service import ImageStorageService
+            image_service = ImageStorageService()
+            await image_service.delete_images_from_markdown(article.markdown_content)
 
         return await self._article_repo.delete(article.article_id)
 
