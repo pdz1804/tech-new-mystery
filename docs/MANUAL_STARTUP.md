@@ -37,7 +37,7 @@ These accounts will be created automatically when you run the backend initializa
 **Terminal 1 - Redis**
 
 ```bash
-cd D:\FPT\Demo\Tech-News-Mystery\infra
+cd infra
 docker-compose up redis
 ```
 
@@ -52,7 +52,7 @@ Then keep this terminal open - do NOT close it.
 **Terminal 2 - Backend**
 
 ```bash
-cd D:\FPT\Demo\Tech-News-Mystery\backend
+cd backend
 
 # Create venv if not exists
 python -m venv venv
@@ -91,7 +91,7 @@ Then keep this terminal open.
 **Terminal 3 - Frontend**
 
 ```bash
-cd D:\FPT\Demo\Tech-News-Mystery\frontend
+cd frontend
 
 # Install dependencies (first time only)
 npm install
@@ -122,7 +122,7 @@ http://localhost:3000
 
 ### Backend .env Setup
 
-File: `D:\FPT\Demo\Tech-News-Mystery\backend\.env`
+File: `backend/.env`
 
 **Current configuration (for local dev):**
 ```env
@@ -182,7 +182,7 @@ CELERY_RESULT_BACKEND=redis://<elasticache-endpoint>:6379/2
 ### Test Backend
 
 ```bash
-cd D:\FPT\Demo\Tech-News-Mystery\backend
+cd backend
 set PYTHONPATH=.
 python -m pytest tests/ -v
 ```
@@ -214,7 +214,7 @@ http://localhost:8000/redoc
 ```bash
 # Stop: Press Ctrl+C in Terminal 2
 # Restart: Run same command again
-cd D:\FPT\Demo\Tech-News-Mystery\backend
+cd backend
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
@@ -264,8 +264,8 @@ kill -9 <PID>
 
 **Solution:**
 ```bash
-# Use full path
-D:\FPT\Demo\Tech-News-Mystery\backend\venv\Scripts\activate
+# Use relative path (from backend directory)
+venv\Scripts\activate
 
 # Or use python -m venv instead:
 python -m venv venv
@@ -284,7 +284,7 @@ venv\Scripts\activate
 set PYTHONPATH=.
 
 # Or run from correct directory
-cd D:\FPT\Demo\Tech-News-Mystery\backend
+cd backend
 
 # Then try again
 python -m pytest tests/
@@ -302,7 +302,7 @@ python -m pytest tests/
 # Terminal 3 (Frontend): Press Ctrl+C
 
 # Clean up Docker
-cd D:\FPT\Demo\Tech-News-Mystery\infra
+cd infra
 docker-compose down
 ```
 
@@ -426,13 +426,13 @@ curl -X POST http://localhost:8000/v1/admin/search/tavily \
 **Python interpreter:**
 ```
 Select Interpreter > Enter Interpreter Path
-D:\FPT\Demo\Tech-News-Mystery\backend\venv\Scripts\python.exe
+backend/venv/Scripts/python.exe (relative to project root)
 ```
 
 ### PyCharm
 
 - Set Python interpreter: Settings → Project → Python Interpreter → Add → Existing Environment
-- Select: `D:\FPT\Demo\Tech-News-Mystery\backend\venv\Scripts\python.exe`
+- Select: `backend/venv/Scripts/python.exe` (relative to project root)
 
 ---
 

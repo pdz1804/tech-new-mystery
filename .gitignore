@@ -75,5 +75,10 @@ screenshots/
 *.log
 backend/logs/
 
+# Claude Code
+.claude/
+.agents/
+*.lock
+
 # Git
 .git/
