@@ -1,0 +1,38 @@
+aws_region   = "us-west-2"
+project_name = "tech-news-mystery"
+environment  = "prod"
+
+# The backend defaults to this prefix in backend/app/config.py.
+dynamodb_table_prefix = "tech-news-"
+
+# For a brand-new account, keep these true.
+# If these resources already exist, run scripts/import-existing.ps1 first
+# or set these false and provide existing names.
+create_dynamodb_tables = true
+create_s3_bucket       = true
+s3_bucket_name         = "tech-news-articles-381492273521"
+
+# Alternative: use existing bucket without managing S3 bucket settings in Terraform.
+# create_s3_bucket        = false
+# existing_s3_bucket_name = "tech-news-articles-381492273521"
+
+# Use an existing network by setting create_vpc=false and filling these in.
+create_vpc                  = true
+existing_vpc_id             = ""
+existing_public_subnet_ids  = []
+existing_private_subnet_ids = []
+
+# Optional HTTPS. Certificate must be in us-west-2.
+certificate_arn = ""
+
+# Optional existing JSON secret containing SECRET_KEY, JWT_SECRET_KEY,
+# OPENAI_API_KEY, TAVILY_API_KEY, NEWSAPI_KEY, QDRANT_URL, QDRANT_API_KEY, etc.
+secrets_manager_arn = ""
+
+api_desired_count      = 1
+frontend_desired_count = 1
+worker_desired_count   = 1
+beat_desired_count     = 1
+
+backend_image_tag  = "latest"
+frontend_image_tag = "latest"

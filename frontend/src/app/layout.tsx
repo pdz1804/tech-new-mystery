@@ -18,6 +18,9 @@ const merriweather = Merriweather({
 export const metadata: Metadata = {
   title: 'Tech News Mystery',
   description: 'AI-powered tech news aggregation platform',
+  icons: {
+    icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="6" fill="%232563eb"/><text x="16" y="22" font-size="20" font-weight="bold" fill="white" text-anchor="middle" font-family="system-ui">T</text></svg>',
+  },
 };
 
 interface RootLayoutProps {

@@ -9,6 +9,7 @@ import uuid
 import re
 import requests
 import logging
+import asyncio
 from datetime import datetime
 from urllib.parse import urlparse
 from app.core.exceptions import ArticleNotFoundError
@@ -55,16 +56,16 @@ class ArticleService:
             "title": article.title,
             "slug": article.slug,
             "summary": article.summary,
-            "content": article.content,
-            "markdown_content": article.markdown_content,
-            "author": article.author,
+            "content": getattr(article, "content", None),
+            "markdown_content": getattr(article, "markdown_content", None),
+            "author": getattr(article, "author", None),
             "original_url": article.original_url,
             "source_id": article.source_id,
-            "preview_image": article.preview_image,
+            "preview_image": getattr(article, "preview_image", None),
             "category": article.category,
             "tags": article.tags,
             "view_count": article.view_count,
-            "like_count": article.like_count,
+            "like_count": getattr(article, "like_count", 0),
             "is_published": article.is_published,
             "published_at": timestamp_to_datetime(article.published_at) if article.published_at else None,
             "created_at": timestamp_to_datetime(article.created_at) if article.created_at else None,
@@ -131,18 +132,55 @@ class ArticleService:
         start_date: str | None = None,
         end_date: str | None = None,
         sort_by: str = "created_at",
+        include_content: bool = True,
         **kwargs,
     ) -> dict:
-        """List articles with optional filters."""
-        articles, next_key = await self._article_repo.list_all(limit=limit, last_key=last_key)
+        """List articles with optional filters.
 
+        Optimized to use GSI for source-based filtering when available.
+        """
+        logger.debug(f"list_articles: limit={limit}, category={category}, source={source_id}, sort={sort_by}")
+
+        # Use source-date index if filtering by source for better performance
+        if source_id and not category and not tags:
+            articles, next_key = await self._article_repo.query_by_source(
+                source_id=source_id,
+                limit=limit,
+                last_key=last_key,
+                reverse=(sort_by == "published_at"),
+                summary_only=not include_content,
+                published_only=not include_content,
+            )
+        else:
+            # Fall back to scan for general filtering, but only project card fields.
+            if include_content:
+                articles, next_key = await self._article_repo.list_all(limit=limit, last_key=last_key)
+            else:
+                articles, next_key = await self._article_repo.list_all(
+                    limit=limit,
+                    last_key=last_key,
+                    category=category,
+                    summary_only=True,
+                    published_only=True,
+                )
+
+        # Apply remaining filters
         filtered_articles = articles
-        if category:
+        if category and include_content:
             filtered_articles = [a for a in filtered_articles if a.category == category]
-        if source_id:
-            filtered_articles = [a for a in filtered_articles if a.source_id == source_id]
         if tags:
             filtered_articles = [a for a in filtered_articles if any(t in a.tags for t in tags)]
+
+        # Scans are not ordered, so normalize ordering before returning cards.
+        if sort_by == "view_count":
+            filtered_articles.sort(key=lambda a: a.view_count or 0, reverse=True)
+        elif sort_by == "published_at":
+            filtered_articles.sort(
+                key=lambda a: a.published_at or a.created_at or 0,
+                reverse=True,
+            )
+        elif sort_by == "created_at":
+            filtered_articles.sort(key=lambda a: a.created_at or 0, reverse=True)
 
         return {
             "data": [self._serialize_article(a) for a in filtered_articles],
@@ -174,6 +212,27 @@ class ArticleService:
                 "is_published": True,
             }
         )
+
+        # Index in Qdrant asynchronously (don't block article creation)
+        try:
+            from app.services.qdrant_service import QdrantService
+            qdrant_service = QdrantService()
+            asyncio_task = asyncio.create_task(
+                qdrant_service.index_article(
+                    article_id=article.article_id,
+                    slug=article.slug,
+                    title=article.title,
+                    summary=article.summary,
+                    content=article.content,
+                    category=article.category,
+                    author=article.author,
+                    published_at=article.published_at,
+                    view_count=article.view_count,
+                    source_id=article.source_id,
+                )
+            )
+        except Exception as e:
+            logger.warning(f"Failed to queue Qdrant indexing for {article_id}: {str(e)}")
 
         return self._serialize_article_detail(article)
 
@@ -215,6 +274,27 @@ class ArticleService:
         # Update via repository
         updated_article = await self._article_repo.update(article.article_id, **update_fields)
 
+        # Update in Qdrant asynchronously (don't block article update)
+        try:
+            from app.services.qdrant_service import QdrantService
+            qdrant_service = QdrantService()
+            asyncio_task = asyncio.create_task(
+                qdrant_service.update_article(
+                    article_id=updated_article.article_id,
+                    slug=updated_article.slug,
+                    title=updated_article.title,
+                    summary=updated_article.summary,
+                    content=updated_article.content,
+                    category=updated_article.category,
+                    author=updated_article.author,
+                    published_at=updated_article.published_at,
+                    view_count=updated_article.view_count,
+                    source_id=updated_article.source_id,
+                )
+            )
+        except Exception as e:
+            logger.warning(f"Failed to queue Qdrant update for {article.article_id}: {str(e)}")
+
         return self._serialize_article_detail(updated_article)
 
     async def delete_article(self, slug: str) -> bool:
@@ -228,6 +308,16 @@ class ArticleService:
             from app.services.image_storage_service import ImageStorageService
             image_service = ImageStorageService()
             await image_service.delete_images_from_markdown(article.markdown_content)
+
+        # Delete from Qdrant asynchronously (don't block article deletion)
+        try:
+            from app.services.qdrant_service import QdrantService
+            qdrant_service = QdrantService()
+            asyncio_task = asyncio.create_task(
+                qdrant_service.delete_article(article.article_id)
+            )
+        except Exception as e:
+            logger.warning(f"Failed to queue Qdrant deletion for {article.article_id}: {str(e)}")
 
         return await self._article_repo.delete(article.article_id)
 
@@ -372,6 +462,27 @@ class ArticleService:
         article = await self._article_repo.create(article_data)
         logger.info(f"[SUCCESS] Article created successfully: {article_id} (slug: {slug})")
 
+        # Index in Qdrant asynchronously (don't block article creation)
+        try:
+            from app.services.qdrant_service import QdrantService
+            qdrant_service = QdrantService()
+            asyncio_task = asyncio.create_task(
+                qdrant_service.index_article(
+                    article_id=article.article_id,
+                    slug=article.slug,
+                    title=article.title,
+                    summary=article.summary,
+                    content=article.content,
+                    category=article.category,
+                    author=article.author,
+                    published_at=article.published_at,
+                    view_count=article.view_count,
+                    source_id=article.source_id,
+                )
+            )
+        except Exception as e:
+            logger.warning(f"Failed to queue Qdrant indexing for {article_id}: {str(e)}")
+
         return self._serialize_article_detail(article)
 
 
@@ -448,4 +559,3 @@ class ArticleService:
         await self._article_repo.update(article_id, view_count=article.view_count + 1)
 
         return {"article_id": article_id, "view_count": article.view_count + 1}
-

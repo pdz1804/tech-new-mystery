@@ -58,22 +58,22 @@ export default function ArticleDetailPage({ params }: { params: { slug: string }
         initial="hidden"
         animate="visible"
         variants={containerVariants}
-        className="min-h-screen bg-white flex items-center justify-center px-4"
+        className="min-h-screen flex items-center justify-center px-4"
       >
         <motion.div
           variants={itemVariants}
-          className="rounded-2xl border border-slate-200 bg-white p-12 text-center max-w-md shadow-lg"
+          className="error-dialog-glass p-12 text-center max-w-md"
         >
           <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-red-100">
             <span className="text-2xl">⚠️</span>
           </div>
-          <p className="text-lg font-semibold text-slate-900">Failed to Load Article</p>
-          <p className="mt-2 text-slate-600">Something went wrong. Please try again.</p>
+          <p className="text-lg font-semibold text-black">Failed to Load Article</p>
+          <p className="mt-2 text-black/70">Something went wrong. Please try again.</p>
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => router.back()}
-            className="mt-6 mx-auto flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-6 py-2 font-semibold text-white transition-all hover:shadow-button-primary"
+            className="mt-6 mx-auto flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-6 py-2 font-semibold text-white transition-all hover:bg-blue-700 hover:shadow-lg"
           >
             <ArrowLeft className="h-4 w-4" />
             Go Back
@@ -90,17 +90,17 @@ export default function ArticleDetailPage({ params }: { params: { slug: string }
         initial="hidden"
         animate="visible"
         variants={containerVariants}
-        className="min-h-screen bg-white flex items-center justify-center px-4"
+        className="min-h-screen flex items-center justify-center px-4"
       >
         <motion.div
           variants={itemVariants}
-          className="rounded-2xl border border-slate-200 bg-white p-12 text-center max-w-md shadow-lg"
+          className="error-dialog-glass p-12 text-center max-w-md"
         >
           <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-yellow-100">
             <span className="text-2xl">📄</span>
           </div>
-          <p className="text-lg font-semibold text-slate-900">Article Not Found</p>
-          <p className="mt-2 text-slate-600">The article you&apos;re looking for doesn&apos;t exist.</p>
+          <p className="text-lg font-semibold text-black">Article Not Found</p>
+          <p className="mt-2 text-black/70">The article you&apos;re looking for doesn&apos;t exist.</p>
         </motion.div>
       </motion.main>
     );

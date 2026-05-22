@@ -42,6 +42,16 @@ class PendingSearchRepository:
             results = await asyncio.to_thread(
                 lambda: list(PendingSearchModel.scan(
                     filter_condition=PendingSearchModel.status == "pending",
+                    attributes_to_get=[
+                        "search_id",
+                        "query",
+                        "title",
+                        "url",
+                        "snippet",
+                        "source",
+                        "created_at",
+                        "status",
+                    ],
                     limit=limit
                 ))
             )

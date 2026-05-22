@@ -69,7 +69,14 @@ class ArticleRepository:
             logger.error(f"Error querying article by slug {slug}: {type(e).__name__}: {str(e)}")
             return None
 
-    async def list_all(self, limit: int = 20, last_key: str | None = None) -> tuple[list[ArticleModel], dict | None]:
+    async def list_all(
+        self,
+        limit: int = 20,
+        last_key: str | None = None,
+        category: str | None = None,
+        summary_only: bool = False,
+        published_only: bool = False,
+    ) -> tuple[list[ArticleModel], dict | None]:
         """List all articles with pagination.
 
         Args:
@@ -79,16 +86,127 @@ class ArticleRepository:
         Returns:
             Tuple of (articles_list, next_last_key for pagination)
         """
-        logger.debug(f"Scanning articles: limit={limit}, has_last_key={last_key is not None}")
+        logger.debug(
+            "Scanning articles: limit=%s, has_last_key=%s, category=%s, summary_only=%s, published_only=%s",
+            limit,
+            last_key is not None,
+            category,
+            summary_only,
+            published_only,
+        )
         try:
+            filter_condition = None
+            if published_only:
+                filter_condition = ArticleModel.is_published == True
+            if category:
+                category_condition = ArticleModel.category == category
+                filter_condition = (
+                    category_condition
+                    if filter_condition is None
+                    else filter_condition & category_condition
+                )
+
+            attributes_to_get = None
+            if summary_only:
+                attributes_to_get = [
+                    "article_id",
+                    "title",
+                    "slug",
+                    "summary",
+                    "author",
+                    "original_url",
+                    "source_id",
+                    "preview_image",
+                    "category",
+                    "tags",
+                    "view_count",
+                    "like_count",
+                    "is_published",
+                    "published_at",
+                    "created_at",
+                ]
+
             results = await asyncio.to_thread(
-                lambda: ArticleModel.scan(limit=limit, last_evaluated_key=last_key)
+                lambda: ArticleModel.scan(
+                    filter_condition=filter_condition,
+                    limit=limit,
+                    last_evaluated_key=last_key,
+                    attributes_to_get=attributes_to_get,
+                )
             )
             items = list(results)
             logger.debug(f"Articles scan returned {len(items)} items")
             return items, results.last_evaluated_key
         except Exception as e:
             logger.error(f"Error scanning articles: {type(e).__name__}: {str(e)}")
+            raise
+
+    async def query_by_source(
+        self,
+        source_id: str,
+        limit: int = 20,
+        last_key: str | None = None,
+        reverse: bool = False,
+        summary_only: bool = False,
+        published_only: bool = False,
+    ) -> tuple[list[ArticleModel], dict | None]:
+        """Query articles by source using GSI.
+
+        Optimized query using source-date-index for faster filtering.
+
+        Args:
+            source_id (str): Source ID to filter by
+            limit (int): Maximum items per page
+            last_key (str): Pagination cursor
+            reverse (bool): Sort in reverse order (newest first)
+
+        Returns:
+            Tuple of (articles_list, next_last_key)
+        """
+        logger.debug(
+            "Querying articles by source: %s, limit=%s, reverse=%s, summary_only=%s, published_only=%s",
+            source_id,
+            limit,
+            reverse,
+            summary_only,
+            published_only,
+        )
+        try:
+            attributes_to_get = None
+            if summary_only:
+                attributes_to_get = [
+                    "article_id",
+                    "title",
+                    "slug",
+                    "summary",
+                    "author",
+                    "original_url",
+                    "source_id",
+                    "preview_image",
+                    "category",
+                    "tags",
+                    "view_count",
+                    "like_count",
+                    "is_published",
+                    "published_at",
+                    "created_at",
+                ]
+
+            results = await asyncio.to_thread(
+                lambda: ArticleModel.source_date_index.query(
+                    source_id,
+                    filter_condition=ArticleModel.is_published == True if published_only else None,
+                    limit=limit,
+                    last_evaluated_key=last_key,
+                    scan_index_forward=(not reverse),
+                    attributes_to_get=attributes_to_get,
+                )
+            )
+            items = list(results)
+            logger.debug(f"Source query returned {len(items)} items")
+            return items, results.last_evaluated_key
+        except Exception as e:
+            logger.error(f"Error querying articles by source {source_id}: {type(e).__name__}: {str(e)}")
             raise
 
     async def create(self, article_data: dict) -> ArticleModel:
@@ -228,9 +346,14 @@ class ArticleRepository:
         """
         logger.debug("Fetching filter metadata (category and source counts)")
         try:
-            # Scan all articles
             articles = await asyncio.to_thread(
-                lambda: list(ArticleModel.scan(limit=10000))
+                lambda: list(
+                    ArticleModel.scan(
+                        filter_condition=ArticleModel.is_published == True,
+                        attributes_to_get=["article_id", "category", "source_id"],
+                        limit=10000,
+                    )
+                )
             )
             logger.debug(f"Scanned {len(articles)} articles for filter metadata")
 

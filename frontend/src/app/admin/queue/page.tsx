@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { AppLoadingState } from '@/components/ui/AppLoadingState';
 import { SearchQueryModal } from '@/components/admin/SearchQueryModal';
+import { NewsAPIModal } from '@/components/admin/NewsAPIModal';
 import { Check, X, ExternalLink, Loader2, Zap, Eye, Clock } from 'lucide-react';
 
 interface PendingSearch {
@@ -66,6 +67,7 @@ export default function AdminQueuePage() {
   const [selectedSearch, setSelectedSearch] = useState<PendingSearch | null>(null);
   const [queryModalOpen, setQueryModalOpen] = useState(false);
   const [queryModalSource, setQueryModalSource] = useState<'tavily' | 'newsapi'>('tavily');
+  const [newsAPIModalOpen, setNewsAPIModalOpen] = useState(false);
 
   useEffect(() => {
     if (isHydrated && !user?.is_admin) {
@@ -150,8 +152,12 @@ export default function AdminQueuePage() {
   };
 
   const handleOpenQueryModal = (source: 'tavily' | 'newsapi') => {
-    setQueryModalSource(source);
-    setQueryModalOpen(true);
+    if (source === 'newsapi') {
+      setNewsAPIModalOpen(true);
+    } else {
+      setQueryModalSource(source);
+      setQueryModalOpen(true);
+    }
   };
 
   const handleConfirmSearch = async (queries: string[]) => {
@@ -179,23 +185,18 @@ export default function AdminQueuePage() {
       if (data.success) {
         setSuccessMessage(data.message);
         setTimeout(() => setSuccessMessage(null), 5000);
-        let pollCount = 0;
-        const pollInterval = setInterval(async () => {
-          pollCount++;
-          if (pollCount > 24) {
-            clearInterval(pollInterval);
-            return;
-          }
+
+        // Single refresh after 3 seconds to check for results
+        setTimeout(async () => {
           try {
             const { data: response } = await apiClient.get('/admin/searches');
-            if (response.success && response.data.length > 0) {
+            if (response.success) {
               setSearches(response.data);
-              clearInterval(pollInterval);
             }
           } catch (err) {
             console.error('Error refreshing queue:', err);
           }
-        }, 5000);
+        }, 3000);
       } else {
         setError('Failed to trigger scheduler');
       }
@@ -203,6 +204,33 @@ export default function AdminQueuePage() {
       const message = err instanceof Error ? err.message : 'Unknown error occurred';
       setError(message);
       console.error('Error triggering scheduler:', err);
+    } finally {
+      setTriggeringScheduler(null);
+    }
+  };
+
+  const handleCleanQueue = async () => {
+    if (!window.confirm('⚠️ Are you sure you want to delete ALL pending searches? This cannot be undone.')) {
+      return;
+    }
+
+    try {
+      setTriggeringScheduler('clean');
+      setError(null);
+
+      const { data } = await apiClient.delete('/admin/searches/clean');
+
+      if (data.success) {
+        setSuccessMessage(data.message || 'Queue cleaned successfully!');
+        setSearches([]);
+        setTimeout(() => setSuccessMessage(null), 5000);
+      } else {
+        setError(data.message || 'Failed to clean queue');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error occurred';
+      setError(message);
+      console.error('Error cleaning queue:', err);
     } finally {
       setTriggeringScheduler(null);
     }
@@ -290,6 +318,18 @@ export default function AdminQueuePage() {
                   ) : (
                     <span>NewsAPI Search</span>
                   )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCleanQueue}
+                  disabled={triggeringScheduler !== null || loading || searches.length === 0}
+                  className="bg-red-50 border border-red-200 text-red-700 font-semibold
+                    px-6 py-3 rounded-xl flex items-center gap-2 hover:bg-red-100 hover:border-red-300
+                    transition-all disabled:opacity-50"
+                  title="Clear all pending searches from queue"
+                >
+                  <X size={20} />
+                  <span>Clean Queue</span>
                 </button>
               </motion.div>
             </div>
@@ -445,7 +485,7 @@ export default function AdminQueuePage() {
         </div>
       </section>
 
-      {/* Search Query Modal */}
+      {/* Search Query Modal (Tavily only) */}
       <SearchQueryModal
         isOpen={queryModalOpen}
         source={queryModalSource}
@@ -453,6 +493,12 @@ export default function AdminQueuePage() {
         onConfirm={handleConfirmSearch}
         onCancel={() => setQueryModalOpen(false)}
         isLoading={triggeringScheduler !== null}
+      />
+
+      {/* NewsAPI Modal */}
+      <NewsAPIModal
+        isOpen={newsAPIModalOpen}
+        onClose={() => setNewsAPIModalOpen(false)}
       />
 
       {/* Detail Modal */}

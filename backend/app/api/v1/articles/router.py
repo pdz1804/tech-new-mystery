@@ -76,7 +76,12 @@ async def list_articles(
         sort_by = "created_at"
     filters["sort_by"] = sort_by
 
-    result = await service.list_articles(limit=limit, last_key=last_key, **filters)
+    result = await service.list_articles(
+        limit=limit,
+        last_key=last_key,
+        include_content=False,
+        **filters,
+    )
     logger.info(f"[LIST_ARTICLES] Response: returned {len(result['data'])} articles")
     return ArticleListResponse(
         success=True,

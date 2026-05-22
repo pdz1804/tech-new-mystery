@@ -358,6 +358,54 @@ Authorization: Bearer <token>
 
 ## Admin Endpoints (Admin Role Required)
 
+### NewsAPI Search (Two-Phase Intelligent Search)
+```http
+POST /admin/newsapi/trigger
+Content-Type: application/json
+Authorization: Bearer <admin-token>
+
+{
+  "query": "machine learning innovation",
+  "from_date": "2026-05-21"
+}
+```
+
+**Parameters:**
+- `query` (string, optional) - Custom search query. If omitted, uses default comprehensive query.
+- `from_date` (string, optional) - Search from date (ISO format: YYYY-MM-DD). Defaults to yesterday.
+
+**Search Strategy (Two Phases):**
+
+**PHASE 1: Priority Sources** (Strict source filtering)
+- TechCrunch (5 articles)
+- The Verge (5 articles)
+- Google News (5 articles)
+- **Max: 15 articles from priority sources**
+
+**PHASE 2: Fallback Search** (Unrestricted - triggered if PHASE 1 < 15 results)
+- Searches without source restrictions
+- Fills up to 15 total articles
+- Maintains full deduplication across both phases
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "NewsAPI scheduler task triggered successfully. Task ID: abc123"
+}
+```
+
+The results are stored in the pending search queue and must be approved before article creation.
+
+**Default Query (when custom query not provided):**
+```
+(artificial intelligence OR AI OR machine learning OR LLM OR generative AI OR 
+deep learning OR neural networks OR transformers OR embeddings OR AWS OR Azure 
+OR cloud computing OR tech startup OR funding OR innovation OR breakthrough)
+```
+
+---
+
 ### Tavily Search
 ```http
 POST /admin/search/tavily
@@ -427,6 +475,36 @@ Authorization: Bearer <admin-token>
     "markdown_content": "# Formatted Content",
     "created_at": "2026-05-18T10:30:00Z"
   }
+}
+```
+
+### Clean Search Queue
+```http
+DELETE /admin/searches/clean
+Authorization: Bearer <admin-token>
+```
+
+**Description:**
+Deletes all pending search results from the queue. Use when:
+- Clearing out old search results before a new search campaign
+- Starting fresh after reviewing a batch of results
+- Cleaning up the queue for maintenance
+
+⚠️ **Warning:** This action is **irreversible**. All pending searches will be permanently deleted.
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Successfully cleaned 42 pending searches from the queue"
+}
+```
+
+**Response (200, empty queue):**
+```json
+{
+  "success": true,
+  "message": "Queue is already empty - nothing to clean"
 }
 ```
 

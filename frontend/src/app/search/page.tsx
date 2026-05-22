@@ -3,10 +3,9 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Search, ChevronLeft, ChevronRight, Clock, TrendingUp } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { useSearchArticles } from '@/hooks/useSearch';
-import { useFilterMetadata } from '@/hooks/useFilterMetadata';
 import { ArticleCard } from '@/components/article/ArticleCard';
 import { ArticleCardSkeleton } from '@/components/ui/Skeleton';
 import { AppLoadingState } from '@/components/ui/AppLoadingState';
@@ -31,20 +30,16 @@ function SearchContent() {
   const isHydrated = useAuthStore((s) => s.isHydrated);
   const setIntendedDestination = useAuthStore((s) => s.setIntendedDestination);
 
-  const { data: filterData, isLoading: filterLoading } = useFilterMetadata();
-
   const [query, setQuery] = useState(searchParams.get('q') || '');
-  const [category, setCategory] = useState(searchParams.get('category') || '');
   const [page, setPage] = useState(parseInt(searchParams.get('page') || '1'));
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [isFocused, setIsFocused] = useState(false);
 
   const { data, isLoading, error } = useSearchArticles(
-    { q: query, category: category || undefined, page },
+    { q: query, page },
     !!query
   );
 
-  const categories = filterData?.data?.categories || [];
   const suggestions = ['Agentic AI', 'AI infrastructure', 'Model safety', 'Edge AI', 'Robotics', 'AI chips'];
 
   useEffect(() => {
@@ -52,11 +47,10 @@ function SearchContent() {
     if (!isAuthenticated) {
       const params = new URLSearchParams();
       if (query) params.set('q', query);
-      if (category) params.set('category', category);
       setIntendedDestination(`/search?${params.toString()}`);
       router.push('/login');
     }
-  }, [isAuthenticated, isHydrated, router, setIntendedDestination, query, category]);
+  }, [isAuthenticated, isHydrated, router, setIntendedDestination, query]);
 
   useEffect(() => {
     const saved = localStorage.getItem('recentSearches');
@@ -76,13 +70,6 @@ function SearchContent() {
       const updated = [query, ...recentSearches.filter(s => s !== query)].slice(0, 5);
       setRecentSearches(updated);
       localStorage.setItem('recentSearches', JSON.stringify(updated));
-    }
-  };
-
-  const handleCategoryClick = (cat: { name: string; count: number }) => {
-    if (cat.count > 0) {
-      setCategory(cat.name);
-      setPage(1);
     }
   };
 
@@ -112,13 +99,13 @@ function SearchContent() {
       </div>
 
       {/* Hero Search Section */}
-      <section className="app-page-shell pb-10">
+      <section className={`app-page-shell pb-0 ${query ? 'search-results-mode' : ''}`}>
         <motion.div
           variants={itemVariants}
           className="app-page-container"
         >
           <div className={`browse-search-stage ${query ? 'min-h-0 place-items-stretch' : ''}`}>
-          <div className="browse-entry-panel mb-8">
+          <div className="browse-entry-panel mb-0">
             <div className="mx-auto mb-6 max-w-2xl">
               <span className="text-label mb-3 block text-blue-600">Browse</span>
               <h1 className="mb-3 font-sans text-4xl font-bold leading-tight text-black sm:text-5xl">Search the tech signal</h1>
@@ -154,7 +141,7 @@ function SearchContent() {
                   Search
                 </button>
 
-                {/* Dropdown: Recent Searches & Quick Categories */}
+                {/* Dropdown: Recent Searches */}
                 {isFocused && (
                   <motion.div
                     initial={{ opacity: 0, y: -10 }}
@@ -183,27 +170,6 @@ function SearchContent() {
                     </>
                   )}
 
-                  <p className="text-label text-black/60 mb-3 block">Quick Categories</p>
-                  <div className="flex flex-wrap gap-2">
-                    {categories.slice(0, 5).map((cat) => (
-                      <button
-                        key={cat.name}
-                        type="button"
-                        onClick={() => {
-                          handleCategoryClick(cat);
-                          setIsFocused(false);
-                        }}
-                        disabled={cat.count === 0}
-                        className={`px-3 py-1 rounded-lg text-sm transition-all ${
-                          cat.count > 0
-                            ? 'btn-liquid secondary'
-                            : 'opacity-50 cursor-not-allowed'
-                        }`}
-                      >
-                        {cat.name} ({cat.count})
-                      </button>
-                    ))}
-                  </div>
                   </motion.div>
                 )}
               </div>
@@ -226,103 +192,25 @@ function SearchContent() {
             </div>
           </div>
           </div>
-
-          {/* Quick Category Buttons */}
-          {categories.length > 0 && query && (
-            <motion.div
-              variants={itemVariants}
-              className="glass-panel mx-auto mb-8 max-w-5xl p-5"
-            >
-              <p className="text-label mb-4 block text-black/60">Browse By Category</p>
-              <div className="grid gap-3 sm:grid-cols-3">
-                {categories.slice(0, 3).map((cat) => (
-                  <button
-                    key={cat.name}
-                    type="button"
-                    onClick={() => handleCategoryClick(cat)}
-                    disabled={cat.count === 0}
-                    className={`apple-filter-button justify-center ${
-                      cat.count > 0
-                        ? ''
-                        : 'opacity-50 cursor-not-allowed'
-                    }`}
-                  >
-                      <TrendingUp size={18} className="inline mr-2" />
-                    {cat.name} ({cat.count})
-                  </button>
-                ))}
-              </div>
-            </motion.div>
-          )}
         </motion.div>
       </section>
 
       {/* Search Results */}
       {query && (
-        <section className="pb-20">
+        <section className="pb-20 pt-4">
           <div className="app-page-container">
-            {/* Category Filter Bar */}
-            {categories.length > 0 && (
-              <motion.div
-                variants={itemVariants}
-                className="glass-panel mb-8 p-5"
-              >
-                <p className="text-label text-black/60 mb-4 block">FILTER BY CATEGORY</p>
-                <div className="flex flex-wrap gap-2">
-                  <motion.button
-                    type="button"
-                    onClick={() => {
-                      setCategory('');
-                      setPage(1);
-                    }}
-                    whileHover={{ scale: 1.05 }}
-                    className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                      !category
-                        ? 'btn-liquid primary'
-                        : 'btn-liquid secondary'
-                    }`}
-                  >
-                    All
-                  </motion.button>
-                  {categories.map((cat) => (
-                    <motion.button
-                      key={cat.name}
-                      type="button"
-                      onClick={() => handleCategoryClick(cat)}
-                      whileHover={{ scale: 1.05 }}
-                      disabled={cat.count === 0}
-                      className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                        category === cat.name
-                          ? 'btn-liquid primary'
-                          : cat.count > 0
-                          ? 'btn-liquid secondary'
-                          : 'opacity-50 cursor-not-allowed'
-                      }`}
-                    >
-                      {cat.name} ({cat.count})
-                    </motion.button>
-                  ))}
-                </div>
-              </motion.div>
-            )}
-
             {/* Results Info */}
             <motion.div
               variants={itemVariants}
-              className="mb-8"
+              className="mb-4"
             >
               <p className="text-h3 font-bold text-black mb-2">
                 Found {totalResults} result{totalResults !== 1 ? 's' : ''} for &quot;{query}&quot;
               </p>
-              {category && (
-                <p className="text-body text-black/60">
-                  in <span className="text-blue-600 font-semibold">{category}</span>
-                </p>
-              )}
             </motion.div>
 
             {/* Results Grid or Loading/Error States */}
-            {isLoading || filterLoading ? (
+            {isLoading ? (
               <div className="glass-grid">
                 {[...Array(12)].map((_, i) => (
                   <ArticleCardSkeleton key={i} />
@@ -418,7 +306,7 @@ function SearchContent() {
                 <Search size={48} className="mx-auto mb-4 text-black/30 opacity-50" />
                 <p className="text-h3 text-black/60 mb-2">No articles found</p>
                 <p className="text-body text-black/60">
-                  Try adjusting your search terms or category filters
+                  Try adjusting your search terms
                 </p>
               </motion.div>
             )}

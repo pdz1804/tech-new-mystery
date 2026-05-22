@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Plus, Search, Filter } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Search } from 'lucide-react';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { apiClient } from '@/lib/api/client';
 import { ArticleCard } from '@/components/article/ArticleCard';
@@ -48,10 +48,18 @@ interface ArticleResponse {
 
 type SortOption = 'newest' | 'oldest' | 'popular';
 
+const getArticleTime = (article: ArticleResponse['data'][number]) => {
+  const value = article.published_at || article.created_at;
+  if (!value) return 0;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? 0 : time;
+};
+
 export default function ArticlesPage() {
   const router = useRouter();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isHydrated = useAuthStore((s) => s.isHydrated);
+  const user = useAuthStore((s) => s.user);
   const setIntendedDestination = useAuthStore((s) => s.setIntendedDestination);
 
   const { data: filterData, isLoading: filterLoading } = useFilterMetadata();
@@ -84,7 +92,21 @@ export default function ArticlesPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const { data: responseData } = await apiClient.get<ArticleResponse>('/articles?limit=100');
+        // Build query params for backend filtering/sorting
+        const params = new URLSearchParams();
+        params.append('limit', '50');
+        if (selectedCategory && selectedCategory !== 'All') {
+          params.append('category', selectedCategory);
+        }
+        // Pass sort_by to backend
+        const sortMap: Record<SortOption, string> = {
+          newest: 'published_at',
+          oldest: 'published_at',  // Will handle reverse on backend
+          popular: 'view_count'
+        };
+        params.append('sort_by', sortMap[sortBy]);
+
+        const { data: responseData } = await apiClient.get<ArticleResponse>(`/articles?${params.toString()}`);
         if (responseData.success) {
           setAllArticles(responseData.data);
         } else {
@@ -101,31 +123,22 @@ export default function ArticlesPage() {
     if (isAuthenticated) {
       fetchArticles();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, selectedCategory, sortBy]);
 
   if (!isHydrated || !isAuthenticated) {
     return <AppLoadingState variant="articles" />;
   }
 
-  let filteredArticles = allArticles;
-  if (selectedCategory !== 'All') {
-    filteredArticles = filteredArticles.filter(
-      (a) => a.category === selectedCategory
-    );
-  }
+  const filteredArticles = allArticles;
+  const sortedArticles = [...filteredArticles];
 
-  const sortedArticles = [...filteredArticles].sort((a, b) => {
-    if (sortBy === 'newest') {
-      return new Date(b.published_at || b.created_at || 0).getTime() -
-             new Date(a.published_at || a.created_at || 0).getTime();
-    } else if (sortBy === 'oldest') {
-      return new Date(a.published_at || a.created_at || 0).getTime() -
-             new Date(b.published_at || b.created_at || 0).getTime();
-    } else if (sortBy === 'popular') {
-      return (b.view_count || 0) - (a.view_count || 0);
-    }
-    return 0;
-  });
+  if (sortBy === 'newest') {
+    sortedArticles.sort((a, b) => getArticleTime(b) - getArticleTime(a));
+  } else if (sortBy === 'oldest') {
+    sortedArticles.sort((a, b) => getArticleTime(a) - getArticleTime(b));
+  } else if (sortBy === 'popular') {
+    sortedArticles.sort((a, b) => (b.view_count || 0) - (a.view_count || 0));
+  }
 
   const totalPages = Math.ceil(sortedArticles.length / itemsPerPage);
   const startIdx = (page - 1) * itemsPerPage;
@@ -150,7 +163,18 @@ export default function ArticlesPage() {
           setIsArticleModalOpen(false);
           const fetchArticles = async () => {
             try {
-              const { data: responseData } = await apiClient.get<ArticleResponse>('/articles?limit=100');
+              const params = new URLSearchParams();
+              params.append('limit', '50');
+              if (selectedCategory && selectedCategory !== 'All') {
+                params.append('category', selectedCategory);
+              }
+              const sortMap: Record<SortOption, string> = {
+                newest: 'published_at',
+                oldest: 'published_at',
+                popular: 'view_count'
+              };
+              params.append('sort_by', sortMap[sortBy]);
+              const { data: responseData } = await apiClient.get<ArticleResponse>(`/articles?${params.toString()}`);
               if (responseData.success) {
                 setAllArticles(responseData.data);
               }
@@ -204,15 +228,17 @@ export default function ArticlesPage() {
                     </button>
                   ))}
               </div>
-              <motion.button
-                variants={itemVariants}
-                onClick={() => setIsArticleModalOpen(true)}
-                className="btn-liquid primary flex shrink-0 items-center gap-2"
-                aria-label="Create a new article"
-              >
-                <Plus size={20} />
-                Add
-              </motion.button>
+              {user?.is_admin && (
+                <motion.button
+                  variants={itemVariants}
+                  onClick={() => setIsArticleModalOpen(true)}
+                  className="btn-liquid primary flex shrink-0 items-center gap-2"
+                  aria-label="Create a new article"
+                >
+                  <Plus size={20} />
+                  Add
+                </motion.button>
+              )}
             </div>
           </div>
         </section>
@@ -286,9 +312,9 @@ export default function ArticlesPage() {
                           key={p}
                           type="button"
                           onClick={() => setPage(p)}
-                          whileHover={{ scale: 1.1 }}
+                          whileHover={{ scale: 1.05 }}
                           whileTap={{ scale: 0.95 }}
-                          className={`h-10 w-10 rounded-2xl font-bold transition-all ${page === p ? 'bg-blue-600 text-white shadow-[0_10px_24px_rgba(0,122,255,0.24)]' : 'bg-white/70 text-black hover:bg-white'}`}
+                          className={`pagination-glass-btn ${page === p ? 'active' : 'inactive'}`}
                           aria-label={`Go to page ${p}`}
                           aria-current={page === p ? 'page' : undefined}
                         >

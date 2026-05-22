@@ -2,12 +2,13 @@
 
 import { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Loader2, CheckCircle, AlertCircle, Plus } from 'lucide-react';
+import { Search, Loader2, CheckCircle, AlertCircle, Plus, Zap } from 'lucide-react';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api/client';
 import { Alert } from '@/components/ui/Alert';
 import { AppLoadingState } from '@/components/ui/AppLoadingState';
+import { NewsAPIModal } from '@/components/admin/NewsAPIModal';
 
 interface SearchResult {
   id: string;
@@ -50,6 +51,7 @@ export default function AdminSearchPage() {
   const [successMessages, setSuccessMessages] = useState<Record<string, string>>({});
   const [errorMessages, setErrorMessages] = useState<Record<string, string>>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
+  const [isNewsAPIModalOpen, setIsNewsAPIModalOpen] = useState(false);
 
   const handleSearch = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -197,26 +199,39 @@ export default function AdminSearchPage() {
                 />
               </div>
             </div>
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              type="submit"
-              disabled={isSearching || !searchQuery.trim()}
-              className="flex items-center justify-center gap-2 px-6 py-4 bg-white text-blue-600 font-semibold rounded-xl shadow-lg hover:shadow-xl hover:bg-blue-50 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-300 whitespace-nowrap"
-              aria-busy={isSearching}
-            >
-              {isSearching ? (
-                <>
-                  <Loader2 size={20} className="animate-spin" aria-hidden="true" />
-                  <span className="hidden sm:inline">Searching...</span>
-                </>
-              ) : (
-                <>
-                  <Search size={20} aria-hidden="true" />
-                  <span className="hidden sm:inline">Search</span>
-                </>
-              )}
-            </motion.button>
+            <div className="flex gap-3">
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                type="submit"
+                disabled={isSearching || !searchQuery.trim()}
+                className="flex items-center justify-center gap-2 px-6 py-4 bg-white text-blue-600 font-semibold rounded-xl shadow-lg hover:shadow-xl hover:bg-blue-50 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-300 whitespace-nowrap"
+                aria-busy={isSearching}
+              >
+                {isSearching ? (
+                  <>
+                    <Loader2 size={20} className="animate-spin" aria-hidden="true" />
+                    <span className="hidden sm:inline">Searching...</span>
+                  </>
+                ) : (
+                  <>
+                    <Search size={20} aria-hidden="true" />
+                    <span className="hidden sm:inline">Search</span>
+                  </>
+                )}
+              </motion.button>
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                type="button"
+                onClick={() => setIsNewsAPIModalOpen(true)}
+                className="flex items-center justify-center gap-2 px-6 py-4 bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-600 whitespace-nowrap"
+                aria-label="Trigger NewsAPI search"
+              >
+                <Zap size={20} aria-hidden="true" />
+                <span className="hidden sm:inline">NewsAPI</span>
+              </motion.button>
+            </div>
           </motion.form>
         </div>
       </motion.section>
@@ -373,6 +388,12 @@ export default function AdminSearchPage() {
           </motion.div>
         ) : null}
       </motion.section>
+
+      {/* NewsAPI Modal */}
+      <NewsAPIModal
+        isOpen={isNewsAPIModalOpen}
+        onClose={() => setIsNewsAPIModalOpen(false)}
+      />
     </motion.main>
   );
 }

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { apiClient } from '@/lib/api/client';
 
 export interface FilterCategory {
   name: string;
@@ -18,11 +19,8 @@ export function useFilterMetadata() {
   return useQuery<{ success: boolean; data: FilterMetadata }>({
     queryKey: ['filterMetadata'],
     queryFn: async () => {
-      const response = await fetch('/api/v1/articles/filters');
-      if (!response.ok) {
-        throw new Error('Failed to fetch filter metadata');
-      }
-      return response.json();
+      const { data } = await apiClient.get('/articles/filters');
+      return data;
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes (formerly cacheTime)

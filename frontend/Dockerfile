@@ -3,6 +3,9 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+ARG NEXT_PUBLIC_API_URL=/v1
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+
 # Copy package files
 COPY package.json package-lock.json ./
 
@@ -34,5 +37,6 @@ COPY --from=builder /app/src ./src
 EXPOSE 3000
 
 ENV NODE_ENV=production
+ENV NEXT_PUBLIC_API_URL=/v1
 
 CMD ["npm", "run", "start"]

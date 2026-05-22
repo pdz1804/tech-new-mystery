@@ -1,175 +1,219 @@
 # Tech News Mystery
 
-A modern full-stack web application for discovering, reading, and discussing tech news articles.
+Tech News Mystery is a full-stack technology news platform for discovering,
+searching, processing, reading, saving, and discussing AI/tech articles. The
+app uses a Next.js frontend, FastAPI backend, DynamoDB persistence, S3 image
+storage, Redis/Celery background processing, Qdrant semantic search, and
+LLM-powered article enrichment.
+
+## Quick Links
+
+| Area | Link |
+| --- | --- |
+| API reference | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) |
+| System architecture | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Deployment architecture | [docs/DEPLOYMENT_ARCHITECTURE.md](docs/DEPLOYMENT_ARCHITECTURE.md) |
+| GitHub CI/CD | [docs/GITHUB_CICD.md](docs/GITHUB_CICD.md) |
+| Terraform stack | [infra/terraform/README.md](infra/terraform/README.md) |
+
+Production app endpoint:
+
+```text
+http://tech-news-mystery-prod-alb-840627461.us-west-2.elb.amazonaws.com
+```
 
 ## Features
 
-- **User Authentication**: Secure JWT-based authentication (1-day tokens)
-- **Article Management**: Create, read, update, delete articles with AI-powered processing
-- **Intelligent Content Extraction**: Crawl4AI for LLM-friendly markdown extraction (NOT BeautifulSoup)
-- **AI Processing**: Claude 3.5 Haiku (via Bedrock) + OpenAI fallback for titles, summaries, categories, tags
-- **Article Engagement**: Like, save, view count tracking
-- **Admin Search**: Tavily API integration for topic-based article discovery
-- **Role-Based Access**: Admin and user roles with proper authorization
-- **Responsive Design**: Mobile-first responsive design (375px+)
-- **Real AWS**: DynamoDB in us-west-2, Redis, IAM role-based auth
+- Article listing, detail pages, search, saves, likes, comments, and profiles
+- Admin-only article creation, queue review, web/news search triggers, and user role management
+- Hybrid semantic/keyword search backed by Qdrant
+- AI-assisted extraction, summarization, category classification, and metadata generation
+- Background workers for scheduled discovery and article processing
+- Apple-inspired glass UI with responsive top navigation
+- AWS production deployment through ECS Fargate, ALB, ECR, DynamoDB, S3, ElastiCache, Secrets Manager, and Bedrock
 
-## Tech Stack
+## Stack
 
-### Backend
-- **Framework**: FastAPI (Python 3.11+)
-- **Database**: AWS DynamoDB (us-west-2, real AWS)
-- **Cache**: Redis (Docker for dev, ElastiCache for prod)
-- **Task Queue**: Celery with Redis broker
-- **Web Scraping**: Crawl4AI (intelligent content extraction, NOT BeautifulSoup)
-- **LLM**: Claude 3.5 Haiku (AWS Bedrock) + OpenAI GPT-4o-mini fallback
-- **Search**: Tavily Search API
-- **Authentication**: JWT tokens (1-day expiration)
-- **Authorization**: Role-based access control (admin/user)
+| Layer | Technology |
+| --- | --- |
+| Frontend | Next.js 14, React 18, TypeScript, Tailwind CSS, Zustand, TanStack Query |
+| Backend | FastAPI, Python 3.11, PynamoDB, Celery |
+| Data | DynamoDB, S3, Qdrant |
+| Async/cache | Redis locally, ElastiCache Redis in AWS |
+| AI/search | AWS Bedrock, OpenAI fallback, Tavily, NewsAPI |
+| Deployment | Docker, ECR, ECS Fargate, ALB, Terraform, GitHub Actions |
 
-### Frontend
-- **Framework**: Next.js 14 with React 18 (TypeScript)
-- **Styling**: Tailwind CSS
-- **State Management**: Zustand
-- **UI Components**: Lucide icons, Framer Motion
-- **Responsive**: Mobile-first design (375px+)
+<details>
+<summary>System Architecture</summary>
 
-## Getting Started
-
-### Test Accounts (Pre-Created for Development)
-
-**Admin Account** (full system access):
-```
-Username: admin
-Email: admin@example.com
-Password: admin123
-Role: admin (can search Tavily, manage users, all articles)
+```mermaid
+flowchart LR
+  Browser[Browser] --> Frontend[Next.js frontend]
+  Frontend --> API[FastAPI API]
+  API --> Dynamo[(DynamoDB)]
+  API --> S3[(S3 images)]
+  API --> Redis[(Redis)]
+  API --> Qdrant[(Qdrant)]
+  API --> Bedrock[AWS Bedrock]
+  API --> OpenAI[OpenAI fallback]
+  Worker[Celery worker] --> Redis
+  Worker --> Dynamo
+  Worker --> S3
+  Worker --> Bedrock
+  Beat[Celery beat] --> Redis
 ```
 
-**User Account** (standard user features):
+Production runs four ECS services:
+
+| Service | Purpose |
+| --- | --- |
+| `frontend` | Serves the Next.js production UI |
+| `api` | Serves FastAPI HTTP routes under `/v1` |
+| `worker` | Runs Celery background jobs |
+| `beat` | Runs Celery schedules |
+
+More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+</details>
+
+<details>
+<summary>Local Development</summary>
+
+Start Redis:
+
+```powershell
+cd infra
+docker compose up redis
 ```
-Username: testuser
-Email: user@example.com
-Password: user123
-Role: user (create/manage own articles, like/save, engage)
-```
 
-⚠️ **These accounts are created automatically when backend starts.** Use them for API testing.
+Start backend:
 
-### Prerequisites
-- Python 3.11+
-- Node.js 18+
-- Docker (for Redis only - local dev)
-- AWS credentials configured (for DynamoDB)
-- AWS Bedrock access (us-west-2)
-- OpenAI API key (for fallback)
-- Tavily API key (for search)
-
-### Quick Start
-
-**For 5-minute setup with Docker:** See [QUICK_START.md](QUICK_START.md)
-
-**For manual terminal startup:** See [MANUAL_STARTUP.md](MANUAL_STARTUP.md)
-
-**For detailed setup:** See [SETUP.md](SETUP.md)
-
-#### Quick Reference
-
-```bash
-# 1. Start Redis (Terminal 1)
-cd infra && docker-compose up redis
-
-# 2. Start Backend (Terminal 2)
+```powershell
 cd backend
-python -m venv venv && venv\Scripts\activate
-pip install -e .
-uvicorn app.main:app --reload
-
-# 3. Start Frontend (Terminal 3)
-cd frontend && npm install && npm run dev
-
-# 4. Create DynamoDB tables (Terminal 4)
-cd backend && python scripts/create_tables_boto3.py
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-- Backend: `http://localhost:8000`
-- Frontend: `http://localhost:3000`
-- API Docs: `http://localhost:8000/docs`
+Start frontend:
 
-## API Documentation
-
-Visit `http://localhost:8000/docs` for interactive API documentation (Swagger UI).
-
-### Key Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/v1/auth/register` | Register new user |
-| POST | `/v1/auth/login` | Login user |
-| GET | `/v1/auth/me` | Get current user |
-| GET | `/v1/articles` | List articles |
-| GET | `/v1/articles/{slug}` | Get article details |
-| GET | `/v1/search` | Search articles |
-| GET | `/v1/trending` | Get trending articles |
-| GET | `/v1/comments/{article_id}` | Get article comments |
-| POST | `/v1/comments` | Create comment |
-
-## Error Handling
-
-All API errors return structured responses with proper HTTP status codes and semantic error codes:
-
-```json
-{
-  "success": false,
-  "error": {
-    "code": "ERROR_CODE",
-    "message": "Human-readable message",
-    "details": []
-  }
-}
+```powershell
+cd frontend
+npm install
+npm run dev
 ```
 
-Error codes include: `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `DUPLICATE`, `VALIDATION_ERROR`, `INTERNAL_SERVER_ERROR`.
+Local URLs:
 
-## Testing
+| Service | URL |
+| --- | --- |
+| Frontend | `http://localhost:3000` |
+| Backend | `http://localhost:8000` |
+| Swagger | `http://localhost:8000/docs` |
 
-Run the test suite:
+</details>
 
-```bash
+<details>
+<summary>Configuration</summary>
+
+The backend reads runtime settings from environment variables through
+`backend/app/config.py`.
+
+Important settings:
+
+| Variable | Purpose |
+| --- | --- |
+| `AWS_REGION` | AWS region, currently `us-west-2` |
+| `DYNAMODB_TABLE_PREFIX` | DynamoDB table prefix, currently `tech-news-` |
+| `S3_BUCKET` | Article image/object bucket |
+| `REDIS_URL` | Cache Redis URL |
+| `CELERY_BROKER_URL` | Celery broker Redis URL |
+| `CELERY_RESULT_BACKEND` | Celery result Redis URL |
+| `LLM_PROVIDER` | Ordered LLM providers, for example `bedrock,openai` |
+| `BEDROCK_MODEL` | Bedrock model ID |
+| `QDRANT_MODE` | `cloud` or `docker` |
+| `QDRANT_URL` | Qdrant Cloud endpoint when using cloud mode |
+
+Local manual mode commonly uses `localhost:6379`; Docker Compose uses
+`redis://redis:6379`; AWS ECS uses the Terraform-created ElastiCache endpoint.
+
+</details>
+
+<details>
+<summary>Deployment</summary>
+
+Infrastructure is managed manually with Terraform in `infra/terraform`.
+The Terraform workflow is intentionally parked as:
+
+```text
+.github/workflows/terraform.yml.bak
+```
+
+That means normal pushes do not redeploy infrastructure.
+
+App CI/CD is handled by `.github/workflows/deploy.yml`:
+
+- Pull requests run backend compile checks and frontend type-check/test/build.
+- Pushes to `main` run the same checks, build backend/frontend Docker images,
+  push them to ECR, and force a new ECS rollout.
+- Only app code/container changes deploy automatically.
+
+Current AWS production resources:
+
+| Resource | Name |
+| --- | --- |
+| Region | `us-west-2` |
+| ECS cluster | `tech-news-mystery-prod` |
+| ALB | `tech-news-mystery-prod-alb-840627461.us-west-2.elb.amazonaws.com` |
+| S3 article bucket | `tech-news-articles-381492273521` |
+| ECR backend | `tech-news-mystery-prod-backend` |
+| ECR frontend | `tech-news-mystery-prod-frontend` |
+| Redis | `tech-news-mystery-prod-redis.jx9fd6.ng.0001.usw2.cache.amazonaws.com` |
+
+More detail: [docs/DEPLOYMENT_ARCHITECTURE.md](docs/DEPLOYMENT_ARCHITECTURE.md)
+and [docs/GITHUB_CICD.md](docs/GITHUB_CICD.md).
+
+</details>
+
+<details>
+<summary>Useful Commands</summary>
+
+Frontend checks:
+
+```powershell
+cd frontend
+npm run type-check
+npm test
+npm run build
+```
+
+Backend checks:
+
+```powershell
 cd backend
-source venv/Scripts/activate
-python -m pytest tests/ -v
+python -m compileall app scripts
+pytest
 ```
 
-**Test Coverage**: 183 tests passing with 64% code coverage
+AWS service status:
 
-## Development
-
-### Code Style
-- Follow PEP 8 for Python
-- Use ESLint and Prettier for JavaScript
-- Match existing code patterns
-
-### Making Changes
-1. Create a feature branch
-2. Make your changes
-3. Run tests to ensure nothing breaks
-4. Submit a pull request
-
-## Deployment
-
-The application is containerized and can be deployed using Docker:
-
-```bash
-docker-compose up -d
+```powershell
+aws ecs describe-services --region us-west-2 --cluster tech-news-mystery-prod --services frontend api worker beat
+aws logs tail /ecs/tech-news-mystery-prod --region us-west-2 --follow
 ```
 
-See deployment documentation for cloud provider instructions.
+</details>
+
+## Repository Layout
+
+| Path | Purpose |
+| --- | --- |
+| `backend/` | FastAPI app, Celery tasks, repositories, services |
+| `frontend/` | Next.js application |
+| `infra/docker/` | Production Dockerfiles |
+| `infra/terraform/` | AWS infrastructure as code |
+| `docs/` | Maintained project documentation |
+| `.github/workflows/deploy.yml` | Active app CI/CD workflow |
 
 ## License
 
-MIT License - see LICENSE file for details
-
-## Support
-
-For issues, questions, or suggestions, please open an issue on GitHub.
+MIT. See [LICENSE](LICENSE).

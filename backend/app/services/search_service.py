@@ -281,6 +281,7 @@ class SearchService:
         limit: int = 10,
         from_date: Optional[str] = None,
         sort_by: Optional[str] = None,
+        sources: Optional[list[str]] = None,
     ) -> dict:
         """
         Search news using NewsAPI for tech news and articles.
@@ -290,6 +291,7 @@ class SearchService:
             limit: Maximum number of results (default 10)
             from_date: Search from this date onwards (format: YYYY-MM-DD)
             sort_by: Sort results by 'popularity', 'publishedAt', or 'relevancy'
+            sources: List of source IDs to filter by (e.g., ['techcrunch', 'the-verge'])
 
         Returns:
             dict with keys:
@@ -339,8 +341,13 @@ class SearchService:
                 search_params["from_param"] = from_date
                 logger.debug(f"[NEWSAPI_SEARCH] Added from_date filter: {from_date}")
 
+            # Add optional sources filter if provided
+            if sources:
+                search_params["sources"] = ",".join(sources)
+                logger.debug(f"[NEWSAPI_SEARCH] Added sources filter: {sources}")
+
             # Search for articles
-            logger.info(f"[NEWSAPI_SEARCH] Searching query='{query}', limit={limit}, from_date={from_date}, sort_by={sort_by or 'publishedAt'}...")
+            logger.info(f"[NEWSAPI_SEARCH] Searching query='{query}', limit={limit}, from_date={from_date}, sources={sources}, sort_by={sort_by or 'publishedAt'}...")
             logger.debug(f"[NEWSAPI_SEARCH] Search params: {search_params}")
 
             response = client.get_everything(**search_params)

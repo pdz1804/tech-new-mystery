@@ -16,6 +16,7 @@ import {
   Compass,
   List,
   CheckSquare,
+  Users,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/stores/authStore';
 import GlassContainer from '@/components/ui/GlassContainer';
@@ -206,7 +207,10 @@ export function Header() {
             <NavLink href="/search" icon={<Compass size={18} />} label="Browse" />
             <NavLink href="/profile?tab=saved" icon={<Bookmark size={18} />} label="Saved" />
             {user?.is_admin && (
-              <NavLink href="/admin/queue" icon={<CheckSquare size={18} />} label="Queue" />
+              <>
+                <NavLink href="/admin/queue" icon={<CheckSquare size={18} />} label="Queue" />
+                <NavLink href="/admin/users" icon={<Users size={18} />} label="Users" />
+              </>
             )}
           </nav>
         </div>
@@ -268,7 +272,10 @@ export function Header() {
                 <MobileNavLink href="/search" icon={<Compass size={18} />} label="Browse" />
                 <MobileNavLink href="/profile?tab=saved" icon={<Bookmark size={18} />} label="Saved" />
                 {user?.is_admin && (
-                  <MobileNavLink href="/admin/queue" icon={<CheckSquare size={18} />} label="Queue" />
+                  <>
+                    <MobileNavLink href="/admin/queue" icon={<CheckSquare size={18} />} label="Queue" />
+                    <MobileNavLink href="/admin/users" icon={<Users size={18} />} label="Users" />
+                  </>
                 )}
                 <button
                   onClick={handleLogout}

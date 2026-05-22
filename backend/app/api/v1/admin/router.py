@@ -530,9 +530,15 @@ async def trigger_tavily_scheduler(
         raise HTTPException(status_code=500, detail=f"Failed to trigger scheduler: {str(e)}")
 
 
+class NewsAPITriggerRequest(BaseModel):
+    """Request schema for NewsAPI trigger."""
+    query: str | None = None
+    from_date: str | None = None
+
+
 @router.post("/newsapi/trigger", response_model=GenericSuccessResponse)
 async def trigger_newsapi_scheduler(
-    from_date: str | None = None,
+    request: NewsAPITriggerRequest,
     _: dict = Depends(require_admin),
 ) -> GenericSuccessResponse:
     """Manually trigger NewsAPI scheduler task (admin only).
@@ -541,6 +547,7 @@ async def trigger_newsapi_scheduler(
     instead of waiting for the next scheduled run (6 hours).
 
     Args:
+        query: Optional custom search query. If not provided, uses default.
         from_date: Optional ISO format date (YYYY-MM-DD) to search from.
                    If not provided, defaults to yesterday.
     """
@@ -549,14 +556,23 @@ async def trigger_newsapi_scheduler(
         from datetime import datetime, timedelta
 
         logger.info("[NEWSAPI_TRIGGER] Admin manually triggering NewsAPI scheduler")
+
+        from_date = request.from_date
+        query = request.query
+
         if from_date:
             logger.info(f"[NEWSAPI_TRIGGER] Using custom date: {from_date}")
         else:
             from_date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
             logger.info(f"[NEWSAPI_TRIGGER] Using yesterday's date: {from_date}")
 
-        # Dispatch the task asynchronously with the date parameter
-        task = newsapi_scheduled_task.delay(from_date=from_date)
+        if query:
+            logger.info(f"[NEWSAPI_TRIGGER] Using custom query: {query}")
+        else:
+            logger.info("[NEWSAPI_TRIGGER] Using default query")
+
+        # Dispatch the task asynchronously with both parameters
+        task = newsapi_scheduled_task.delay(from_date=from_date, query=query)
 
         logger.info(f"[NEWSAPI_TRIGGER] Task queued with ID: {task.id}")
 
@@ -567,3 +583,182 @@ async def trigger_newsapi_scheduler(
     except Exception as e:
         logger.error(f"[NEWSAPI_TRIGGER] Error triggering NewsAPI scheduler: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to trigger scheduler: {str(e)}")
+
+
+@router.delete("/searches/clean", response_model=GenericSuccessResponse)
+async def clean_searches_queue(
+    _: dict = Depends(require_admin),
+) -> GenericSuccessResponse:
+    """Delete all pending searches from the queue (admin only).
+
+    WARNING: This will permanently delete all pending search results awaiting approval.
+    Use with caution.
+    """
+    try:
+        logger.warning("[CLEAN_SEARCHES] Admin initiating queue cleanup")
+
+        search_repo = PendingSearchRepository()
+        pending_searches = await search_repo.list_pending(limit=1000)
+
+        if not pending_searches:
+            return GenericSuccessResponse(
+                success=True,
+                message="Queue is already empty - nothing to clean",
+            )
+
+        count = 0
+        for search in pending_searches:
+            try:
+                await search_repo.delete(search.search_id)
+                count += 1
+            except Exception as e:
+                logger.error(f"[CLEAN_SEARCHES] Error deleting search {search.search_id}: {str(e)}")
+                continue
+
+        logger.warning(f"[CLEAN_SEARCHES] Successfully deleted {count} pending searches")
+
+        return GenericSuccessResponse(
+            success=True,
+            message=f"Successfully cleaned {count} pending searches from the queue",
+        )
+
+    except Exception as e:
+        logger.error(f"[CLEAN_SEARCHES] Error cleaning searches: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to clean queue: {str(e)}")
+
+
+@router.post("/qdrant/backfill", response_model=GenericSuccessResponse)
+async def trigger_qdrant_backfill(
+    _: dict = Depends(require_admin),
+) -> GenericSuccessResponse:
+    """Manually trigger Qdrant backfill task to index all articles (admin only).
+
+    This will:
+    1. Fetch all articles from DynamoDB
+    2. Skip already-indexed articles
+    3. Generate embeddings and index into Qdrant
+    4. Report progress and final statistics
+
+    Warning: This is computationally expensive and may take several minutes.
+    """
+    try:
+        import asyncio
+        from app.repositories.article_repository import ArticleRepository
+        from app.services.qdrant_service import QdrantService
+
+        logger.warning("[QDRANT_BACKFILL] Admin manually triggering Qdrant backfill")
+
+        # Run backfill in background (don't block response)
+        asyncio.create_task(_backfill_qdrant_task())
+
+        return GenericSuccessResponse(
+            success=True,
+            message="Qdrant backfill task started in background. Monitor logs for progress.",
+        )
+
+    except Exception as e:
+        logger.error(f"[QDRANT_BACKFILL] Error triggering backfill: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to trigger backfill: {str(e)}")
+
+
+async def _backfill_qdrant_task():
+    """Background task for Qdrant backfill."""
+    try:
+        import time
+        from app.repositories.article_repository import ArticleRepository
+        from app.services.qdrant_service import QdrantService
+
+        logger.info("[QDRANT_BACKFILL] Starting background backfill task")
+        start_time = time.time()
+
+        # Initialize services
+        article_repo = ArticleRepository()
+        qdrant_service = QdrantService()
+
+        # Fetch all articles
+        articles, _ = await article_repo.list_all(limit=10000)
+
+        if not articles:
+            logger.warning("[QDRANT_BACKFILL] No articles found")
+            return
+
+        total = len(articles)
+        logger.info(f"[QDRANT_BACKFILL] Found {total} articles to process")
+
+        # Process articles
+        batch_size = 10
+        indexed_count = 0
+        skipped_count = 0
+        failed_count = 0
+
+        for batch_num in range(0, total, batch_size):
+            batch = articles[batch_num : batch_num + batch_size]
+
+            for article in batch:
+                try:
+                    # Check if already indexed
+                    exists = await qdrant_service.article_exists(article.article_id)
+                    if exists:
+                        skipped_count += 1
+                        continue
+
+                    # Index article
+                    success = await qdrant_service.index_article(
+                        article_id=article.article_id,
+                        slug=article.slug,
+                        title=article.title,
+                        summary=article.summary,
+                        content=article.content,
+                        category=article.category,
+                        author=article.author,
+                        published_at=article.published_at,
+                        view_count=article.view_count,
+                        source_id=article.source_id,
+                    )
+
+                    if success:
+                        indexed_count += 1
+                    else:
+                        failed_count += 1
+
+                except Exception as e:
+                    failed_count += 1
+                    logger.warning(f"[QDRANT_BACKFILL] Error indexing {article.article_id}: {str(e)}")
+
+        elapsed_time = time.time() - start_time
+        logger.info(
+            f"[QDRANT_BACKFILL] Completed: indexed={indexed_count}, "
+            f"skipped={skipped_count}, failed={failed_count}, time={elapsed_time:.1f}s"
+        )
+
+    except Exception as e:
+        logger.error(f"[QDRANT_BACKFILL] Task failed: {str(e)}", exc_info=True)
+
+
+@router.get("/qdrant/stats", response_model=GenericSuccessResponse)
+async def get_qdrant_stats(
+    _: dict = Depends(require_admin),
+) -> GenericSuccessResponse:
+    """Get Qdrant collection statistics (admin only)."""
+    try:
+        from app.services.qdrant_service import QdrantService
+
+        logger.info("[QDRANT_STATS] Fetching collection statistics")
+        qdrant_service = QdrantService()
+        stats = await qdrant_service.get_collection_stats()
+
+        if "error" in stats:
+            raise HTTPException(status_code=503, detail=f"Failed to fetch statistics: {stats['error']}")
+
+        logger.info(f"[QDRANT_STATS] Collection has {stats['points_count']} indexed articles")
+
+        return GenericSuccessResponse(
+            success=True,
+            message=f"Collection: {stats['collection_name']}, "
+                    f"Articles indexed: {stats['points_count']}, "
+                    f"Status: {stats['status']}"
+        )
+
+    except Exception as e:
+        logger.error(f"[QDRANT_STATS] Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch statistics: {str(e)}")

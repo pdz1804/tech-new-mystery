@@ -368,10 +368,9 @@ python test_crawl_integration_simple.py
 - **Crawl4AI Examples:** https://docs.crawl4ai.com/core/examples/
 
 ### Related Files
-- Project Plan: `docs/PROJECT_PLAN.md`
 - Architecture: `docs/ARCHITECTURE.md`
 - API Reference: `docs/API_REFERENCE.md`
-- Setup Guide: `SETUP.md`
+- Manual Startup: `docs/MANUAL_STARTUP.md`
 
 ### Technologies
 - **Playwright:** Browser automation

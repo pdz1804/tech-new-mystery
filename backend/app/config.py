@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-1.5-mini"
 
     bedrock_region: str = "us-west-2"
-    bedrock_model: str = "us.anthropic.claude-haiku-4-5-2025-1001-v1:0"
+    bedrock_model: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama2"
@@ -62,6 +62,17 @@ class Settings(BaseSettings):
 
     # NewsAPI
     newsapi_key: str | None = None
+
+    # Qdrant Vector Database
+    qdrant_mode: str = "cloud"  # "docker" or "cloud"
+    qdrant_host: str = "localhost"
+    qdrant_port: int = 6333
+    qdrant_url: str | None = None
+    qdrant_api_key: str | None = None
+    qdrant_collection_name: str = "articles"
+
+    # OpenAI Embeddings (for vector search)
+    openai_embedding_model: str = "text-embedding-3-small"
 
     # JWT
     jwt_secret_key: str

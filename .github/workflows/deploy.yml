@@ -1,0 +1,127 @@
+name: App CI/CD
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "infra/docker/**"
+      - ".github/workflows/deploy.yml"
+  push:
+    branches: ["main"]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "infra/docker/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
+  ECS_CLUSTER: ${{ vars.ECS_CLUSTER || 'tech-news-mystery-prod' }}
+  BACKEND_ECR_REPOSITORY: ${{ vars.BACKEND_ECR_REPOSITORY || 'tech-news-mystery-prod-backend' }}
+  FRONTEND_ECR_REPOSITORY: ${{ vars.FRONTEND_ECR_REPOSITORY || 'tech-news-mystery-prod-frontend' }}
+  NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || '/v1' }}
+
+jobs:
+  backend-checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install backend dependencies
+        run: pip install -r requirements.txt
+
+      - name: Compile backend
+        run: python -m compileall app scripts
+
+  frontend-checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Type-check frontend
+        run: npm run type-check
+
+      - name: Test frontend
+        run: npm test -- --runInBand
+
+      - name: Build frontend
+        run: npm run build
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs:
+      - backend-checks
+      - frontend-checks
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-${{ github.ref }}
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push backend image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -f infra/docker/backend.Dockerfile -t "$ECR_REGISTRY/$BACKEND_ECR_REPOSITORY:$IMAGE_TAG" backend
+          docker tag "$ECR_REGISTRY/$BACKEND_ECR_REPOSITORY:$IMAGE_TAG" "$ECR_REGISTRY/$BACKEND_ECR_REPOSITORY:latest"
+          docker push "$ECR_REGISTRY/$BACKEND_ECR_REPOSITORY:$IMAGE_TAG"
+          docker push "$ECR_REGISTRY/$BACKEND_ECR_REPOSITORY:latest"
+
+      - name: Build and push frontend image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build --build-arg NEXT_PUBLIC_API_URL="$NEXT_PUBLIC_API_URL" -f frontend/Dockerfile -t "$ECR_REGISTRY/$FRONTEND_ECR_REPOSITORY:$IMAGE_TAG" frontend
+          docker tag "$ECR_REGISTRY/$FRONTEND_ECR_REPOSITORY:$IMAGE_TAG" "$ECR_REGISTRY/$FRONTEND_ECR_REPOSITORY:latest"
+          docker push "$ECR_REGISTRY/$FRONTEND_ECR_REPOSITORY:$IMAGE_TAG"
+          docker push "$ECR_REGISTRY/$FRONTEND_ECR_REPOSITORY:latest"
+
+      - name: Force ECS rollout
+        run: |
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service api --force-new-deployment
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service frontend --force-new-deployment
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service worker --force-new-deployment
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service beat --force-new-deployment
+
+      - name: Wait for ECS services
+        run: |
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services api frontend worker beat

@@ -198,8 +198,8 @@ INSTRUCTIONS:
 2. Write a 2-3 sentence summary capturing main points and key findings
 3. Classify into ONE category: {categories_str}, or Other
 4. Generate 4-6 semantic tags (single words or short phrases, lowercase, hyphen-separated)
-5. Structure full article as markdown with proper headers, paragraphs, and lists
-6. Embed available images contextually throughout the markdown where relevant
+5. Structure article as markdown with headers, paragraphs, and key sections (keep it concise, ~2000 chars max)
+6. Embed 2-3 most relevant images only (not every image URL)
 
 PROVIDED TITLE: {title if title else "NOT PROVIDED - GENERATE ONE"}
 PROVIDED AUTHOR: {author if author else "UNKNOWN"}
@@ -210,8 +210,12 @@ CATEGORIES (choose exactly one):
 CRITICAL INSTRUCTIONS FOR JSON RESPONSE:
 - Return ONLY a valid JSON object (no markdown code blocks, no extra text before/after)
 - Use proper JSON formatting with no unescaped quotes or newlines in string values
-- Escape any special characters (quotes, backslashes, newlines) in markdown_content
-- All string values must be on single logical lines (use \\n for actual newlines if needed)
+- IMPORTANT: Escape special characters in ALL string values:
+  - Use \\n for actual line breaks
+  - Use \\" for quotes
+  - Use \\\\ for backslashes
+- All markdown_content must have escaped newlines: use \\n instead of actual newlines
+- Double-check JSON is valid before responding
 
 JSON Response Format (MUST be exactly this structure):
 {{
@@ -219,7 +223,7 @@ JSON Response Format (MUST be exactly this structure):
     "summary": "2-3 sentence summary of main points",
     "category": "One of: AI, Web Development, DevOps, Security, Mobile, Cloud Computing, Data Science, Infrastructure, Blockchain, Other",
     "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-    "markdown_content": "Full article as markdown with headers, paragraphs, lists, and images. Use proper \\n for line breaks in JSON string."
+    "markdown_content": "IMPORTANT: Use actual escaped newlines (\\\\n) for line breaks. Example: \\"## Section\\\\n\\\\nContent here\\\\n\\\\n## Next\\"."
 }}
 
 Important:
@@ -242,49 +246,87 @@ JSON Response:"""
                 logger.info(f"LLM API call (attempt {attempt + 1}/{max_retries})")
                 response = await llm_client.generate(
                     prompt=prompt,
-                    max_tokens=3000,
+                    max_tokens=8192,
                     temperature=0.5,
                 )
                 attempt_elapsed = time.time() - attempt_start
                 logger.info(f"LLM API call succeeded in {attempt_elapsed:.2f}s")
 
-                logger.debug(f"Raw response length: {len(response)} chars")
-                logger.debug(f"First 500 chars of response: {response[:500]}")
+                logger.info(f"Raw response length: {len(response)} chars")
+                logger.info(f"Full raw response:\n{response}")
 
                 # Parse JSON response with improved extraction
+                cleaned = response.strip()
+
+                # First, try to remove markdown code blocks if present
+                if cleaned.startswith('```'):
+                    # Remove markdown code block markers
+                    cleaned = re.sub(r'^```(json)?\s*', '', cleaned, flags=re.MULTILINE)
+                    cleaned = re.sub(r'```\s*$', '', cleaned, flags=re.MULTILINE)
+                    cleaned = cleaned.strip()
+                    logger.debug("Removed markdown code block markers")
+
                 try:
-                    data = json.loads(response.strip())
+                    data = json.loads(cleaned)
                 except json.JSONDecodeError as initial_error:
+                    logger.debug(f"Initial JSON parse failed, attempting to fix unescaped newlines. Error: {str(initial_error)}")
+
+                    # Fix unescaped newlines in JSON strings
+                    # This happens when Bedrock returns actual newlines instead of \n escapes
+                    # We need to escape them while preserving the JSON structure
+                    try:
+                        # Find the first { and last }
+                        start_idx = cleaned.find('{')
+                        end_idx = cleaned.rfind('}')
+
+                        if start_idx >= 0 and end_idx > start_idx:
+                            json_part = cleaned[start_idx:end_idx+1]
+
+                            # Replace actual newlines with escaped newlines in the JSON
+                            # But be careful not to break the JSON structure
+                            # This is a careful approach: replace \n with \\n in string contexts
+                            fixed_json = json_part.replace('\n', '\\n')
+
+                            logger.debug("Fixed unescaped newlines in JSON")
+                            data = json.loads(fixed_json)
+                        else:
+                            raise ValueError("Could not locate JSON bounds")
+                    except Exception as fix_error:
+                        logger.warning(f"Newline fix failed: {str(fix_error)}, trying brace extraction...")
+
                     # Try to extract and clean JSON from response
                     # Look for { and match closing }
-                    start_idx = response.find('{')
+                    start_idx = cleaned.find('{')
                     if start_idx == -1:
                         raise ValueError("Could not find JSON start in response")
 
                     # Find the matching closing brace
                     brace_count = 0
                     end_idx = -1
-                    for i in range(start_idx, len(response)):
-                        if response[i] == '{':
+                    for i in range(start_idx, len(cleaned)):
+                        if cleaned[i] == '{':
                             brace_count += 1
-                        elif response[i] == '}':
+                        elif cleaned[i] == '}':
                             brace_count -= 1
                             if brace_count == 0:
                                 end_idx = i
                                 break
 
                     if end_idx == -1:
+                        logger.error(f"Could not find matching closing brace. Response length: {len(cleaned)}")
+                        logger.error(f"First 1000 chars of response: {cleaned[:1000]}")
                         raise ValueError("Could not find matching closing brace in response")
 
-                    json_str = response[start_idx:end_idx+1]
+                    json_str = cleaned[start_idx:end_idx+1]
+                    logger.debug(f"Extracted JSON ({len(json_str)} chars): {json_str[:300]}...")
 
                     # Try to parse the extracted JSON
                     try:
                         data = json.loads(json_str)
                     except json.JSONDecodeError as e:
                         logger.warning(f"Initial JSON parse error: {str(initial_error)}")
-                        logger.warning(f"Extracted JSON: {json_str[:500]}...")
                         logger.warning(f"Extracted JSON parse error: {str(e)}")
+                        logger.warning(f"Extracted JSON (first 500 chars): {json_str[:500]}")
                         raise ValueError(f"Invalid JSON after extraction: {str(e)}")
 
                 # Extract and validate fields
@@ -338,18 +380,27 @@ JSON Response:"""
                 logger.warning(f"JSON parse attempt {attempt + 1} failed: {str(e)}")
                 if attempt == max_retries - 1:
                     logger.error(f"All JSON parse attempts failed after {max_retries} tries")
+                    logger.info("Falling back to basic article structure with raw content")
                     return {
                         "title": title or "Untitled",
-                        "summary": None,
+                        "summary": content[:200] + "..." if content else None,
                         "category": "Other",
                         "tags": [],
                         "author": author,
-                        "structured_markdown": None,
+                        "structured_markdown": f"# {title or 'Untitled'}\n\n{content}",
                     }
             except Exception as e:
                 logger.error(f"Processing attempt {attempt + 1} failed: {str(e)}")
                 if attempt == max_retries - 1:
-                    raise
+                    logger.error(f"All processing attempts exhausted. Falling back to raw content.")
+                    return {
+                        "title": title or "Untitled",
+                        "summary": content[:200] + "..." if content else None,
+                        "category": "Other",
+                        "tags": [],
+                        "author": author,
+                        "structured_markdown": f"# {title or 'Untitled'}\n\n{content}",
+                    }
 
     def _build_final_markdown(
         self,

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Sparkles } from 'lucide-react';
 
@@ -95,7 +95,7 @@ export function SearchQueryModal({
             {/* Date Info */}
             <div className="mb-6 p-4 bg-blue-50 rounded-xl border border-blue-200/50">
               <p className="text-sm text-black/60">
-                <span className="font-semibold text-black">Searching yesterday's news</span> for latest tech trends, AI, agents, and cloud platform updates
+                <span className="font-semibold text-black">Searching yesterday&apos;s news</span> for latest tech trends, AI, agents, and cloud platform updates
               </p>
             </div>
 
