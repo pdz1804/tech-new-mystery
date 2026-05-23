@@ -90,6 +90,7 @@ async def _fetch_and_store_search_results(start_date: str | None = None) -> dict
                     query=topic,
                     start_date=search_date,
                     search_depth="advanced",
+                    topic="news",
                 )
 
                 if not search_result.get("success") or not search_result.get("results"):

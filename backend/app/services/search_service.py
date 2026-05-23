@@ -152,6 +152,7 @@ class SearchService:
         include_domains: Optional[list[str]] = None,
         start_date: Optional[str] = None,
         search_depth: Optional[str] = None,
+        topic: Optional[str] = None,
     ) -> dict:
         """
         Search web using Tavily Search API for tech news and articles.
@@ -217,6 +218,7 @@ class SearchService:
                 "query": query,
                 "search_depth": search_depth or "basic",
                 "include_raw_content": "markdown",
+                "topic": topic or "general",
             }
 
             # Always use start_date (default to yesterday if not provided)
@@ -230,18 +232,43 @@ class SearchService:
 
             logger.info(f"[TAVILY_SEARCH] Response received: {len(response.get('results', []))} results")
 
-            # Format results
+            # Format results and filter by published_date if start_date provided
             results = []
-            for item in response.get("results", []):
-                results.append({
-                    "url": item.get("url", ""),
-                    "title": item.get("title", ""),
-                    "description": item.get("content", ""),
-                    "source": item.get("source", ""),
-                    "published_date": item.get("published_date"),
-                })
+            from datetime import datetime
 
-            logger.info(f"[TAVILY_SEARCH] Formatted {len(results)} results")
+            filter_date = None
+            if start_date:
+                try:
+                    filter_date = datetime.strptime(start_date, "%Y-%m-%d")
+                except ValueError:
+                    logger.warning(f"[TAVILY_SEARCH] Invalid start_date format: {start_date}")
+
+            for item in response.get("results", []):
+                # Filter by publication date if start_date provided
+                should_include = True
+                if filter_date:
+                    pub_date_str = item.get("published_date")
+                    if pub_date_str:
+                        try:
+                            # Extract date part (handle ISO format)
+                            date_only = pub_date_str.split("T")[0] if "T" in pub_date_str else pub_date_str
+                            pub_date = datetime.strptime(date_only, "%Y-%m-%d")
+                            if pub_date < filter_date:
+                                logger.debug(f"[TAVILY_SEARCH] Skipping old article: {item.get('title')} (published: {pub_date_str}, filter: {start_date})")
+                                should_include = False
+                        except Exception as e:
+                            logger.debug(f"[TAVILY_SEARCH] Error parsing date {pub_date_str}: {e}")
+
+                if should_include:
+                    results.append({
+                        "url": item.get("url", ""),
+                        "title": item.get("title", ""),
+                        "description": item.get("content", ""),
+                        "source": item.get("source", ""),
+                        "published_date": item.get("published_date"),
+                    })
+
+            logger.info(f"[TAVILY_SEARCH] Formatted {len(results)} results (filtered from {len(response.get('results', []))})")
             return {
                 "success": True,
                 "query": query,
