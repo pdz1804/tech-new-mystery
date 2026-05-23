@@ -258,7 +258,8 @@ class SearchService:
                 "error": "Tavily library not installed"
             }
         except Exception as e:
-            logger.error(f"Error searching with Tavily: {str(e)}")
+            logger.error(f"Error searching with Tavily: {str(e)}", exc_info=True)
+            logger.error(f"[TAVILY_SEARCH] Search params used: {search_params}")
             return {
                 "success": False,
                 "query": query,
