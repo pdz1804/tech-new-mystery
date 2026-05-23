@@ -211,7 +211,7 @@ class SearchService:
             logger.info(f"[TAVILY_SEARCH] Initializing TavilyClient with API key")
             client = TavilyClient(api_key=api_key)
 
-            # Build search parameters for Tavily API
+            # Build search parameters for Tavily API (0.7.24+)
             search_params = {
                 "query": query,
                 "search_depth": search_depth or "basic",
