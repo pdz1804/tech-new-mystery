@@ -112,6 +112,7 @@ class ImageStorageService:
                 Key=s3_key,
                 Body=BytesIO(image_bytes),
                 ContentType='image/jpeg',
+                ACL='public-read'
             )
 
             s3_url = f"https://{self.bucket}.s3.{settings.aws_region}.amazonaws.com/{s3_key}"
