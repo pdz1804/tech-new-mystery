@@ -431,6 +431,12 @@ class ArticleService:
         markdown_content = processing_result.get("structured_markdown")
         content = processor._extract_text_from_html(raw_content)
 
+        # Limit content size to 50KB to stay under DynamoDB 400KB limit
+        max_content_size = 50000
+        if len(content.encode('utf-8')) > max_content_size:
+            content = content[:max_content_size] + "\n\n..."
+            logger.warning(f"Content truncated to {max_content_size} bytes for DynamoDB limit")
+
         # Create article
         article_id = str(uuid.uuid4())
         slug = generate_slug(generated_title)
@@ -457,9 +463,9 @@ class ArticleService:
             "is_published": True,
         }
 
-        # Create article in database
+        # Create article in database with size limit handling
         logger.info(f"Saving article to DynamoDB: {article_id}")
-        article = await self._article_repo.create(article_data)
+        article = await self._create_article_with_size_handling(article_data)
         logger.info(f"[SUCCESS] Article created successfully: {article_id} (slug: {slug})")
 
         # Index in Qdrant asynchronously (don't block article creation)
@@ -485,6 +491,61 @@ class ArticleService:
 
         return self._serialize_article_detail(article)
 
+
+    async def _create_article_with_size_handling(self, article_data: dict):
+        """Create article with automatic truncation if DynamoDB size limit exceeded.
+
+        If item size exceeds 400KB limit, truncates markdown_content and retries.
+        """
+        try:
+            return await self._article_repo.create(article_data)
+        except Exception as e:
+            error_msg = str(e)
+            logger.warning(f"Article creation failed: {error_msg}")
+
+            # Check if error is due to item size exceeding limit
+            if "Item size has exceeded" in error_msg or "ValidationException" in error_msg:
+                logger.warning(f"DynamoDB size limit exceeded, truncating markdown_content and retrying")
+
+                # Truncate markdown_content by removing the end and adding ellipsis
+                if article_data.get("markdown_content"):
+                    original_content = article_data["markdown_content"]
+                    original_size = len(original_content.encode('utf-8'))
+                    logger.info(f"Original markdown size: {original_size} bytes")
+
+                    # Progressively truncate in smaller chunks
+                    for attempt in range(1, 6):
+                        # Calculate size to remove (20% more each iteration)
+                        target_size = int(original_size * (0.8 ** attempt))
+
+                        if target_size < 1000:  # Don't go below 1KB
+                            target_size = 1000
+
+                        # Truncate to target size and add ellipsis
+                        truncated = original_content[:target_size] + "\n\n..."
+                        article_data["markdown_content"] = truncated
+                        new_size = len(truncated.encode('utf-8'))
+
+                        logger.info(f"Truncation attempt {attempt}: {new_size} bytes (target was {target_size})")
+
+                        try:
+                            result = await self._article_repo.create(article_data)
+                            logger.info(f"[SUCCESS] Article created after truncation (size: {new_size} bytes)")
+                            return result
+                        except Exception as retry_error:
+                            error_msg_retry = str(retry_error)
+                            if "Item size has exceeded" not in error_msg_retry:
+                                # Different error, not size-related
+                                logger.error(f"Different error on retry: {error_msg_retry}")
+                                raise
+                            logger.warning(f"Still too large ({new_size} bytes), truncating further...")
+                            continue
+
+                # If still failing after all attempts
+                logger.error(f"Failed to create article after 5 truncation attempts")
+                raise e
+            else:
+                raise
 
     def _extract_domain(self, url: str) -> str:
         """Extract domain from URL for source identification."""

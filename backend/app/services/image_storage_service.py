@@ -89,7 +89,10 @@ class ImageStorageService:
         return f"{self.images_prefix}{filename}_{url_hash}"
 
     def upload_to_s3(self, image_bytes: bytes, url: str, filename: str = "") -> Optional[str]:
-        """Upload image to S3.
+        """Upload image to S3 and generate presigned URL.
+
+        Uses presigned URLs (24-hour expiration) instead of public ACL for security.
+        Presigned URLs work even with "Block Public Access" enabled on the bucket.
 
         Args:
             image_bytes: Image file bytes
@@ -97,7 +100,7 @@ class ImageStorageService:
             filename: Optional original filename
 
         Returns:
-            S3 URL of uploaded image or None if upload fails
+            S3 presigned URL of uploaded image (valid for 24 hours)
         """
         if not image_bytes:
             return None
@@ -111,13 +114,18 @@ class ImageStorageService:
                 Bucket=self.bucket,
                 Key=s3_key,
                 Body=BytesIO(image_bytes),
-                ContentType='image/jpeg',
-                ACL='public-read'
+                ContentType='image/jpeg'
             )
 
-            s3_url = f"https://{self.bucket}.s3.{settings.aws_region}.amazonaws.com/{s3_key}"
-            logger.info(f"Image uploaded successfully: {s3_url}")
-            return s3_url
+            # Generate presigned URL valid for 24 hours (86400 seconds)
+            presigned_url = self.s3_client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': self.bucket, 'Key': s3_key},
+                ExpiresIn=86400
+            )
+
+            logger.info(f"Image uploaded successfully with presigned URL: {presigned_url}")
+            return presigned_url
         except Exception as e:
             logger.error(f"Error uploading image to S3: {str(e)}")
             return None

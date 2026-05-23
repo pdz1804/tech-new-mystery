@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     aws_region: str = "us-west-2"
     dynamodb_endpoint_url: str | None = None  # None = use real AWS DynamoDB
     dynamodb_table_prefix: str = "tech-news-"  # Prefix for all DynamoDB table names
-    s3_bucket: str = "tech-news-articles-381492273521"  # S3 bucket for storing article images
+    s3_bucket: str = "tech-news-articles-381492273521"  # S3 bucket (prod) - override with S3_BUCKET env var for local dev
     s3_images_prefix: str = "article-images/"  # Prefix for images in S3
 
     # Redis - Switch based on environment

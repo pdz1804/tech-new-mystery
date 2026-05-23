@@ -8,13 +8,13 @@ from enum import Enum
 try:
     from crawl4ai import AsyncWebCrawler, CacheMode
     try:
-        from crawl4ai.content_filter_strategy import RelevantContentFilter
+        from crawl4ai.extraction_strategy import LLMExtractionStrategy
     except ImportError:
-        RelevantContentFilter = None
+        LLMExtractionStrategy = None
 except ImportError:
     AsyncWebCrawler = None
     CacheMode = None
-    RelevantContentFilter = None
+    LLMExtractionStrategy = None
 
 logger = logging.getLogger(__name__)
 
@@ -80,13 +80,19 @@ class CrawlerClient:
             self._initialized = False
             raise
 
-    def _build_crawler_config(self, cache_mode: str = "always") -> dict:
+    def _build_crawler_config(self, cache_mode: str = "always", use_llm_strategy: bool = True) -> dict:
         """Build crawler parameters for AsyncWebCrawler.arun().
 
-        For Crawl4AI 0.4.0+, returns a dict of parameters to pass to arun().
+        For Crawl4AI 0.8.6+, returns a dict of parameters to pass to arun().
+        Uses LLMExtractionStrategy for accurate LinkedIn post extraction.
         """
         config_kwargs = {
             "word_count_threshold": 10,
+            "exclude_external_links": True,
+            "remove_overlay_elements": True,
+            "flatten_shadow_dom": True,  # CRITICAL: LinkedIn uses Web Components with Shadow DOM
+            "wait_until": "networkidle",  # CRITICAL: Wait for dynamic content to load
+            "delay_before_return_html": 2,  # Allow async content to fully render
         }
 
         # Add cache mode if available
@@ -98,8 +104,22 @@ class CrawlerClient:
             }
             config_kwargs["cache_mode"] = cache_modes.get(cache_mode, CacheMode.ENABLED)
 
-        # Content filter is abstract in 0.4.0, skip for now
-        # Can be added once a concrete implementation is available
+        # Use LLMExtractionStrategy for intelligent content extraction
+        # Better at distinguishing actual post content vs. CSS docs/metadata
+        if use_llm_strategy:
+            try:
+                if LLMExtractionStrategy:
+                    strategy = LLMExtractionStrategy(
+                        provider="openai",
+                        api_token=None,  # Will use OPENAI_API_KEY env var
+                        instruction="""Extract ONLY the main article or post content.
+                        Ignore CSS documentation, design patterns, technical specs, footer links, ads.
+                        Return as clean markdown focused on the actual content."""
+                    )
+                    config_kwargs["extraction_strategy"] = strategy
+                    logger.debug("Using LLMExtractionStrategy for intelligent content extraction")
+            except Exception as e:
+                logger.debug(f"Could not load LLMExtractionStrategy: {e}")
 
         return config_kwargs
 

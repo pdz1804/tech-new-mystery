@@ -44,6 +44,75 @@ class ScrapingService:
         from app.services.image_storage_service import ImageStorageService
         self.image_storage = ImageStorageService()
 
+    def _is_css_documentation(self, content: str) -> bool:
+        """Detect if extracted content is CSS docs instead of actual article.
+
+        LinkedIn group posts without auth return CSS metadata/documentation.
+        This detects when we've extracted the wrong content type.
+        """
+        if not content:
+            return False
+
+        content_lower = content.lower()
+        css_indicators = [
+            'css architecture',
+            'icon system',
+            'stylesheet',
+            'design pattern',
+            'class=',
+            'responsive sizing',
+            'animation framework'
+        ]
+
+        indicator_count = sum(1 for indicator in css_indicators if indicator in content_lower)
+        return indicator_count >= 3
+
+    def _clean_extracted_content(self, markdown: str, url: str) -> str:
+        """Clean extracted content by removing common noise patterns.
+
+        Args:
+            markdown: Extracted markdown content
+            url: Source URL (to identify platform-specific rules)
+
+        Returns:
+            Cleaned markdown content
+        """
+        if not markdown:
+            return markdown
+
+        lines = markdown.split('\n')
+        filtered_lines = []
+        skip_until_empty = False
+
+        for line in lines:
+            # Skip CSS/styling content
+            if any(pattern in line.lower() for pattern in ['css', 'stylesheet', 'class=', 'style=', '{', '}']):
+                continue
+
+            # Skip technical documentation headers for social posts
+            if any(pattern in line.lower() for pattern in ['api documentation', 'developer guide', 'technical reference']):
+                skip_until_empty = True
+                continue
+
+            if skip_until_empty:
+                if line.strip() == '':
+                    skip_until_empty = False
+                continue
+
+            # Skip navigation and metadata
+            if any(pattern in line.lower() for pattern in ['home', 'about', 'contact', 'privacy', 'terms', 'cookie']):
+                if len(line) < 50:
+                    continue
+
+            filtered_lines.append(line)
+
+        # Keep at least some content
+        cleaned = '\n'.join(filtered_lines).strip()
+        if not cleaned or len(cleaned) < 100:
+            return markdown
+
+        return cleaned
+
     def _extract_image_urls_from_html(self, html: str, base_url: str) -> list[str]:
         """Extract image URLs from HTML content (fallback when native extraction unavailable).
 
@@ -179,12 +248,12 @@ class ScrapingService:
             return markdown
 
     async def scrape_url(self, url: str) -> dict:
-        """Scrape content from URL using Crawl4AI with native media extraction.
+        """Scrape content from URL using Crawl4AI with semantic content extraction.
 
         Pipeline:
         1. Validate URL format
         2. Check for unsupported content types (PDF, etc.)
-        3. Use enhanced CrawlerClient with media extraction
+        3. Use CosineStrategy for semantic extraction (better for social media)
         4. Execute crawl with JavaScript rendering and media discovery
         5. Process native media items and fallback HTML extraction
         6. Download and upload images to S3
@@ -211,7 +280,7 @@ class ScrapingService:
             ...     markdown = result['markdown_content']
             ...     html = result['raw_html']
         """
-        logger.info(f"Starting Crawl4AI scrape with native media extraction: {url}")
+        logger.info(f"Starting Crawl4AI scrape with semantic content extraction: {url}")
         start_time = time.time()
 
         # Validate URL
@@ -263,6 +332,15 @@ class ScrapingService:
             logger.debug(f"  - Markdown size: {len(crawled_content.markdown)} chars")
             logger.debug(f"  - HTML size: {len(crawled_content.cleaned_html or '')} chars")
             logger.debug(f"  - Media items found: {len(crawled_content.media_items)}")
+
+            # Clean up extracted content - remove common noise patterns
+            crawled_content.markdown = self._clean_extracted_content(crawled_content.markdown, url)
+
+            # LinkedIn group posts without auth return CSS metadata instead of content
+            # Detect and reject these to trigger fallback scraper
+            if self._is_css_documentation(crawled_content.markdown):
+                logger.warning(f"Detected CSS documentation instead of article content - using fallback")
+                return await self._fallback_scrape(url)
 
             # Extract image URLs from native media items first, then fallback to HTML parsing
             image_urls = []
@@ -335,7 +413,13 @@ class ScrapingService:
             logger.info(f"[ERROR] Using fallback scraper for: {url}")
 
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1'
             }
 
             response = requests.get(url, headers=headers, timeout=10)

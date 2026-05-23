@@ -198,7 +198,7 @@ INSTRUCTIONS:
 2. Write a 2-3 sentence summary capturing main points and key findings
 3. Classify into ONE category: {categories_str}, or Other
 4. Generate 4-6 semantic tags (single words or short phrases, lowercase, hyphen-separated)
-5. Structure article as markdown with headers, paragraphs, and key sections (keep it concise, ~2000 chars max)
+5. Structure article as CONCISE markdown with brief sections (~1000 chars max) - do NOT describe content in detail, only key points
 6. Embed 2-3 most relevant images only (not every image URL)
 
 PROVIDED TITLE: {title if title else "NOT PROVIDED - GENERATE ONE"}
@@ -231,7 +231,7 @@ Important:
 - Summary: exactly 2-3 sentences
 - Category: choose EXACTLY ONE from the list above
 - Tags: 4-6 lowercase tags, hyphen-separated, no special chars
-- Markdown: proper formatting with # headers, ** bold, - lists
+- Markdown: CONCISE formatting with brief headers and bullet points (max ~1000 chars) - NO detailed descriptions, only KEY POINTS
 - Images: embed as ![description](url) contextually throughout content
 - NO title or author in markdown_content, just body with embedded images
 - MUST return ONLY the JSON object - nothing else!
@@ -246,7 +246,7 @@ JSON Response:"""
                 logger.info(f"LLM API call (attempt {attempt + 1}/{max_retries})")
                 response = await llm_client.generate(
                     prompt=prompt,
-                    max_tokens=8192,
+                    max_tokens=4096,
                     temperature=0.5,
                 )
                 attempt_elapsed = time.time() - attempt_start
