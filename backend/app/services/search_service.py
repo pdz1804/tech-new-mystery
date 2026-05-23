@@ -159,7 +159,7 @@ class SearchService:
         Args:
             query: The search query
             include_domains: List of domains to search in (default: tech news domains)
-            start_date: Search from this date onwards (format: YYYY-MM-DD)
+            start_date: Search from this date onwards (format: YYYY-MM-DD, default: yesterday)
             search_depth: 'basic' or 'advanced' search depth (default: 'basic')
 
         Returns:
@@ -207,6 +207,7 @@ class SearchService:
 
         try:
             from tavily import TavilyClient
+            from datetime import datetime, timedelta
 
             logger.info(f"[TAVILY_SEARCH] Initializing TavilyClient with API key")
             client = TavilyClient(api_key=api_key)
@@ -218,9 +219,10 @@ class SearchService:
                 "include_raw_content": "markdown",
             }
 
-            # Add optional parameters if provided
-            if start_date:
-                search_params["start_date"] = start_date
+            # Always use start_date (default to yesterday if not provided)
+            if not start_date:
+                start_date = (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+            search_params["start_date"] = start_date
 
             # Execute search with parameters
             logger.info(f"[TAVILY_SEARCH] Searching query='{query}', start_date={start_date}, search_depth={search_depth}...")
