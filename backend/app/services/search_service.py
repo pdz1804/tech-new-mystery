@@ -222,12 +222,6 @@ class SearchService:
             if start_date:
                 search_params["start_date"] = start_date
 
-            # Filter empty domains from include_domains list
-            if include_domains:
-                filtered_domains = [d for d in include_domains if d and d.strip()]
-                if filtered_domains:
-                    search_params["include_domains"] = filtered_domains
-
             # Execute search with parameters
             logger.info(f"[TAVILY_SEARCH] Searching query='{query}', start_date={start_date}, search_depth={search_depth}...")
             response = client.search(**search_params)
