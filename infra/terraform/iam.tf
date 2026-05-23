@@ -54,6 +54,85 @@ resource "aws_iam_role" "ecs_task" {
   })
 }
 
+data "aws_iam_role" "github_actions" {
+  name = "github-actions-${var.project_name}"
+}
+
+resource "aws_iam_role_policy" "github_actions_terraform" {
+  count = try(data.aws_iam_role.github_actions.arn, "") != "" ? 1 : 0
+  name  = "${local.name_prefix}-github-terraform"
+  role  = data.aws_iam_role.github_actions.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "TerraformStateBackend"
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket",
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ]
+        Resource = [
+          "arn:aws:s3:::*terraform*state*",
+          "arn:aws:s3:::*terraform*state*/*"
+        ]
+      },
+      {
+        Sid    = "TerraformStateLocking"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:PutItem",
+          "dynamodb:GetItem",
+          "dynamodb:DeleteItem",
+          "dynamodb:DescribeTable"
+        ]
+        Resource = "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/*terraform*lock*"
+      },
+      {
+        Sid    = "IAMPassRole"
+        Effect = "Allow"
+        Action = [
+          "iam:PassRole"
+        ]
+        Resource = [
+          aws_iam_role.ecs_task_execution.arn,
+          aws_iam_role.ecs_task.arn
+        ]
+      },
+      {
+        Sid    = "ECRAccess"
+        Effect = "Allow"
+        Action = [
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "AllowTerraformActions"
+        Effect = "Allow"
+        Action = [
+          "ecs:*",
+          "ec2:*",
+          "elasticache:*",
+          "rds:*",
+          "s3:*",
+          "dynamodb:*",
+          "logs:*",
+          "cloudwatch:*",
+          "acm:*",
+          "route53:*",
+          "sns:*"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 resource "aws_iam_role_policy" "ecs_task_app" {
   name = "${local.name_prefix}-app-access"
   role = aws_iam_role.ecs_task.id
