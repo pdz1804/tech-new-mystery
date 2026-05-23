@@ -149,10 +149,8 @@ class SearchService:
     async def tavily_search(
         self,
         query: str,
-        limit: int = 10,
         include_domains: Optional[list[str]] = None,
         start_date: Optional[str] = None,
-        topic: Optional[str] = None,
         search_depth: Optional[str] = None,
     ) -> dict:
         """
@@ -160,11 +158,9 @@ class SearchService:
 
         Args:
             query: The search query
-            limit: Maximum number of results (default 10)
             include_domains: List of domains to search in (default: tech news domains)
             start_date: Search from this date onwards (format: YYYY-MM-DD)
-            topic: Topic type - 'news' for news articles
-            search_depth: 'basic' or 'advanced' search depth
+            search_depth: 'basic' or 'advanced' search depth (default: 'basic')
 
         Returns:
             dict with keys:
@@ -215,23 +211,25 @@ class SearchService:
             logger.info(f"[TAVILY_SEARCH] Initializing TavilyClient with API key")
             client = TavilyClient(api_key=api_key)
 
-            # Build search parameters
+            # Build search parameters for Tavily API
             search_params = {
                 "query": query,
-                "max_results": limit,
-                "include_domains": include_domains,
+                "search_depth": search_depth or "basic",
+                "include_raw_content": "markdown",
             }
 
             # Add optional parameters if provided
             if start_date:
                 search_params["start_date"] = start_date
-            if topic:
-                search_params["topic"] = topic
-            if search_depth:
-                search_params["search_depth"] = search_depth
+
+            # Filter empty domains from include_domains list
+            if include_domains:
+                filtered_domains = [d for d in include_domains if d and d.strip()]
+                if filtered_domains:
+                    search_params["include_domains"] = filtered_domains
 
             # Execute search with parameters
-            logger.info(f"[TAVILY_SEARCH] Searching query='{query}', limit={limit}, start_date={start_date}, topic={topic}...")
+            logger.info(f"[TAVILY_SEARCH] Searching query='{query}', start_date={start_date}, search_depth={search_depth}...")
             response = client.search(**search_params)
 
             logger.info(f"[TAVILY_SEARCH] Response received: {len(response.get('results', []))} results")

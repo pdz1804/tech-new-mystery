@@ -110,19 +110,19 @@ class TestTavilySearch:
 
     @patch("tavily.TavilyClient")
     @patch.dict("os.environ", {"TAVILY_API_KEY": "test-key"})
-    async def test_tavily_search_limit_parameter(self, mock_client_class):
-        """Test Tavily search respects limit parameter."""
+    async def test_tavily_search_with_date(self, mock_client_class):
+        """Test Tavily search with start_date parameter."""
         mock_client = MagicMock()
         mock_client.search.return_value = {"results": []}
         mock_client_class.return_value = mock_client
 
         service = SearchService(ArticleRepository())
 
-        await service.tavily_search("test", limit=20)
+        await service.tavily_search("test", start_date="2026-05-23")
 
         mock_client.search.assert_called_once()
         call_args = mock_client.search.call_args
-        assert call_args[1]["max_results"] == 20
+        assert call_args[1]["start_date"] == "2026-05-23"
 
     @patch("builtins.__import__", side_effect=ImportError)
     @patch.dict("os.environ", {"TAVILY_API_KEY": "test-key"})

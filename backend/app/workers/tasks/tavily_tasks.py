@@ -85,13 +85,11 @@ async def _fetch_and_store_search_results(start_date: str | None = None) -> dict
             logger.debug(f"Searching topic: {topic}")
 
             try:
-                # Search via Tavily with news parameters
+                # Search via Tavily for news
                 search_result = await search_service.tavily_search(
                     query=topic,
-                    limit=5,  # Get 5 results per topic
-                    start_date=search_date,  # Only news from specified date
-                    topic="news",  # Search news specifically
-                    search_depth="advanced",  # Use advanced search
+                    start_date=search_date,
+                    search_depth="advanced",
                 )
 
                 if not search_result.get("success") or not search_result.get("results"):
