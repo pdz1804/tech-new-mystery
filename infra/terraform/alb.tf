@@ -3,14 +3,16 @@ resource "aws_lb" "app" {
   load_balancer_type = "application"
   subnets            = local.public_subnet_ids
   security_groups    = [aws_security_group.alb.id]
+  idle_timeout       = 120
 }
 
 resource "aws_lb_target_group" "api" {
-  name        = substr("${local.name_prefix}-api", 0, 32)
-  port        = 8000
-  protocol    = "HTTP"
-  target_type = "ip"
-  vpc_id      = local.vpc_id
+  name                 = substr("${local.name_prefix}-api", 0, 32)
+  port                 = 8000
+  protocol             = "HTTP"
+  target_type          = "ip"
+  vpc_id               = local.vpc_id
+  deregistration_delay = 30
 
   health_check {
     path                = "/health"
