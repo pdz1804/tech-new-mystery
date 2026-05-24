@@ -203,7 +203,6 @@ class ArticleService:
                 "slug": slug,
                 "source_id": article_data.get("source_id", ""),
                 "original_url": str(article_data["original_url"]),
-                "content": article_data.get("content", ""),
                 "summary": article_data.get("summary"),
                 "markdown_content": article_data.get("markdown_content"),
                 "author": article_data.get("author"),
@@ -427,15 +426,8 @@ class ArticleService:
         processed_author = processing_result.get("author") or author
         structured_markdown = processing_result.get("structured_markdown")
 
-        # Extract clean text content from markdown (for content field)
+        # Use markdown content for storage (more efficient than raw HTML)
         markdown_content = processing_result.get("structured_markdown")
-        content = processor._extract_text_from_html(raw_content)
-
-        # Limit content size to 50KB to stay under DynamoDB 400KB limit
-        max_content_size = 50000
-        if len(content.encode('utf-8')) > max_content_size:
-            content = content[:max_content_size] + "\n\n..."
-            logger.warning(f"Content truncated to {max_content_size} bytes for DynamoDB limit")
 
         # Create article
         article_id = str(uuid.uuid4())
@@ -446,7 +438,7 @@ class ArticleService:
         # Extract first image as preview image
         preview_image = image_urls[0] if image_urls else None
 
-        # Prepare article data
+        # Prepare article data (markdown_content replaces raw content to reduce storage)
         article_data = {
             "article_id": article_id,
             "title": generated_title,
@@ -454,7 +446,6 @@ class ArticleService:
             "source_id": self._extract_domain(url_str),
             "original_url": url_str,
             "preview_image": preview_image,
-            "content": content,
             "summary": summary,
             "markdown_content": structured_markdown,
             "author": processed_author,

@@ -198,8 +198,8 @@ INSTRUCTIONS:
 2. Write a 2-3 sentence summary capturing main points and key findings
 3. Classify into ONE category: {categories_str}, or Other
 4. Generate 4-6 semantic tags (single words or short phrases, lowercase, hyphen-separated)
-5. Structure article as CONCISE markdown with brief sections (~1000 chars max) - do NOT describe content in detail, only key points
-6. Embed 2-3 most relevant images only (not every image URL)
+5. Structure article as DETAILED markdown with comprehensive sections (2000-3000 chars) - include key points, explanations, examples, important details. Use proper markdown formatting with headers, lists, and clear structure
+6. Embed 2-3 most relevant images only (contextually throughout content)
 
 PROVIDED TITLE: {title if title else "NOT PROVIDED - GENERATE ONE"}
 PROVIDED AUTHOR: {author if author else "UNKNOWN"}
@@ -231,7 +231,7 @@ Important:
 - Summary: exactly 2-3 sentences
 - Category: choose EXACTLY ONE from the list above
 - Tags: 4-6 lowercase tags, hyphen-separated, no special chars
-- Markdown: CONCISE formatting with brief headers and bullet points (max ~1000 chars) - NO detailed descriptions, only KEY POINTS
+- Markdown: DETAILED formatting with comprehensive content (2000-3000 chars) - include explanations, examples, and important details. Proper headers, sections, lists, and clear structure. This is the main article content
 - Images: embed as ![description](url) contextually throughout content
 - NO title or author in markdown_content, just body with embedded images
 - MUST return ONLY the JSON object - nothing else!
