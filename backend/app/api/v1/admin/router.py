@@ -454,8 +454,19 @@ async def approve_search(
 
         raise HTTPException(status_code=400, detail=error_msg)
     except Exception as e:
-        logger.error(f"[APPROVE_SEARCH] Error approving search {search_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to approve search: {str(e)}")
+        error_msg = str(e)
+        logger.error(f"[APPROVE_SEARCH] Error approving search {search_id}: {error_msg}")
+
+        # Handle scraping failures gracefully
+        if "scraping" in error_msg.lower() or "crawl" in error_msg.lower() or "blocked" in error_msg.lower():
+            # Auto-reject search if scraping failed (likely paywall or bot protection)
+            await search_repo.update_status(search_id, "rejected", approved_by="system")
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unable to scrape this URL. {error_msg}. Search marked as rejected."
+            )
+
+        raise HTTPException(status_code=500, detail=f"Failed to approve search: {error_msg}")
 
 
 @router.delete("/searches/{search_id}/reject", response_model=GenericSuccessResponse)
