@@ -63,6 +63,8 @@ class ArticleService:
             "source_id": article.source_id,
             "preview_image": getattr(article, "preview_image", None),
             "category": article.category,
+            "categories": list(getattr(article, "categories", None) or []),
+            "quality_score": getattr(article, "quality_score", None),
             "tags": article.tags,
             "view_count": article.view_count,
             "like_count": getattr(article, "like_count", 0),
@@ -85,6 +87,8 @@ class ArticleService:
             "source_id": article.source_id,
             "preview_image": article.preview_image,
             "category": article.category,
+            "categories": list(getattr(article, "categories", None) or []),
+            "quality_score": getattr(article, "quality_score", None),
             "tags": article.tags,
             "view_count": article.view_count,
             "like_count": article.like_count,
@@ -133,13 +137,18 @@ class ArticleService:
         end_date: str | None = None,
         sort_by: str = "created_at",
         include_content: bool = True,
+        min_quality_score: float | None = None,
         **kwargs,
     ) -> dict:
         """List articles with optional filters.
 
         Optimized to use GSI for source-based filtering when available.
+
+        Args:
+            min_quality_score: Minimum quality score (0-10) to include articles. Articles
+                              with score < min or score = None are excluded.
         """
-        logger.debug(f"list_articles: limit={limit}, category={category}, source={source_id}, sort={sort_by}")
+        logger.debug(f"list_articles: limit={limit}, category={category}, source={source_id}, sort={sort_by}, min_score={min_quality_score}")
 
         # Use source-date index if filtering by source for better performance
         if source_id and not category and not tags:
@@ -150,11 +159,16 @@ class ArticleService:
                 reverse=(sort_by == "published_at"),
                 summary_only=not include_content,
                 published_only=not include_content,
+                min_quality_score=min_quality_score,
             )
         else:
             # Fall back to scan for general filtering, but only project card fields.
             if include_content:
-                articles, next_key = await self._article_repo.list_all(limit=limit, last_key=last_key)
+                articles, next_key = await self._article_repo.list_all(
+                    limit=limit,
+                    last_key=last_key,
+                    min_quality_score=min_quality_score,
+                )
             else:
                 articles, next_key = await self._article_repo.list_all(
                     limit=limit,
@@ -162,6 +176,7 @@ class ArticleService:
                     category=category,
                     summary_only=True,
                     published_only=True,
+                    min_quality_score=min_quality_score,
                 )
 
         # Apply remaining filters
@@ -207,6 +222,8 @@ class ArticleService:
                 "markdown_content": article_data.get("markdown_content"),
                 "author": article_data.get("author"),
                 "category": article_data.get("category"),
+                "categories": article_data.get("categories", []),
+                "quality_score": article_data.get("quality_score"),
                 "tags": article_data.get("tags", []),
                 "is_published": True,
             }

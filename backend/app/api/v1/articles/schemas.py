@@ -13,6 +13,7 @@ class ArticleBase(BaseModel):
     slug: str = Field(..., pattern=r"^[a-z0-9-]+$")
     summary: str | None = None
     category: str | None = None
+    categories: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
 
 
@@ -75,6 +76,7 @@ class ArticleResponse(ArticleBase):
     original_url: str
     source_id: str
     preview_image: str | None = None
+    quality_score: float | None = None
     view_count: int
     is_published: bool
     published_at: datetime | None = None

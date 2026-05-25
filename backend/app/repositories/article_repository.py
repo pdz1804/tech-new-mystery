@@ -76,6 +76,7 @@ class ArticleRepository:
         category: str | None = None,
         summary_only: bool = False,
         published_only: bool = False,
+        min_quality_score: float | None = None,
     ) -> tuple[list[ArticleModel], dict | None]:
         """List all articles with pagination.
 
@@ -105,6 +106,13 @@ class ArticleRepository:
                     if filter_condition is None
                     else filter_condition & category_condition
                 )
+            if min_quality_score is not None:
+                score_condition = ArticleModel.quality_score >= min_quality_score
+                filter_condition = (
+                    score_condition
+                    if filter_condition is None
+                    else filter_condition & score_condition
+                )
 
             attributes_to_get = None
             if summary_only:
@@ -118,6 +126,8 @@ class ArticleRepository:
                     "source_id",
                     "preview_image",
                     "category",
+                    "categories",
+                    "quality_score",
                     "tags",
                     "view_count",
                     "like_count",
@@ -149,6 +159,7 @@ class ArticleRepository:
         reverse: bool = False,
         summary_only: bool = False,
         published_only: bool = False,
+        min_quality_score: float | None = None,
     ) -> tuple[list[ArticleModel], dict | None]:
         """Query articles by source using GSI.
 
@@ -184,6 +195,8 @@ class ArticleRepository:
                     "source_id",
                     "preview_image",
                     "category",
+                    "categories",
+                    "quality_score",
                     "tags",
                     "view_count",
                     "like_count",
@@ -192,10 +205,22 @@ class ArticleRepository:
                     "created_at",
                 ]
 
+            # Build filter condition
+            filter_condition = None
+            if published_only:
+                filter_condition = ArticleModel.is_published == True
+            if min_quality_score is not None:
+                score_condition = ArticleModel.quality_score >= min_quality_score
+                filter_condition = (
+                    score_condition
+                    if filter_condition is None
+                    else filter_condition & score_condition
+                )
+
             results = await asyncio.to_thread(
                 lambda: ArticleModel.source_date_index.query(
                     source_id,
-                    filter_condition=ArticleModel.is_published == True if published_only else None,
+                    filter_condition=filter_condition,
                     limit=limit,
                     last_evaluated_key=last_key,
                     scan_index_forward=(not reverse),
@@ -240,6 +265,8 @@ class ArticleRepository:
                 markdown_content=article_data.get("markdown_content"),
                 author=article_data.get("author"),
                 category=article_data.get("category"),
+                categories=article_data.get("categories", []),
+                quality_score=article_data.get("quality_score"),
                 tags=article_data.get("tags", []),
                 is_published=article_data.get("is_published", True),
                 view_count=0,

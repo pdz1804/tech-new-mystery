@@ -120,7 +120,8 @@ export default function ArticleManagementPage() {
               <thead>
                 <tr className="border-b border-slate-200 bg-gradient-to-r from-blue-50 to-indigo-50">
                   <th className="px-6 py-4 text-left text-sm font-semibold text-slate-900">Title</th>
-                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-900">Category</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-slate-900">Categories</th>
+                  <th className="px-6 py-4 text-center text-sm font-semibold text-slate-900">Quality</th>
                   <th className="px-6 py-4 text-left text-sm font-semibold text-slate-900">Created</th>
                   <th className="px-6 py-4 text-right text-sm font-semibold text-slate-900">Views</th>
                   <th className="px-6 py-4 text-center text-sm font-semibold text-slate-900">Actions</th>
@@ -139,9 +140,38 @@ export default function ArticleManagementPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <span className="inline-block rounded-full bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-2 text-sm font-medium text-blue-700 border border-blue-200">
-                        {article.category || 'Uncategorized'}
-                      </span>
+                      <div className="flex flex-wrap gap-2">
+                        {(article.categories && article.categories.length > 0
+                          ? article.categories
+                          : [article.category || 'Uncategorized']
+                        ).map((cat) => (
+                          <span
+                            key={cat}
+                            className="inline-block rounded-full bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-1 text-xs font-medium text-blue-700 border border-blue-200"
+                          >
+                            {cat}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      {article.quality_score !== undefined && article.quality_score !== null ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <span
+                            className={`inline-block rounded-full px-3 py-1 text-sm font-semibold ${
+                              article.quality_score >= 8
+                                ? 'bg-green-100 text-green-700'
+                                : article.quality_score >= 5
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : 'bg-red-100 text-red-700'
+                            }`}
+                          >
+                            ★ {article.quality_score.toFixed(1)}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-sm text-slate-500">—</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-600 font-medium">
                       {format(new Date(article.created_at), 'MMM d, yyyy')}

@@ -15,14 +15,15 @@ logger = logging.getLogger(__name__)
 
 
 class ArticleProcessingService:
-    """Service for intelligent article processing using Bedrock Claude Haiku 4.5.
+    """Service for intelligent article processing using configured Bedrock LLM.
 
     Consolidated pipeline - single Bedrock call generates:
     1. Title
     2. Summary (2-3 sentences)
-    3. Category
-    4. Tags (4-6 semantic tags)
-    5. Structured markdown (with embedded images)
+    3. Categories (1-3)
+    4. Quality Score (0-10)
+    5. Tags (4-6 semantic tags)
+    6. Structured markdown (with embedded images)
     """
 
     CATEGORIES = [
@@ -50,6 +51,8 @@ class ArticleProcessingService:
                 "summary": None,
                 "passages": [],
                 "category": "Other",
+                "categories": ["Other"],
+                "quality_score": None,
                 "tags": [],
                 "structured_markdown": None,
             }
@@ -107,6 +110,8 @@ class ArticleProcessingService:
                 "title": title or "Untitled",
                 "summary": None,
                 "category": "Other",
+                "categories": ["Other"],
+                "quality_score": None,
                 "tags": [],
                 "author": author,
                 "structured_markdown": None,
@@ -122,6 +127,8 @@ class ArticleProcessingService:
                 "title": title or "Untitled",
                 "summary": None,
                 "category": "Other",
+                "categories": ["Other"],
+                "quality_score": None,
                 "tags": [],
                 "author": author,
                 "structured_markdown": None,
@@ -161,6 +168,8 @@ class ArticleProcessingService:
                 "title": title or "Untitled",
                 "summary": None,
                 "category": "Other",
+                "categories": ["Other"],
+                "quality_score": None,
                 "tags": [],
                 "author": author,
                 "structured_markdown": None,
@@ -177,66 +186,26 @@ class ArticleProcessingService:
     ) -> dict:
         """Single consolidated Bedrock call to generate all fields at once."""
 
+        from app.utils.prompt_loader import load_prompt
+
         categories_str = ", ".join(self.CATEGORIES[:-1])
 
         # Prepare image URLs for the prompt
         images_section = ""
         if image_urls:
-            images_section = "\nAVAILABLE IMAGES TO EMBED IN ARTICLE:\n"
+            images_section = "\n## AVAILABLE IMAGES TO EMBED IN ARTICLE:\n"
             for i, img_url in enumerate(image_urls, 1):
                 images_section += f"{i}. {img_url}\n"
-            images_section += "\nINSTRUCTIONS FOR IMAGES:\n- Analyze the article content and determine where images would be most relevant\n- Embed images naturally throughout the markdown using ![description](image_url) syntax\n- Place images contextually within paragraphs or between sections where they enhance the content\n- Use image descriptions that match the article content\n- Images can appear anywhere in the content, not just at the end\n"
+            images_section += "\n## INSTRUCTIONS FOR IMAGES:\n- Analyze the article content and determine where images would be most relevant\n- Embed images naturally throughout the markdown using ![description](image_url) syntax\n- Place images contextually within paragraphs or between sections where they enhance the content\n- Use image descriptions that match the article content\n- Images can appear anywhere in the content, not just at the end\n"
 
-        prompt = f"""You are a professional content editor and analyst. Process this article and generate ALL required metadata in a single JSON response.
-
-ARTICLE CONTENT:
-{content}
-{images_section}
-
-INSTRUCTIONS:
-1. Generate a clear, engaging title (5-12 words) if not provided. Use the provided title if it exists.
-2. Write a 2-3 sentence summary capturing main points and key findings
-3. Classify into ONE category: {categories_str}, or Other
-4. Generate 4-6 semantic tags (single words or short phrases, lowercase, hyphen-separated)
-5. Structure article as DETAILED markdown with comprehensive sections (2000-3000 chars) - include key points, explanations, examples, important details. Use proper markdown formatting with headers, lists, and clear structure
-6. Embed 2-3 most relevant images only (contextually throughout content)
-
-PROVIDED TITLE: {title if title else "NOT PROVIDED - GENERATE ONE"}
-PROVIDED AUTHOR: {author if author else "UNKNOWN"}
-
-CATEGORIES (choose exactly one):
-{categories_str}
-
-CRITICAL INSTRUCTIONS FOR JSON RESPONSE:
-- Return ONLY a valid JSON object (no markdown code blocks, no extra text before/after)
-- Use proper JSON formatting with no unescaped quotes or newlines in string values
-- IMPORTANT: Escape special characters in ALL string values:
-  - Use \\n for actual line breaks
-  - Use \\" for quotes
-  - Use \\\\ for backslashes
-- All markdown_content must have escaped newlines: use \\n instead of actual newlines
-- Double-check JSON is valid before responding
-
-JSON Response Format (MUST be exactly this structure):
-{{
-    "title": "Clear, engaging title under 100 chars",
-    "summary": "2-3 sentence summary of main points",
-    "category": "One of: AI, Web Development, DevOps, Security, Mobile, Cloud Computing, Data Science, Infrastructure, Blockchain, Other",
-    "tags": ["tag1", "tag2", "tag3", "tag4", "tag5"],
-    "markdown_content": "IMPORTANT: Use actual escaped newlines (\\\\n) for line breaks. Example: \\"## Section\\\\n\\\\nContent here\\\\n\\\\n## Next\\"."
-}}
-
-Important:
-- Title: under 100 characters, engaging
-- Summary: exactly 2-3 sentences
-- Category: choose EXACTLY ONE from the list above
-- Tags: 4-6 lowercase tags, hyphen-separated, no special chars
-- Markdown: DETAILED formatting with comprehensive content (2000-3000 chars) - include explanations, examples, and important details. Proper headers, sections, lists, and clear structure. This is the main article content
-- Images: embed as ![description](url) contextually throughout content
-- NO title or author in markdown_content, just body with embedded images
-- MUST return ONLY the JSON object - nothing else!
-
-JSON Response:"""
+        # Load external prompt from file and format with variables
+        prompt = load_prompt("article_processing/process_all_fields.md").format(
+            content=content,
+            images_section=images_section,
+            title=title or "NOT PROVIDED - GENERATE ONE",
+            author=author or "UNKNOWN",
+            categories_str=categories_str,
+        )
 
         # Retry logic for JSON parsing
         max_retries = 3
@@ -335,19 +304,42 @@ JSON Response:"""
                     generated_title = "Untitled"
 
                 summary = data.get("summary", "").strip() or None
-                category = data.get("category", "Other").strip()
-                tags_raw = data.get("tags", [])
 
-                # Validate category
-                if category not in self.CATEGORIES:
-                    for cat in self.CATEGORIES:
-                        if cat.lower() in category.lower() or category.lower() in cat.lower():
-                            category = cat
-                            break
-                    else:
-                        category = "Other"
+                # Extract categories (1-3)
+                categories_raw = data.get("categories", [])
+                categories = []
+                if isinstance(categories_raw, list):
+                    for cat in categories_raw:
+                        if isinstance(cat, str) and cat.strip() and cat in self.CATEGORIES:
+                            categories.append(cat)
+                        elif isinstance(cat, str):
+                            # Try fuzzy match
+                            cat_stripped = cat.strip()
+                            for valid_cat in self.CATEGORIES:
+                                if valid_cat.lower() in cat_stripped.lower() or cat_stripped.lower() in valid_cat.lower():
+                                    categories.append(valid_cat)
+                                    break
+                # Slice to max 3 and ensure at least 1
+                categories = categories[:3]
+                if not categories:
+                    # Fallback: check old "category" key for backward compat
+                    cat = data.get("category", "Other").strip()
+                    categories = [cat] if cat in self.CATEGORIES else ["Other"]
+                # Set category field for backward compat
+                category = categories[0]
+
+                # Extract quality score (0-10)
+                quality_score_raw = data.get("quality_score")
+                quality_score = None
+                try:
+                    if quality_score_raw is not None:
+                        quality_score = float(quality_score_raw)
+                        quality_score = max(0.0, min(10.0, quality_score))
+                except (TypeError, ValueError):
+                    quality_score = None
 
                 # Validate and clean tags
+                tags_raw = data.get("tags", [])
                 clean_tags = []
                 if isinstance(tags_raw, list):
                     for tag in tags_raw:
@@ -365,12 +357,14 @@ JSON Response:"""
                 )
 
                 logger.debug(f"Successfully parsed all fields - title: {len(generated_title)}, "
-                           f"summary: {bool(summary)}, category: {category}, tags: {len(clean_tags)}")
+                           f"summary: {bool(summary)}, categories: {categories}, quality_score: {quality_score}, tags: {len(clean_tags)}")
 
                 return {
                     "title": generated_title,
                     "summary": summary,
                     "category": category,
+                    "categories": categories,
+                    "quality_score": quality_score,
                     "tags": clean_tags,
                     "author": author,
                     "structured_markdown": final_markdown,
@@ -385,6 +379,8 @@ JSON Response:"""
                         "title": title or "Untitled",
                         "summary": content[:200] + "..." if content else None,
                         "category": "Other",
+                        "categories": ["Other"],
+                        "quality_score": None,
                         "tags": [],
                         "author": author,
                         "structured_markdown": f"# {title or 'Untitled'}\n\n{content}",
@@ -397,6 +393,8 @@ JSON Response:"""
                         "title": title or "Untitled",
                         "summary": content[:200] + "..." if content else None,
                         "category": "Other",
+                        "categories": ["Other"],
+                        "quality_score": None,
                         "tags": [],
                         "author": author,
                         "structured_markdown": f"# {title or 'Untitled'}\n\n{content}",

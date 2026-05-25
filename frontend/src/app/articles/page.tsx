@@ -33,6 +33,8 @@ interface ArticleResponse {
     slug: string;
     summary?: string;
     category?: string;
+    categories?: string[];
+    quality_score?: number | null;
     preview_image?: string;
     view_count?: number;
     published_at?: string;
@@ -284,6 +286,8 @@ export default function ArticlesPage() {
                       slug={article.slug}
                       publishedAt={article.published_at || article.created_at || ''}
                       category={article.category || undefined}
+                      categories={article.categories}
+                      qualityScore={article.quality_score}
                       views={article.view_count}
                       summary={article.summary || undefined}
                     />

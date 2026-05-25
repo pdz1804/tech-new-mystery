@@ -6,7 +6,8 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-from app.api.dependencies import get_pagination, require_admin, get_current_user, get_current_user_id, get_article_service
+from app.api.dependencies import get_pagination, require_admin, get_current_user, get_current_user_id, get_article_service, get_optional_user
+from app.repositories.system_settings_repository import SystemSettingsRepository
 from app.api.v1.articles.schemas import (
     ArticleListResponse,
     ArticleDetailResponse,
@@ -53,6 +54,7 @@ async def list_articles(
     end_date: str | None = Query(None, description="End date (ISO format)"),
     sort_by: str = Query("created_at", description="Sort by: created_at, published_at, view_count"),
     service: ArticleService = Depends(get_article_service),
+    user: dict | None = Depends(get_optional_user),
 ) -> ArticleListResponse:
     """List all articles with advanced filtering and pagination."""
     logger.info(f"[LIST_ARTICLES] Request: limit={limit}, category={category}, sort={sort_by}")
@@ -75,6 +77,22 @@ async def list_articles(
     if sort_by not in valid_sorts:
         sort_by = "created_at"
     filters["sort_by"] = sort_by
+
+    # Apply quality score threshold for non-admin users
+    min_quality_score = None
+    is_admin = user.get("is_admin", False) if user else False
+
+    if not is_admin:
+        try:
+            settings_repo = SystemSettingsRepository()
+            threshold = await settings_repo.get_threshold()
+            min_quality_score = threshold
+            logger.debug(f"[LIST_ARTICLES] Non-admin user, applying threshold: {threshold}")
+        except Exception as e:
+            logger.warning(f"[LIST_ARTICLES] Failed to get threshold: {str(e)}, showing all articles")
+
+    if min_quality_score is not None:
+        filters["min_quality_score"] = min_quality_score
 
     result = await service.list_articles(
         limit=limit,

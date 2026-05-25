@@ -1,8 +1,8 @@
 """Admin endpoints for search, content management, and user administration."""
 
 import logging
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from datetime import datetime
 
 from app.api.dependencies import require_admin, get_article_service
@@ -128,6 +128,9 @@ class SearchesListResponse(BaseModel):
     success: bool
     data: list[PendingSearchResponse]
     count: int
+    total: int = 0
+    page: int = 1
+    total_pages: int = 1
 
 
 @router.post("/search/tavily", response_model=TavilySearchResponse)
@@ -364,14 +367,22 @@ async def reject_article(
 
 @router.get("/searches", response_model=SearchesListResponse)
 async def list_pending_searches(
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
     _: dict = Depends(require_admin),
 ) -> SearchesListResponse:
-    """List pending Tavily search results awaiting approval (admin only)."""
+    """List pending Tavily search results awaiting approval (admin only) with pagination."""
     try:
         from datetime import datetime
 
         search_repo = PendingSearchRepository()
-        pending_searches = await search_repo.list_pending(limit=1000)
+        all_pending = await search_repo.list_pending(limit=1000)
+
+        total = len(all_pending)
+        total_pages = (total + limit - 1) // limit if limit > 0 else 1
+        start_idx = (page - 1) * limit
+        end_idx = start_idx + limit
+        page_items = all_pending[start_idx:end_idx]
 
         search_responses = [
             PendingSearchResponse(
@@ -384,14 +395,17 @@ async def list_pending_searches(
                 created_at=datetime.fromtimestamp(search.created_at).isoformat() if search.created_at else "",
                 status=search.status,
             )
-            for search in pending_searches
+            for search in page_items
         ]
 
-        logger.info(f"[SEARCHES_LIST] Retrieved {len(search_responses)} pending searches")
+        logger.info(f"[SEARCHES_LIST] Retrieved page {page}/{total_pages}, {len(search_responses)} items")
         return SearchesListResponse(
             success=True,
             data=search_responses,
             count=len(search_responses),
+            total=total,
+            page=page,
+            total_pages=total_pages,
         )
 
     except Exception as e:
@@ -773,3 +787,129 @@ async def get_qdrant_stats(
     except Exception as e:
         logger.error(f"[QDRANT_STATS] Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch statistics: {str(e)}")
+
+
+# ============================================================
+# NEW: Auto-Review, Threshold Settings, Backfill
+# ============================================================
+
+
+class ThresholdResponse(BaseModel):
+    """Response for threshold get/set endpoints."""
+    success: bool
+    threshold: float
+
+
+class UpdateThresholdRequest(BaseModel):
+    """Request to update quality score threshold."""
+    threshold: float = Field(..., ge=0.0, le=10.0)
+
+
+@router.post("/searches/auto-review", response_model=GenericSuccessResponse)
+async def trigger_auto_review(
+    _: dict = Depends(require_admin),
+) -> GenericSuccessResponse:
+    """Trigger auto-review of all pending searches (admin only).
+
+    Dispatches worker tasks to evaluate and approve/reject each pending search.
+    """
+    try:
+        from app.workers.tasks.evaluation_tasks import auto_review_queue_task
+
+        logger.info("[AUTO_REVIEW] Admin triggered auto-review of queue")
+        task = auto_review_queue_task.delay()
+
+        return GenericSuccessResponse(
+            success=True,
+            message=f"Auto-review task queued. Task ID: {task.id}",
+        )
+    except Exception as e:
+        logger.error(f"[AUTO_REVIEW] Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to trigger auto-review: {str(e)}")
+
+
+@router.get("/settings/threshold", response_model=ThresholdResponse)
+async def get_threshold(
+    _: dict = Depends(require_admin),
+) -> ThresholdResponse:
+    """Get current quality score threshold (admin only)."""
+    try:
+        from app.repositories.system_settings_repository import SystemSettingsRepository
+
+        repo = SystemSettingsRepository()
+        threshold = await repo.get_threshold()
+
+        logger.info(f"[GET_THRESHOLD] Retrieved threshold: {threshold}")
+        return ThresholdResponse(success=True, threshold=threshold)
+    except Exception as e:
+        logger.error(f"[GET_THRESHOLD] Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get threshold: {str(e)}")
+
+
+@router.put("/settings/threshold", response_model=ThresholdResponse)
+async def update_threshold(
+    payload: UpdateThresholdRequest,
+    _: dict = Depends(require_admin),
+) -> ThresholdResponse:
+    """Update quality score threshold (admin only).
+
+    Args:
+        threshold: New threshold value (0.0 to 10.0)
+    """
+    try:
+        from app.repositories.system_settings_repository import SystemSettingsRepository
+
+        repo = SystemSettingsRepository()
+        new_threshold = await repo.set_threshold(payload.threshold)
+
+        logger.info(f"[UPDATE_THRESHOLD] Changed threshold to: {new_threshold}")
+        return ThresholdResponse(success=True, threshold=new_threshold)
+    except Exception as e:
+        logger.error(f"[UPDATE_THRESHOLD] Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update threshold: {str(e)}")
+
+
+@router.post("/articles/backfill-scores", response_model=GenericSuccessResponse)
+async def trigger_score_backfill(
+    _: dict = Depends(require_admin),
+) -> GenericSuccessResponse:
+    """Trigger backfill of quality scores for existing articles (admin only).
+
+    Finds articles without quality_score and dispatches evaluation tasks.
+    """
+    try:
+        from app.workers.tasks.evaluation_tasks import backfill_quality_scores_task
+
+        logger.warning("[BACKFILL_SCORES] Admin triggered backfill task")
+        task = backfill_quality_scores_task.delay()
+
+        return GenericSuccessResponse(
+            success=True,
+            message=f"Backfill task queued. Task ID: {task.id}",
+        )
+    except Exception as e:
+        logger.error(f"[BACKFILL_SCORES] Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to trigger backfill: {str(e)}")
+
+
+@router.post("/articles/backfill-scores-force", response_model=GenericSuccessResponse)
+async def trigger_force_score_backfill(
+    _: dict = Depends(require_admin),
+) -> GenericSuccessResponse:
+    """Force backfill of quality scores for ALL articles (admin only).
+
+    Re-evaluates all articles regardless of existing quality_score.
+    """
+    try:
+        from app.workers.tasks.evaluation_tasks import backfill_quality_scores_force_task
+
+        logger.warning("[BACKFILL_SCORES_FORCE] Admin triggered force backfill task")
+        task = backfill_quality_scores_force_task.delay()
+
+        return GenericSuccessResponse(
+            success=True,
+            message=f"Force backfill task queued. Task ID: {task.id}",
+        )
+    except Exception as e:
+        logger.error(f"[BACKFILL_SCORES_FORCE] Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to trigger force backfill: {str(e)}")

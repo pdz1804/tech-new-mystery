@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
-import { User, Settings, Bookmark, Mail, Lock, Bell, Tag, CheckCircle } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { User, Settings, Bookmark, Mail, Lock, Bell, Tag, CheckCircle, Gauge, Zap, Loader2, Save } from 'lucide-react';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchUserPreferences, updateUserPreferences, fetchSavedArticles } from '@/lib/api/user';
+import { apiClient } from '@/lib/api/client';
 import { SavedArticleCard } from '@/components/profile/SavedArticleCard';
 import { ProfileHeader } from '@/components/profile/ProfileHeader';
 import { SettingsSection } from '@/components/profile/SettingsSection';
@@ -41,13 +42,20 @@ export default function ProfilePage() {
   const clearAuth = useAuthStore((s) => s.clearAuth);
   const setIntendedDestination = useAuthStore((s) => s.setIntendedDestination);
 
-  const [activeTab, setActiveTab] = useState<'profile' | 'preferences' | 'saved'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'preferences' | 'saved' | 'settings'>('profile');
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([
     'Technology',
     'Science',
   ]);
   const [digestFrequency, setDigestFrequency] = useState('daily');
+  const [threshold, setThreshold] = useState(8.0);
+  const [originalThreshold, setOriginalThreshold] = useState(8.0);
+  const [savingThreshold, setSavingThreshold] = useState(false);
+  const [loadingThreshold, setLoadingThreshold] = useState(false);
+  const [backfilling, setBackfilling] = useState(false);
+  const [forceBackfilling, setForceBackfilling] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const { data: preferencesData } = useQuery({
     queryKey: userKeys.preferences(),
@@ -76,6 +84,26 @@ export default function ProfilePage() {
     }
   }, [isAuthenticated, isHydrated, router, setIntendedDestination]);
 
+  // Fetch threshold for admin users
+  useEffect(() => {
+    if (!user?.is_admin) return;
+    const fetchThreshold = async () => {
+      try {
+        setLoadingThreshold(true);
+        const { data } = await apiClient.get<{ success: boolean; threshold: number }>('/admin/settings/threshold');
+        if (data?.success) {
+          setThreshold(data.threshold);
+          setOriginalThreshold(data.threshold);
+        }
+      } catch (err) {
+        console.error('Error fetching threshold:', err);
+      } finally {
+        setLoadingThreshold(false);
+      }
+    };
+    fetchThreshold();
+  }, [user?.is_admin]);
+
   const handleLogout = () => {
     clearAuth();
     router.push('/login');
@@ -89,6 +117,56 @@ export default function ProfilePage() {
       preferred_categories: selectedCategories,
       digest_frequency: digestFrequency,
     });
+  };
+
+  const handleSaveThreshold = async () => {
+    try {
+      setSavingThreshold(true);
+      const { data } = await apiClient.put<{ success: boolean; threshold: number }>('/admin/settings/threshold', {
+        threshold: parseFloat(threshold.toString()),
+      });
+      if (data?.success) {
+        setOriginalThreshold(data.threshold);
+        setMessage({ type: 'success', text: `Threshold updated to ${data.threshold.toFixed(1)}/10` });
+        setTimeout(() => setMessage(null), 5000);
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to save threshold' });
+    } finally {
+      setSavingThreshold(false);
+    }
+  };
+
+  const handleBackfillScores = async () => {
+    if (!window.confirm('Evaluate all articles without scores? This may take a few minutes.')) return;
+    try {
+      setBackfilling(true);
+      const { data } = await apiClient.post<{ success: boolean }>('/admin/articles/backfill-scores');
+      if (data?.success) {
+        setMessage({ type: 'success', text: `Backfill queued. Check back in a few minutes...` });
+        setTimeout(() => setMessage(null), 8000);
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to start backfill' });
+    } finally {
+      setBackfilling(false);
+    }
+  };
+
+  const handleForceBackfillScores = async () => {
+    if (!window.confirm('Re-evaluate ALL articles (including those with existing scores)? This may take several minutes.')) return;
+    try {
+      setForceBackfilling(true);
+      const { data } = await apiClient.post<{ success: boolean }>('/admin/articles/backfill-scores-force');
+      if (data?.success) {
+        setMessage({ type: 'success', text: `Force backfill queued. Check back in a few minutes...` });
+        setTimeout(() => setMessage(null), 8000);
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: 'Failed to start force backfill' });
+    } finally {
+      setForceBackfilling(false);
+    }
   };
 
   if (!isHydrated || !isAuthenticated) {
@@ -106,10 +184,11 @@ export default function ProfilePage() {
   ];
 
   const tabs = [
-    { id: 'profile', label: 'Profile', icon: User },
-    { id: 'preferences', label: 'Preferences', icon: Settings },
-    { id: 'saved', label: 'Saved Articles', icon: Bookmark },
-  ] as const;
+    { id: 'profile' as const, label: 'Profile', icon: User },
+    { id: 'preferences' as const, label: 'Preferences', icon: Settings },
+    { id: 'saved' as const, label: 'Saved Articles', icon: Bookmark },
+    ...(user?.is_admin ? [{ id: 'settings' as const, label: 'Quality Settings', icon: Gauge }] : []),
+  ];
 
   return (
     <motion.main
@@ -380,6 +459,152 @@ export default function ProfilePage() {
                 </div>
               </motion.div>
             )}
+          </motion.div>
+        )}
+
+        {/* Settings Tab (Admin Only) */}
+        {activeTab === 'settings' && user?.is_admin && (
+          <motion.div
+            variants={tabVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            className="space-y-6"
+          >
+            {/* Success/Error Messages */}
+            <AnimatePresence>
+              {message && (
+                <motion.div
+                  variants={itemVariants}
+                  initial="hidden"
+                  animate="visible"
+                  exit={{ opacity: 0, y: -20 }}
+                  className={`glass-panel p-4 flex items-center gap-3 border-l-4 ${
+                    message.type === 'success'
+                      ? 'border-green-500/30 bg-green-50/50'
+                      : 'border-red-500/30 bg-red-50/50'
+                  }`}
+                >
+                  <div className={`w-2 h-2 rounded-full ${message.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`} />
+                  <p className={`text-sm font-semibold ${message.type === 'success' ? 'text-green-700' : 'text-red-700'}`}>
+                    {message.text}
+                  </p>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Threshold Setting */}
+            <motion.div variants={itemVariants}>
+              <SettingsSection title="Quality Threshold" subtitle="Control what non-admin users see">
+                <div className="space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2 items-end">
+                    <div>
+                      <label htmlFor="threshold" className="flex items-center gap-2 text-sm font-semibold text-black/80 mb-3">
+                        <Gauge className="h-4 w-4 text-blue-600" />
+                        Score (0.0 - 10.0)
+                      </label>
+                      <input
+                        id="threshold"
+                        type="number"
+                        min="0"
+                        max="10"
+                        step="0.1"
+                        value={threshold}
+                        onChange={(e) => setThreshold(parseFloat(e.target.value) || 0)}
+                        disabled={savingThreshold}
+                        className="w-full px-4 py-3 rounded-lg border border-black/10 bg-white/50 text-black
+                          focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                          disabled:opacity-50 transition-all"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleSaveThreshold}
+                      disabled={savingThreshold || threshold === originalThreshold}
+                      className="btn-liquid primary"
+                    >
+                      {savingThreshold ? (
+                        <>
+                          <Loader2 size={16} className="animate-spin inline mr-2" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save size={16} className="inline mr-2" />
+                          Save
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <div className="text-xs text-black/50">
+                    Current: <span className="font-semibold text-black/70">{originalThreshold.toFixed(1)}/10</span>
+                  </div>
+                </div>
+              </SettingsSection>
+            </motion.div>
+
+            {/* Backfill Scores */}
+            <motion.div variants={itemVariants}>
+              <SettingsSection title="Score Backfill" subtitle="Evaluate articles quality scores">
+                <div className="space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <p className="text-xs text-black/60">
+                        Articles without scores
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleBackfillScores}
+                        disabled={backfilling || forceBackfilling}
+                        className="w-full bg-gradient-to-r from-green-600 to-emerald-600 text-white font-semibold
+                          px-4 py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-green-500/20
+                          hover:shadow-lg hover:shadow-green-500/40 hover:-translate-y-1 transition-all
+                          disabled:opacity-50 disabled:hover:translate-y-0 text-sm"
+                      >
+                        {backfilling ? (
+                          <>
+                            <Loader2 size={16} className="animate-spin" />
+                            <span>Starting...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Zap size={16} />
+                            <span>Backfill</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="text-xs text-black/60">
+                        Re-evaluate all articles
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleForceBackfillScores}
+                        disabled={forceBackfilling || backfilling}
+                        className="w-full bg-gradient-to-r from-orange-600 to-red-600 text-white font-semibold
+                          px-4 py-3 rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-orange-500/20
+                          hover:shadow-lg hover:shadow-orange-500/40 hover:-translate-y-1 transition-all
+                          disabled:opacity-50 disabled:hover:translate-y-0 text-sm"
+                      >
+                        {forceBackfilling ? (
+                          <>
+                            <Loader2 size={16} className="animate-spin" />
+                            <span>Starting...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Zap size={16} />
+                            <span>Force Re-eval</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </SettingsSection>
+            </motion.div>
           </motion.div>
         )}
       </motion.div>

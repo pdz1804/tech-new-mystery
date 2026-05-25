@@ -62,12 +62,17 @@ export default function AdminQueuePage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [triggeringScheduler, setTriggeringScheduler] = useState<string | null>(null);
+  const [autoReviewLoading, setAutoReviewLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [selectedSearch, setSelectedSearch] = useState<PendingSearch | null>(null);
   const [queryModalOpen, setQueryModalOpen] = useState(false);
   const [queryModalSource, setQueryModalSource] = useState<'tavily' | 'newsapi'>('tavily');
   const [newsAPIModalOpen, setNewsAPIModalOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalSearches, setTotalSearches] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const LIMIT = 20;
 
   useEffect(() => {
     if (isHydrated && !user?.is_admin) {
@@ -82,10 +87,12 @@ export default function AdminQueuePage() {
         setLoading(true);
         setError(null);
 
-        const { data: response } = await apiClient.get('/admin/searches');
+        const { data: response } = await apiClient.get(`/admin/searches?page=${currentPage}&limit=${LIMIT}`);
 
         if (response.success) {
           setSearches(response.data);
+          setTotalSearches(response.total || 0);
+          setTotalPages(response.total_pages || 0);
         } else {
           setError('Failed to load pending searches');
         }
@@ -101,7 +108,7 @@ export default function AdminQueuePage() {
     if (isHydrated) {
       fetchQueue();
     }
-  }, [isHydrated]);
+  }, [isHydrated, currentPage]);
 
   const handleApprove = async (searchId: string) => {
     try {
@@ -223,6 +230,9 @@ export default function AdminQueuePage() {
       if (data.success) {
         setSuccessMessage(data.message || 'Queue cleaned successfully!');
         setSearches([]);
+        setCurrentPage(1);
+        setTotalSearches(0);
+        setTotalPages(0);
         setTimeout(() => setSuccessMessage(null), 5000);
       } else {
         setError(data.message || 'Failed to clean queue');
@@ -233,6 +243,42 @@ export default function AdminQueuePage() {
       console.error('Error cleaning queue:', err);
     } finally {
       setTriggeringScheduler(null);
+    }
+  };
+
+  const handleAutoReview = async () => {
+    try {
+      setAutoReviewLoading(true);
+      setError(null);
+
+      const { data } = await apiClient.post('/admin/searches/auto-review');
+
+      if (data.success) {
+        setSuccessMessage(`Auto-review task queued (ID: ${data.task_id}). This may take a few minutes...`);
+        setTimeout(() => setSuccessMessage(null), 8000);
+
+        // Refresh queue after a delay
+        setTimeout(async () => {
+          try {
+            const { data: response } = await apiClient.get(`/admin/searches?page=${currentPage}&limit=${LIMIT}`);
+            if (response.success) {
+              setSearches(response.data);
+              setTotalSearches(response.total || 0);
+              setTotalPages(response.total_pages || 0);
+            }
+          } catch (err) {
+            console.error('Error refreshing queue:', err);
+          }
+        }, 3000);
+      } else {
+        setError('Failed to trigger auto-review');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error occurred';
+      setError(message);
+      console.error('Error triggering auto-review:', err);
+    } finally {
+      setAutoReviewLoading(false);
     }
   };
 
@@ -271,7 +317,7 @@ export default function AdminQueuePage() {
               <div className="text-left">
                 <h1 className="mb-1 font-sans text-3xl font-bold text-black sm:text-4xl">Search Queue</h1>
                 <p className="max-w-2xl text-sm text-black/60 sm:text-base">
-                  Review and approve search results ({searches.length} pending)
+                  Review and approve search results ({totalSearches} pending)
                 </p>
               </div>
 
@@ -317,6 +363,28 @@ export default function AdminQueuePage() {
                     </>
                   ) : (
                     <span>NewsAPI Search</span>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAutoReview}
+                  disabled={triggeringScheduler !== null || autoReviewLoading || loading || searches.length === 0}
+                  className="bg-gradient-to-r from-green-600 to-emerald-600 text-white font-semibold
+                    px-6 py-3 rounded-xl flex items-center gap-2 shadow-lg shadow-green-500/20
+                    hover:shadow-lg hover:shadow-green-500/40 hover:-translate-y-1 transition-all
+                    disabled:opacity-50 disabled:hover:translate-y-0"
+                  title="Automatically review, evaluate, and publish/reject all pending searches"
+                >
+                  {autoReviewLoading ? (
+                    <>
+                      <Loader2 size={20} className="animate-spin" />
+                      <span>Reviewing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap size={20} />
+                      <span>Auto-Review All</span>
+                    </>
                   )}
                 </button>
                 <button
@@ -389,98 +457,128 @@ export default function AdminQueuePage() {
               </p>
             </motion.div>
           ) : (
-            <motion.div
-              variants={containerVariants}
-              initial="hidden"
-              whileInView="visible"
-              viewport={{ once: true }}
-              className="queue-review-list"
-            >
-              {searches.map((search) => (
-                <motion.div
-                  key={search.search_id}
-                  variants={itemVariants}
-                  className="queue-review-row cursor-pointer"
-                  onClick={() => setSelectedSearch(search)}
-                >
-                    <div className="min-w-0">
-                      <h3 className="queue-review-title line-clamp-2 transition-colors hover:text-blue-600">
-                        {search.title}
-                      </h3>
-                      <p className="queue-review-preview line-clamp-2">
-                        {cleanSnippet(search.snippet, 180)}
-                      </p>
-                    </div>
+            <>
+              <motion.div
+                variants={containerVariants}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true }}
+                className="queue-review-list"
+              >
+                {searches.map((search) => (
+                  <motion.div
+                    key={search.search_id}
+                    variants={itemVariants}
+                    className="queue-review-row cursor-pointer"
+                    onClick={() => setSelectedSearch(search)}
+                  >
+                      <div className="min-w-0">
+                        <h3 className="queue-review-title line-clamp-2 transition-colors hover:text-blue-600">
+                          {search.title}
+                        </h3>
+                        <p className="queue-review-preview line-clamp-2">
+                          {cleanSnippet(search.snippet, 180)}
+                        </p>
+                      </div>
 
-                    <div className="queue-review-meta">
-                        {search.source && (
+                      <div className="queue-review-meta">
+                          {search.source && (
+                            <Badge variant="info" size="sm">
+                              {search.source}
+                            </Badge>
+                          )}
                           <Badge variant="info" size="sm">
-                            {search.source}
+                            <Clock size={12} className="inline mr-1" />
+                            {new Date(search.created_at).toLocaleDateString()}
                           </Badge>
-                        )}
-                        <Badge variant="info" size="sm">
-                          <Clock size={12} className="inline mr-1" />
-                          {new Date(search.created_at).toLocaleDateString()}
-                        </Badge>
-                    </div>
+                      </div>
 
-                  {/* Action Buttons */}
-                  <div className="flex shrink-0 justify-start gap-2 lg:justify-end">
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleApprove(search.search_id);
-                      }}
-                      disabled={actionLoading === search.search_id}
-                      className="btn-liquid primary sm text-sm"
-                    >
-                      {actionLoading === search.search_id ? (
-                        <>
-                          <Loader2 size={16} className="animate-spin inline mr-1" />
-                          Approving...
-                        </>
-                      ) : (
-                        <>
-                          <Check size={16} className="inline mr-1" />
-                          Approve
-                        </>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleReject(search.search_id);
-                      }}
-                      disabled={actionLoading === search.search_id}
-                      className="btn-liquid secondary sm text-sm"
-                    >
-                      {actionLoading === search.search_id ? (
-                        <>
-                          <Loader2 size={16} className="animate-spin inline mr-1" />
-                          Rejecting...
-                        </>
-                      ) : (
-                        <>
-                          <X size={16} className="inline mr-1" />
-                          Reject
-                        </>
-                      )}
-                    </button>
-                    <a
-                      href={search.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn-liquid tertiary sm text-sm"
-                      title="Open article in new tab"
-                    >
-                      <ExternalLink size={16} className="inline" />
-                    </a>
-                  </div>
+                    {/* Action Buttons */}
+                    <div className="flex shrink-0 justify-start gap-2 lg:justify-end">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleApprove(search.search_id);
+                        }}
+                        disabled={actionLoading === search.search_id}
+                        className="btn-liquid primary sm text-sm"
+                      >
+                        {actionLoading === search.search_id ? (
+                          <>
+                            <Loader2 size={16} className="animate-spin inline mr-1" />
+                            Approving...
+                          </>
+                        ) : (
+                          <>
+                            <Check size={16} className="inline mr-1" />
+                            Approve
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleReject(search.search_id);
+                        }}
+                        disabled={actionLoading === search.search_id}
+                        className="btn-liquid secondary sm text-sm"
+                      >
+                        {actionLoading === search.search_id ? (
+                          <>
+                            <Loader2 size={16} className="animate-spin inline mr-1" />
+                            Rejecting...
+                          </>
+                        ) : (
+                          <>
+                            <X size={16} className="inline mr-1" />
+                            Reject
+                          </>
+                        )}
+                      </button>
+                      <a
+                        href={search.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn-liquid tertiary sm text-sm"
+                        title="Open article in new tab"
+                      >
+                        <ExternalLink size={16} className="inline" />
+                      </a>
+                    </div>
+                  </motion.div>
+                ))}
+              </motion.div>
+
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <motion.div
+                  variants={itemVariants}
+                  className="mt-8 flex items-center justify-center gap-3"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                    disabled={currentPage === 1 || loading}
+                    className="btn-liquid secondary sm"
+                  >
+                    ← Prev
+                  </button>
+                  <span className="text-sm font-semibold text-black/60">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                    disabled={currentPage === totalPages || loading}
+                    className="btn-liquid secondary sm"
+                  >
+                    Next →
+                  </button>
                 </motion.div>
-              ))}
-            </motion.div>
+              )}
+            </>
           )}
         </div>
       </section>

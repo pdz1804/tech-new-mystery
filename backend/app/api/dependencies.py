@@ -49,6 +49,22 @@ async def get_current_user(
     return payload
 
 
+async def get_optional_user(
+    authorization: str | None = Header(None),
+) -> dict | None:
+    """Dependency to get current user without raising 401 if missing."""
+    if not authorization:
+        return None
+
+    if not authorization.startswith("Bearer "):
+        return None
+
+    token = authorization.removeprefix("Bearer ")
+    payload = decode_access_token(token)
+
+    return payload
+
+
 def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
     """Dependency to ensure user is an admin."""
     if not current_user.get("is_admin", False):

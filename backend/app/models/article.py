@@ -65,6 +65,8 @@ class ArticleModel(Model):
     markdown_content = UnicodeAttribute(null=True)
     author = UnicodeAttribute(null=True)
     category = UnicodeAttribute(null=True)
+    categories = ListAttribute(of=UnicodeAttribute, default=list)
+    quality_score = NumberAttribute(null=True)
     tags = ListAttribute(of=UnicodeAttribute, default=list)
     is_published = BooleanAttribute(default=False)
     view_count = NumberAttribute(default=0)

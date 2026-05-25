@@ -10,7 +10,9 @@ export interface ArticleResponse {
   original_url: string;
   source_id: string;
   category: string | null;
+  categories?: string[];
   tags: string[];
+  quality_score?: number | null;
   view_count: number;
   is_published: boolean;
   published_at: string | null;

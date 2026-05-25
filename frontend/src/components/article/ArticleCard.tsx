@@ -29,6 +29,8 @@ export interface ArticleCardProps {
   publishedAt: string;
   source?: string;
   category?: string;
+  categories?: string[];
+  qualityScore?: number | null;
   views?: number;
   summary?: string;
   featured?: boolean;
@@ -64,6 +66,8 @@ export function ArticleCard({
   publishedAt,
   source,
   category,
+  categories,
+  qualityScore,
   views,
   summary,
   featured,
@@ -114,13 +118,30 @@ export function ArticleCard({
           <div className="article-card-content">
             <div className="article-card-topline">
               <div className="article-card-orb" aria-hidden="true">
-                <span>{(category || title).slice(0, 1).toUpperCase()}</span>
+                <span>{((categories && categories[0]) || category || title).slice(0, 1).toUpperCase()}</span>
               </div>
 
               <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+                {/* Quality Score Badge - Top Right Corner */}
+                {qualityScore !== undefined && qualityScore !== null && (
+                  <span className={`text-xs font-bold px-2 py-1 rounded-md flex items-center gap-1 transition-all
+                    ${qualityScore >= 8
+                      ? 'bg-green-500/20 text-green-700 border border-green-500/40'
+                      : qualityScore >= 6
+                      ? 'bg-amber-500/20 text-amber-700 border border-amber-500/40'
+                      : 'bg-red-500/20 text-red-700 border border-red-500/40'
+                    }`}
+                  >
+                    <span>★</span>
+                    <span>{qualityScore.toFixed(1)}</span>
+                  </span>
+                )}
+
                 {featured && <Badge type="featured" label="Featured" />}
                 {trending && <Badge type="trending" label="Trending" icon={<TrendingUp size={12} />} />}
-                {category && <Badge type="category" label={category} />}
+                {(categories && categories.length > 0 ? categories : [category]).filter(Boolean).map((cat) => (
+                  <Badge key={cat} type="category" label={cat} />
+                ))}
               </div>
             </div>
 

@@ -143,8 +143,16 @@ class BedrockClient(LLMProvider):
     async def generate(
         self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7
     ) -> str:
-        """Generate text using Bedrock API."""
+        """Generate text using Bedrock API.
+
+        Supports multiple model types with different response formats:
+        - Claude models: Bedrock format with 'content' key
+        - ZAI GLM models: OpenAI format with 'choices' key
+        """
         import asyncio
+        import logging
+
+        logger = logging.getLogger(__name__)
 
         payload = {
             "anthropic_version": "bedrock-2023-05-31",
@@ -170,7 +178,32 @@ class BedrockClient(LLMProvider):
 
         response = await _invoke()
         result = json.loads(response["body"].read())
-        return result["content"][0]["text"]
+
+        # Handle different response formats based on model type
+        if "zai" in self.model.lower() or "glm" in self.model.lower():
+            # ZAI GLM models return OpenAI-style format
+            logger.debug(f"[BEDROCK] Detected ZAI/GLM model, parsing OpenAI format")
+            if "choices" not in result:
+                logger.error(f"[BEDROCK] ZAI response missing 'choices' key. Full response: {result}")
+                raise KeyError(f"Bedrock ZAI response missing 'choices' key")
+
+            try:
+                return result["choices"][0]["message"]["content"]
+            except (KeyError, IndexError) as e:
+                logger.error(f"[BEDROCK] Failed to extract content from ZAI response: {str(e)}")
+                raise
+        else:
+            # Claude models return Bedrock format
+            logger.debug(f"[BEDROCK] Detected Claude model, parsing Bedrock format")
+            if "content" not in result:
+                logger.error(f"[BEDROCK] Response missing 'content' key. Full response: {result}")
+                raise KeyError(f"Bedrock response missing 'content' key. Response: {json.dumps(result)[:500]}")
+
+            if not result["content"] or not isinstance(result["content"], list):
+                logger.error(f"[BEDROCK] Invalid content structure: {result['content']}")
+                raise ValueError(f"Bedrock 'content' is not a non-empty list")
+
+            return result["content"][0]["text"]
 
     async def health_check(self) -> bool:
         """Check Bedrock availability."""
