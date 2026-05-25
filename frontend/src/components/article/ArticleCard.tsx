@@ -140,7 +140,7 @@ export function ArticleCard({
                 {featured && <Badge type="featured" label="Featured" />}
                 {trending && <Badge type="trending" label="Trending" icon={<TrendingUp size={12} />} />}
                 {(categories && categories.length > 0 ? categories : [category]).filter(Boolean).map((cat) => (
-                  <Badge key={cat} type="category" label={cat} />
+                  <Badge key={cat} type="category" label={cat as string} />
                 ))}
               </div>
             </div>
