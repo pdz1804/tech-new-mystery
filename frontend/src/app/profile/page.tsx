@@ -52,7 +52,6 @@ export default function ProfilePage() {
   const [threshold, setThreshold] = useState(8.0);
   const [originalThreshold, setOriginalThreshold] = useState(8.0);
   const [savingThreshold, setSavingThreshold] = useState(false);
-  const [loadingThreshold, setLoadingThreshold] = useState(false);
   const [backfilling, setBackfilling] = useState(false);
   const [forceBackfilling, setForceBackfilling] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -89,7 +88,6 @@ export default function ProfilePage() {
     if (!user?.is_admin) return;
     const fetchThreshold = async () => {
       try {
-        setLoadingThreshold(true);
         const { data } = await apiClient.get<{ success: boolean; threshold: number }>('/admin/settings/threshold');
         if (data?.success) {
           setThreshold(data.threshold);
@@ -97,8 +95,6 @@ export default function ProfilePage() {
         }
       } catch (err) {
         console.error('Error fetching threshold:', err);
-      } finally {
-        setLoadingThreshold(false);
       }
     };
     fetchThreshold();
@@ -130,7 +126,7 @@ export default function ProfilePage() {
         setMessage({ type: 'success', text: `Threshold updated to ${data.threshold.toFixed(1)}/10` });
         setTimeout(() => setMessage(null), 5000);
       }
-    } catch (err) {
+    } catch {
       setMessage({ type: 'error', text: 'Failed to save threshold' });
     } finally {
       setSavingThreshold(false);
@@ -146,7 +142,7 @@ export default function ProfilePage() {
         setMessage({ type: 'success', text: `Backfill queued. Check back in a few minutes...` });
         setTimeout(() => setMessage(null), 8000);
       }
-    } catch (err) {
+    } catch {
       setMessage({ type: 'error', text: 'Failed to start backfill' });
     } finally {
       setBackfilling(false);
@@ -162,7 +158,7 @@ export default function ProfilePage() {
         setMessage({ type: 'success', text: `Force backfill queued. Check back in a few minutes...` });
         setTimeout(() => setMessage(null), 8000);
       }
-    } catch (err) {
+    } catch {
       setMessage({ type: 'error', text: 'Failed to start force backfill' });
     } finally {
       setForceBackfilling(false);
