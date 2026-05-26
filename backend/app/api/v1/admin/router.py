@@ -960,16 +960,38 @@ async def get_queue_stats(
         pending_searches = await search_repo.list_pending(limit=10000)
         total_pending = len(pending_searches)
 
-        # Get Celery worker stats
-        inspector = celery_app.control.inspect()
+        # Get Celery worker stats with timeout
+        inspector = celery_app.control.inspect(timeout=5)
 
-        # Get active tasks (being processed right now)
+        # Get active tasks - directly query Redis for queued tasks
+        # This is more reliable than inspector.active() which can timeout
+        import redis
+        from app.config import settings
+
+        redis_client = redis.from_url(settings.celery_broker_url)
+
+        # Get the queue length from Redis (queued tasks waiting to run)
+        # Celery uses a list key for each queue/routing_key
+        queue_key = "celery"
+        try:
+            celery_queue_length = redis_client.llen(queue_key)
+        except Exception as e:
+            logger.warning(f"[QUEUE_STATS] Failed to get Redis queue length: {e}")
+            celery_queue_length = 0
+
+        # Also try inspector as backup
         active_tasks = inspector.active() or {}
         being_processed = sum(len(tasks) for tasks in active_tasks.values())
+        logger.info(f"[QUEUE_STATS] Inspector: {being_processed} tasks, Redis queue: {celery_queue_length} tasks")
 
-        # Get reserved tasks (queued, waiting to be picked up)
-        reserved_tasks = inspector.reserved() or {}
-        queued_in_redis = sum(len(tasks) for tasks in reserved_tasks.values())
+        # If inspector shows nothing but we know there should be tasks, use redis queue count as estimate
+        if being_processed == 0 and celery_queue_length > 0:
+            being_processed = min(celery_queue_length, 6)  # Max 6 concurrent workers
+            logger.info(f"[QUEUE_STATS] Using Redis queue as source: {being_processed} estimated processing")
+
+        # Get reserved tasks - use queued count from Redis (more reliable than inspector.reserved)
+        queued_in_redis = celery_queue_length
+        logger.info(f"[QUEUE_STATS] Queued in Redis: {queued_in_redis}")
 
         # Get processing task details
         processing_tasks: list[ProcessingTask] = []

@@ -46,7 +46,7 @@ async def _crawl_all_sources() -> dict:
         crawler = await get_crawler_client()
 
         # Get all enabled sources
-        sources = await source_repo.list()
+        sources = await source_repo.list_all()
         enabled_sources = [s for s in sources if s.enabled]
 
         logger.info(f"Starting daily crawl of {len(enabled_sources)} sources")
@@ -137,7 +137,7 @@ async def _crawl_source(source_id: str) -> dict:
         crawler = await get_crawler_client()
 
         # Get source
-        source = await source_repo.get(source_id)
+        source = await source_repo.get_by_id(source_id)
         if not source:
             logger.warning(f"Source {source_id} not found")
             return {"success": False, "error": f"Source {source_id} not found"}
