@@ -61,7 +61,7 @@ async def _evaluate_article(article_id: str) -> dict:
         raise
 
 
-@celery_app.task(bind=True, max_retries=1, default_retry_delay=60)
+@celery_app.task(bind=True, max_retries=3, default_retry_delay=60)
 def auto_process_single_search(self, search_id: str) -> dict:
     """Process a single pending search: approve → evaluate → publish/reject.
 
@@ -75,9 +75,14 @@ def auto_process_single_search(self, search_id: str) -> dict:
     """
     try:
         result = asyncio.run(_auto_process_single_search(search_id))
+        if not result.get("success"):
+            logger.warning(f"[AUTO_PROCESS_SEARCH] Task failed for {search_id}: {result}")
         return result
     except Exception as exc:
-        logger.error(f"[AUTO_PROCESS_SEARCH] Task failed for {search_id}: {str(exc)}")
+        logger.error(
+            f"[AUTO_PROCESS_SEARCH] Attempt {self.request.retries + 1}/{self.max_retries} failed for {search_id}: {type(exc).__name__}: {str(exc)}",
+            exc_info=True
+        )
         raise self.retry(exc=exc)
 
 
@@ -204,22 +209,14 @@ async def _auto_process_single_search(search_id: str) -> dict:
 def auto_review_queue_task(self) -> dict:
     """Master task: fetch all pending searches and dispatch worker tasks.
 
-    Automatically re-triggers itself if pending searches remain after batch dispatch.
-    This creates a continuous processing loop until queue is empty.
+    Dispatches all pending searches as worker tasks to be processed asynchronously.
+    Does not re-trigger - one dispatch per invocation.
 
     Returns:
-        Result dict with dispatch count and continuation status
+        Result dict with dispatch count
     """
     try:
         result = asyncio.run(_auto_review_queue())
-
-        # If there are still pending searches after dispatch, re-schedule this task
-        if result.get("has_remaining"):
-            remaining_count = result.get("remaining_pending", 0)
-            logger.info(f"[AUTO_REVIEW_QUEUE] Remaining {remaining_count} searches, re-scheduling task...")
-            # Re-schedule with 5-second delay to allow workers to process current batch
-            auto_review_queue_task.apply_async(countdown=5)
-
         return result
     except Exception as exc:
         logger.error(f"[AUTO_REVIEW_QUEUE] Task failed: {str(exc)}")
@@ -271,21 +268,12 @@ async def _auto_review_queue() -> dict:
 
         logger.info(f"[AUTO_REVIEW_QUEUE] Completed: Dispatched {len(dispatched_ids)} total items in {total_batches} batches")
 
-        # Check if there are still pending searches (new ones may have arrived during processing)
-        remaining = await search_repo.list_pending(limit=1000)
-        has_remaining = len(remaining) > 0
-
-        if has_remaining:
-            logger.info(f"[AUTO_REVIEW_QUEUE] {len(remaining)} pending searches remain - task will re-trigger automatically")
-
         return {
             "success": True,
             "total_pending": len(pending),
             "dispatched": len(dispatched_ids),
             "batch_size": BATCH_SIZE,
             "total_batches": total_batches,
-            "has_remaining": has_remaining,
-            "remaining_pending": len(remaining) if has_remaining else 0,
         }
 
     except Exception as e:
