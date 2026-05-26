@@ -976,10 +976,14 @@ async def get_queue_stats(
         if active_tasks:
             for worker_tasks in active_tasks.values():
                 for task in worker_tasks:
-                    # Extract search info from pending searches
+                    # Extract search_id from task args
                     search_id = task.get("args", [None])[0] if task.get("args") else None
                     if search_id:
+                        # Try to find in pending_searches first (fast)
                         search = next((s for s in pending_searches if s.search_id == search_id), None)
+                        # If not found, fetch directly from repo (covers approved/rejected status)
+                        if not search:
+                            search = await search_repo.get_by_id(search_id)
                         if search:
                             processing_tasks.append(
                                 ProcessingTask(
