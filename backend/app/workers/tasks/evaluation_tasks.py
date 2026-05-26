@@ -204,13 +204,22 @@ async def _auto_process_single_search(search_id: str) -> dict:
 def auto_review_queue_task(self) -> dict:
     """Master task: fetch all pending searches and dispatch worker tasks.
 
-    This is the entry point for auto-reviewing the entire queue.
+    Automatically re-triggers itself if pending searches remain after batch dispatch.
+    This creates a continuous processing loop until queue is empty.
 
     Returns:
-        Result dict with dispatch count
+        Result dict with dispatch count and continuation status
     """
     try:
         result = asyncio.run(_auto_review_queue())
+
+        # If there are still pending searches after dispatch, re-schedule this task
+        if result.get("has_remaining"):
+            remaining_count = result.get("remaining_pending", 0)
+            logger.info(f"[AUTO_REVIEW_QUEUE] Remaining {remaining_count} searches, re-scheduling task...")
+            # Re-schedule with 5-second delay to allow workers to process current batch
+            auto_review_queue_task.apply_async(countdown=5)
+
         return result
     except Exception as exc:
         logger.error(f"[AUTO_REVIEW_QUEUE] Task failed: {str(exc)}")
@@ -262,12 +271,21 @@ async def _auto_review_queue() -> dict:
 
         logger.info(f"[AUTO_REVIEW_QUEUE] Completed: Dispatched {len(dispatched_ids)} total items in {total_batches} batches")
 
+        # Check if there are still pending searches (new ones may have arrived during processing)
+        remaining = await search_repo.list_pending(limit=1000)
+        has_remaining = len(remaining) > 0
+
+        if has_remaining:
+            logger.info(f"[AUTO_REVIEW_QUEUE] {len(remaining)} pending searches remain - task will re-trigger automatically")
+
         return {
             "success": True,
             "total_pending": len(pending),
             "dispatched": len(dispatched_ids),
             "batch_size": BATCH_SIZE,
             "total_batches": total_batches,
+            "has_remaining": has_remaining,
+            "remaining_pending": len(remaining) if has_remaining else 0,
         }
 
     except Exception as e:
