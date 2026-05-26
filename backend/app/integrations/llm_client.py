@@ -127,18 +127,28 @@ class BedrockClient(LLMProvider):
             import boto3
             from botocore.config import Config
 
-            bedrock_config = Config(
-                read_timeout=30,
-                connect_timeout=10,
-                retries={"max_attempts": 1},
-            )
-            self.client = boto3.client(
-                "bedrock-runtime",
-                region_name=region,
-                config=bedrock_config,
-            )
+            self.boto3 = boto3
+            self.Config = Config
         except ImportError:
             raise ImportError("boto3 is required for Bedrock support")
+
+    def _get_client(self):
+        """Create a fresh boto3 client with current credentials.
+
+        Creates a new client for each request to ensure credentials are always fresh.
+        This prevents signature expiration errors that occur when credentials are stale.
+        IAM role credentials are temporary (typically 1 hour) and must be refreshed.
+        """
+        bedrock_config = self.Config(
+            read_timeout=30,
+            connect_timeout=10,
+            retries={"max_attempts": 1},
+        )
+        return self.boto3.client(
+            "bedrock-runtime",
+            region_name=self.region,
+            config=bedrock_config,
+        )
 
     async def generate(
         self, prompt: str, max_tokens: int = 1000, temperature: float = 0.7
@@ -168,7 +178,9 @@ class BedrockClient(LLMProvider):
 
         async def _invoke():
             def sync_invoke():
-                return self.client.invoke_model(
+                # Get a fresh client with current credentials for this request
+                client = self._get_client()
+                return client.invoke_model(
                     modelId=self.model,
                     contentType="application/json",
                     accept="application/json",
@@ -211,7 +223,8 @@ class BedrockClient(LLMProvider):
 
         async def _check():
             def sync_check():
-                return self.client.list_foundation_models()
+                client = self._get_client()
+                return client.list_foundation_models()
             return await asyncio.to_thread(sync_check)
 
         try:
