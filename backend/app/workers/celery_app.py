@@ -17,6 +17,10 @@ celery_app.conf.update(
     result_serializer="json",
     timezone="UTC",
     enable_utc=True,
+    # Increase heartbeat timeout - workers may be busy for 60+ seconds with Crawl4AI
+    # Default is too short and causes "missed heartbeat" errors
+    worker_heartbeat_interval=5,  # Send heartbeat every 5 seconds
+    worker_heartbeat_timeout=300,  # Allow 5 minutes without heartbeat before declaring worker dead
     beat_schedule={
         "crawl-news-daily": {
             "task": "app.workers.tasks.crawl_tasks.daily_crawl_task",

@@ -68,7 +68,7 @@ async def _crawl_all_sources() -> dict:
 
             try:
                 logger.info(f"Crawling source: {source.name} ({source.url})")
-                crawled = await crawler.crawl_url(source.url, timeout=30)
+                crawled = await crawler.crawl_url(source.url, timeout=60)  # 60s for browser init + load
 
                 if not crawled.success:
                     logger.warning(f"Failed to crawl {source.name}: {crawled.error}")
@@ -148,7 +148,7 @@ async def _crawl_source(source_id: str) -> dict:
 
         logger.info(f"Crawling source: {source.name}")
 
-        crawled = await crawler.crawl_url(source.url, timeout=30)
+        crawled = await crawler.crawl_url(source.url, timeout=60)  # 60s for browser init + load
         if not crawled.success:
             logger.error(f"Failed to crawl {source.name}: {crawled.error}")
             return {"success": False, "error": crawled.error, "source_id": source_id}

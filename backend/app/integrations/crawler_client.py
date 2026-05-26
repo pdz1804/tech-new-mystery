@@ -80,22 +80,25 @@ class CrawlerClient:
             self._initialized = False
             raise
 
-    def _build_crawler_config(self, cache_mode: str = "always", use_llm_strategy: bool = True) -> dict:
+    def _build_crawler_config(self, cache_mode: str = "always", use_llm_strategy: bool = False) -> dict:
         """Build crawler parameters for AsyncWebCrawler.arun().
 
-        For Crawl4AI 0.8.6+, returns a dict of parameters to pass to arun().
-        Uses LLMExtractionStrategy for accurate LinkedIn post extraction.
+        Optimized for speed and reliability:
+        - Disabled LLM extraction (slow, costs money, not needed for most content)
+        - Fast wait strategy: "domcontentloaded" instead of "networkidle"
+        - No unnecessary delays
+        - Always use cache to avoid re-crawling same URLs
         """
         config_kwargs = {
             "word_count_threshold": 10,
             "exclude_external_links": True,
             "remove_overlay_elements": True,
-            "flatten_shadow_dom": True,  # CRITICAL: LinkedIn uses Web Components with Shadow DOM
-            "wait_until": "networkidle",  # CRITICAL: Wait for dynamic content to load
-            "delay_before_return_html": 2,  # Allow async content to fully render
+            "flatten_shadow_dom": True,  # Handle Web Components
+            "wait_until": "domcontentloaded",  # Fast: wait for DOM ready, not all network (saves 5-10 sec per request)
+            # Removed: delay_before_return_html - was adding unnecessary 2 sec latency
         }
 
-        # Add cache mode if available
+        # Always use cache to prevent re-crawling same URLs
         if CacheMode:
             cache_modes = {
                 "always": CacheMode.ENABLED,
@@ -104,22 +107,9 @@ class CrawlerClient:
             }
             config_kwargs["cache_mode"] = cache_modes.get(cache_mode, CacheMode.ENABLED)
 
-        # Use LLMExtractionStrategy for intelligent content extraction
-        # Better at distinguishing actual post content vs. CSS docs/metadata
-        if use_llm_strategy:
-            try:
-                if LLMExtractionStrategy:
-                    strategy = LLMExtractionStrategy(
-                        provider="openai",
-                        api_token=None,  # Will use OPENAI_API_KEY env var
-                        instruction="""Extract ONLY the main article or post content.
-                        Ignore CSS documentation, design patterns, technical specs, footer links, ads.
-                        Return as clean markdown focused on the actual content."""
-                    )
-                    config_kwargs["extraction_strategy"] = strategy
-                    logger.debug("Using LLMExtractionStrategy for intelligent content extraction")
-            except Exception as e:
-                logger.debug(f"Could not load LLMExtractionStrategy: {e}")
+        # Disabled LLM extraction strategy - it's slow and calls OpenAI API
+        # Basic content extraction is sufficient for news articles
+        logger.debug("Using fast extraction strategy (no LLM)")
 
         return config_kwargs
 
@@ -149,8 +139,14 @@ class CrawlerClient:
 
         return media_items
 
-    async def crawl_url(self, url: str, timeout: int = 30, use_cache: bool = True) -> CrawledContent:
-        """Crawl a URL and extract content with media."""
+    async def crawl_url(self, url: str, timeout: int = 60, use_cache: bool = True) -> CrawledContent:
+        """Crawl a URL and extract content with media.
+
+        Timeout increased to 60s to account for browser initialization (5-10s) + page load + extraction.
+        """
+        import time
+        start_time = time.time()
+
         if not self.crawler or not self._initialized:
             await self.initialize()
 
@@ -171,7 +167,10 @@ class CrawlerClient:
 
             # Pass config parameters directly to arun()
             try:
+                logger.info(f"[CRAWL] Starting crawl of {url[:60]}...")
                 result = await self.crawler.arun(url=url, **config)
+                elapsed = time.time() - start_time
+                logger.info(f"[CRAWL] Completed in {elapsed:.2f}s for {url[:60]}...")
             except (AttributeError, TypeError) as e:
                 # Handle browser initialization errors
                 if "NoneType" in str(e) or "new_context" in str(e):
