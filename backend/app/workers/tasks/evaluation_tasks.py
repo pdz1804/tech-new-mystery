@@ -218,7 +218,7 @@ def auto_review_queue_task(self) -> dict:
 
 
 async def _auto_review_queue() -> dict:
-    """Async helper: dispatch worker tasks for all pending searches."""
+    """Async helper: dispatch worker tasks for all pending searches in batches."""
     try:
         logger.info("[AUTO_REVIEW_QUEUE] Starting auto-review of queue")
 
@@ -227,22 +227,47 @@ async def _auto_review_queue() -> dict:
 
         logger.info(f"[AUTO_REVIEW_QUEUE] Found {len(pending)} pending searches")
 
-        # Dispatch a worker task for each search
-        dispatched_ids = []
-        for search in pending:
-            try:
-                task = auto_process_single_search.delay(search.search_id)
-                dispatched_ids.append(search.search_id)
-                logger.debug(f"[AUTO_REVIEW_QUEUE] Dispatched worker for {search.search_id}")
-            except Exception as e:
-                logger.warning(f"[AUTO_REVIEW_QUEUE] Failed to dispatch {search.search_id}: {str(e)}")
+        if not pending:
+            return {"success": True, "total_pending": 0, "dispatched": 0, "total_batches": 0}
 
-        logger.info(f"[AUTO_REVIEW_QUEUE] Dispatched {len(dispatched_ids)} worker tasks")
+        # Batch configuration
+        BATCH_SIZE = 50
+        BATCH_DELAY_SECONDS = 2
+
+        # Dispatch worker tasks in batches to prevent queue flooding
+        dispatched_ids = []
+        total_batches = (len(pending) - 1) // BATCH_SIZE + 1
+
+        for batch_num, batch_start in enumerate(range(0, len(pending), BATCH_SIZE)):
+            batch = pending[batch_start : batch_start + BATCH_SIZE]
+            batch_dispatched = 0
+
+            logger.info(f"[AUTO_REVIEW_QUEUE] Processing batch {batch_num + 1}/{total_batches} ({len(batch)} items)")
+
+            for search in batch:
+                try:
+                    task = auto_process_single_search.delay(search.search_id)
+                    dispatched_ids.append(search.search_id)
+                    batch_dispatched += 1
+                    logger.debug(f"[AUTO_REVIEW_QUEUE] Dispatched worker for {search.search_id}")
+                except Exception as e:
+                    logger.warning(f"[AUTO_REVIEW_QUEUE] Failed to dispatch {search.search_id}: {str(e)}")
+
+            logger.info(f"[AUTO_REVIEW_QUEUE] Batch {batch_num + 1}: dispatched {batch_dispatched} items")
+
+            # Add delay between batches to prevent queue flood (except after last batch)
+            if batch_start + BATCH_SIZE < len(pending):
+                logger.info(f"[AUTO_REVIEW_QUEUE] Waiting {BATCH_DELAY_SECONDS}s before next batch...")
+                await asyncio.sleep(BATCH_DELAY_SECONDS)
+
+        logger.info(f"[AUTO_REVIEW_QUEUE] Completed: Dispatched {len(dispatched_ids)} total items in {total_batches} batches")
 
         return {
             "success": True,
+            "total_pending": len(pending),
             "dispatched": len(dispatched_ids),
-            "search_ids": dispatched_ids,
+            "batch_size": BATCH_SIZE,
+            "total_batches": total_batches,
         }
 
     except Exception as e:

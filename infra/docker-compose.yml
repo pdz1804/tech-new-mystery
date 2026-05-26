@@ -46,7 +46,7 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/2
     depends_on:
       - redis
-    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=6
 
   # Celery Beat (Scheduler)
   celery-beat:
