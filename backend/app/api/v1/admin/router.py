@@ -133,6 +133,14 @@ class SearchesListResponse(BaseModel):
     total_pages: int = 1
 
 
+class ProcessingTask(BaseModel):
+    """Currently processing task info."""
+    search_id: str
+    url: str
+    query: str
+    title: str
+
+
 class QueueStatsResponse(BaseModel):
     """Real-time queue monitoring statistics."""
     success: bool
@@ -142,6 +150,9 @@ class QueueStatsResponse(BaseModel):
     total_processed: int
     capacity_available: bool
     queue_depth_percent: float
+    alert_level: str  # "normal", "warning", "critical"
+    estimated_minutes: float
+    processing_tasks: list[ProcessingTask]
     timestamp: str
 
 
@@ -960,10 +971,24 @@ async def get_queue_stats(
         reserved_tasks = inspector.reserved() or {}
         queued_in_redis = sum(len(tasks) for tasks in reserved_tasks.values())
 
-        # Calculate processed count (this is approximate - queried from completed tasks)
-        # For now, we can estimate from processed + rejected in DB
-        # This could be enhanced to query a "processed" view
-        total_processed = 0  # Could be enhanced
+        # Get processing task details
+        processing_tasks: list[ProcessingTask] = []
+        if active_tasks:
+            for worker_tasks in active_tasks.values():
+                for task in worker_tasks:
+                    # Extract search info from pending searches
+                    search_id = task.get("args", [None])[0] if task.get("args") else None
+                    if search_id:
+                        search = next((s for s in pending_searches if s.search_id == search_id), None)
+                        if search:
+                            processing_tasks.append(
+                                ProcessingTask(
+                                    search_id=search_id,
+                                    url=search.url,
+                                    query=search.query,
+                                    title=search.title,
+                                )
+                            )
 
         # Configuration
         MAX_QUEUE_DEPTH = 1000
@@ -971,14 +996,33 @@ async def get_queue_stats(
         queue_depth_percent = (current_queue_depth / MAX_QUEUE_DEPTH) * 100
         capacity_available = current_queue_depth < MAX_QUEUE_DEPTH
 
+        # Determine alert level
+        if queue_depth_percent > 80:
+            alert_level = "critical"
+        elif queue_depth_percent > 50:
+            alert_level = "warning"
+        else:
+            alert_level = "normal"
+
+        # Estimate time to completion (50s per article based on user observation)
+        # With 6 workers: ~50s / 6 = ~8.3s per item in parallel
+        avg_processing_time_seconds = 50  # Observed from logs
+        worker_concurrency = 6
+        remaining_items = total_pending + queued_in_redis  # Items not yet being processed
+        estimated_seconds = (remaining_items / worker_concurrency) * (avg_processing_time_seconds / 6) + avg_processing_time_seconds
+        estimated_minutes = max(0, estimated_seconds / 60)
+
         return QueueStatsResponse(
             success=True,
             total_pending=total_pending,
             being_processed=being_processed,
             queued_in_redis=queued_in_redis,
-            total_processed=total_processed,
+            total_processed=0,
             capacity_available=capacity_available,
             queue_depth_percent=min(queue_depth_percent, 100.0),
+            alert_level=alert_level,
+            estimated_minutes=round(estimated_minutes, 1),
+            processing_tasks=processing_tasks[:6],  # Show up to 6 processing tasks
             timestamp=datetime.utcnow().isoformat(),
         )
 

@@ -23,6 +23,13 @@ interface PendingSearch {
   status: string;
 }
 
+interface ProcessingTask {
+  search_id: string;
+  url: string;
+  query: string;
+  title: string;
+}
+
 interface QueueStats {
   success: boolean;
   total_pending: number;
@@ -31,6 +38,9 @@ interface QueueStats {
   total_processed: number;
   capacity_available: boolean;
   queue_depth_percent: number;
+  alert_level: 'normal' | 'warning' | 'critical';
+  estimated_minutes: number;
+  processing_tasks: ProcessingTask[];
   timestamp: string;
 }
 
@@ -443,52 +453,69 @@ export default function AdminQueuePage() {
         <section className="pb-6">
           <motion.div
             variants={itemVariants}
-            className="app-page-container"
+            className="app-page-container space-y-3"
           >
-            <div className="relative rounded-2xl overflow-hidden">
-              {/* Liquid Glass Background */}
-              <div className="absolute inset-0 bg-gradient-to-br from-white/70 to-white/50 backdrop-blur-xl border border-white/40 shadow-2xl shadow-black/5" />
+            {/* Main Stats Panel */}
+            <div className={`relative rounded-2xl overflow-hidden transition-all duration-300 ${
+              queueStats.alert_level === 'critical'
+                ? 'ring-2 ring-red-300/50'
+                : queueStats.alert_level === 'warning'
+                ? 'ring-2 ring-amber-300/50'
+                : ''
+            }`}>
+              {/* Dynamic Liquid Glass Background based on alert */}
+              <div className={`absolute inset-0 backdrop-blur-xl border border-white/40 shadow-2xl shadow-black/5 ${
+                queueStats.alert_level === 'critical'
+                  ? 'bg-gradient-to-br from-red-50/70 to-red-50/50'
+                  : queueStats.alert_level === 'warning'
+                  ? 'bg-gradient-to-br from-amber-50/70 to-amber-50/50'
+                  : 'bg-gradient-to-br from-white/70 to-white/50'
+              }`} />
 
               {/* Content */}
-              <div className="relative p-4 sm:p-5">
-                {/* Header */}
-                <div className="mb-4 flex items-center justify-between">
+              <div className="relative p-4 sm:p-5 space-y-4">
+                {/* Header with Status */}
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                    <div className={`w-2 h-2 rounded-full animate-pulse ${
+                      queueStats.alert_level === 'critical' ? 'bg-red-500' :
+                      queueStats.alert_level === 'warning' ? 'bg-amber-500' : 'bg-green-500'
+                    }`} />
                     <span className="text-xs font-medium text-black/50">Live</span>
                   </div>
-                  <span className="text-xs text-black/40">
-                    {new Date(queueStats.timestamp).toLocaleTimeString()}
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <div className="text-lg font-bold text-black/80">
+                        {queueStats.estimated_minutes.toFixed(1)}m
+                      </div>
+                      <div className="text-xs text-black/40 font-medium">Estimated</div>
+                    </div>
+                    <span className="text-xs text-black/40">
+                      {new Date(queueStats.timestamp).toLocaleTimeString()}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Stats Grid */}
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {/* Pending */}
                   <div className="group">
                     <div className="text-2xl font-semibold text-blue-600 mb-0.5">
                       {queueStats.total_pending}
                     </div>
                     <div className="text-xs text-blue-600/60 font-medium">Pending</div>
                   </div>
-
-                  {/* Being Processed */}
                   <div className="group">
                     <div className="text-2xl font-semibold text-green-600 mb-0.5">
                       {queueStats.being_processed}
                     </div>
                     <div className="text-xs text-green-600/60 font-medium">Processing</div>
                   </div>
-
-                  {/* Queued */}
                   <div className="group">
                     <div className="text-2xl font-semibold text-amber-600 mb-0.5">
                       {queueStats.queued_in_redis}
                     </div>
                     <div className="text-xs text-amber-600/60 font-medium">Queued</div>
                   </div>
-
-                  {/* Capacity */}
                   <div className="group">
                     <div className={`text-2xl font-semibold ${queueStats.capacity_available ? 'text-teal-600' : 'text-red-600'} mb-0.5`}>
                       {Math.round(queueStats.queue_depth_percent)}%
@@ -500,7 +527,7 @@ export default function AdminQueuePage() {
                 </div>
 
                 {/* Progress Bar */}
-                <div className="mt-4 pt-3 border-t border-white/30">
+                <div className="pt-3 border-t border-white/30">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs text-black/40">Queue depth</span>
                     <span className="text-xs text-black/40">
@@ -520,6 +547,33 @@ export default function AdminQueuePage() {
                     />
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Processing Tasks Panel */}
+            {queueStats.processing_tasks && queueStats.processing_tasks.length > 0 && (
+              <div className="relative rounded-2xl overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-br from-white/70 to-white/50 backdrop-blur-xl border border-white/40 shadow-2xl shadow-black/5" />
+                <div className="relative p-4 sm:p-5 space-y-2">
+                  <div className="text-xs font-medium text-black/50 mb-3">Now Processing</div>
+                  {queueStats.processing_tasks.map((task) => (
+                    <div key={task.search_id} className="text-xs space-y-0.5 pb-2 border-b border-white/30 last:border-0 last:pb-0">
+                      <div className="font-medium text-black/70 line-clamp-1">{task.title}</div>
+                      <div className="text-black/50 text-xs">{task.query}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Scaling Info */}
+            <div className="relative rounded-2xl overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-br from-white/70 to-white/50 backdrop-blur-xl border border-white/40 shadow-2xl shadow-black/5" />
+              <div className="relative p-3 sm:p-4">
+                <p className="text-xs text-black/60 leading-relaxed">
+                  <span className="font-medium text-black/70">Currently: 1 worker × 6 concurrency = 6 parallel processing</span><br/>
+                  Need more capacity? Scale to 3 workers in terraform: <span className="font-mono text-black/50 text-2xs">worker_desired_count = 3</span> → 18 parallel
+                </p>
               </div>
             </div>
           </motion.div>
