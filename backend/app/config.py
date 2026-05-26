@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-1.5-mini"
 
     bedrock_region: str = "us-west-2"
-    bedrock_model: str = "zai.glm-4.7-flash"
+    bedrock_model: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama2"

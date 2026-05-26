@@ -20,18 +20,18 @@ class TestBedrockZaiGLMModel:
     @pytest.mark.asyncio
     async def test_generate_with_zai_model(self, client):
         """Test text generation with zai.glm-4.7-flash model."""
-        # Mock the boto3 invoke_model response
+        # Mock the boto3 invoke_model response (ZAI models use OpenAI format)
         response_body = {
-            "content": [
+            "choices": [
                 {
-                    "type": "text",
-                    "text": "This is a response from zai.glm-4.7-flash model"
+                    "message": {
+                        "content": "This is a response from zai.glm-4.7-flash model"
+                    }
                 }
             ],
-            "stop_reason": "end_turn",
             "usage": {
-                "input_tokens": 10,
-                "output_tokens": 15
+                "prompt_tokens": 10,
+                "completion_tokens": 15
             }
         }
 
@@ -46,13 +46,13 @@ class TestBedrockZaiGLMModel:
     async def test_generate_with_custom_parameters(self, client):
         """Test generation with custom temperature and max_tokens."""
         response_body = {
-            "content": [
+            "choices": [
                 {
-                    "type": "text",
-                    "text": "Custom response"
+                    "message": {
+                        "content": "Custom response"
+                    }
                 }
-            ],
-            "stop_reason": "end_turn"
+            ]
         }
 
         mock_response = MagicMock()
@@ -75,13 +75,13 @@ class TestBedrockZaiGLMModel:
     async def test_generate_json_response(self, client):
         """Test generation of JSON responses."""
         response_body = {
-            "content": [
+            "choices": [
                 {
-                    "type": "text",
-                    "text": '{"score": 8.5, "reasoning": "High quality content"}'
+                    "message": {
+                        "content": '{"score": 8.5, "reasoning": "High quality content"}'
+                    }
                 }
-            ],
-            "stop_reason": "end_turn"
+            ]
         }
 
         mock_response = MagicMock()
@@ -95,7 +95,7 @@ class TestBedrockZaiGLMModel:
 
     @pytest.mark.asyncio
     async def test_error_handling_missing_content(self, client):
-        """Test error handling when response is missing content field."""
+        """Test error handling when response is missing choices field."""
         response_body = {
             "error": "Invalid request"
         }
@@ -106,14 +106,13 @@ class TestBedrockZaiGLMModel:
         with patch.object(client.client, "invoke_model", return_value=mock_response):
             with pytest.raises(KeyError) as exc_info:
                 await client.generate("Test prompt")
-            assert "content" in str(exc_info.value)
+            assert "choices" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_error_handling_empty_content(self, client):
-        """Test error handling when content list is empty."""
+        """Test error handling when choices list is empty."""
         response_body = {
-            "content": [],
-            "stop_reason": "end_turn"
+            "choices": []
         }
 
         mock_response = MagicMock()
@@ -141,8 +140,7 @@ class TestBedrockZaiGLMModel:
     async def test_model_id_in_payload(self, client):
         """Test that zai.glm-4.7-flash model ID is correctly sent in payload."""
         response_body = {
-            "content": [{"type": "text", "text": "Response"}],
-            "stop_reason": "end_turn"
+            "choices": [{"message": {"content": "Response"}}]
         }
 
         mock_response = MagicMock()
@@ -170,8 +168,7 @@ class TestBedrockZaiGLMModel:
         import asyncio
 
         response_body = {
-            "content": [{"type": "text", "text": "Response"}],
-            "stop_reason": "end_turn"
+            "choices": [{"message": {"content": "Response"}}]
         }
 
         mock_response = MagicMock()

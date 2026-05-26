@@ -439,6 +439,8 @@ class ArticleService:
         generated_title = processing_result.get("title", "Untitled")
         summary = processing_result.get("summary")
         category = processing_result.get("category", "Other")
+        categories = processing_result.get("categories", [category])
+        quality_score = processing_result.get("quality_score")
         tags = processing_result.get("tags", [])
         processed_author = processing_result.get("author") or author
         structured_markdown = processing_result.get("structured_markdown")
@@ -467,6 +469,8 @@ class ArticleService:
             "markdown_content": structured_markdown,
             "author": processed_author,
             "category": category,
+            "categories": categories,
+            "quality_score": quality_score,
             "tags": tags,
             "is_published": True,
         }
