@@ -133,6 +133,18 @@ class SearchesListResponse(BaseModel):
     total_pages: int = 1
 
 
+class QueueStatsResponse(BaseModel):
+    """Real-time queue monitoring statistics."""
+    success: bool
+    total_pending: int
+    being_processed: int
+    queued_in_redis: int
+    total_processed: int
+    capacity_available: bool
+    queue_depth_percent: float
+    timestamp: str
+
+
 @router.post("/search/tavily", response_model=TavilySearchResponse)
 async def search_tavily(
     payload: TavilySearchRequest,
@@ -913,3 +925,63 @@ async def trigger_force_score_backfill(
     except Exception as e:
         logger.error(f"[BACKFILL_SCORES_FORCE] Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to trigger force backfill: {str(e)}")
+
+
+@router.get("/queue/stats", response_model=QueueStatsResponse)
+async def get_queue_stats(
+    _: dict = Depends(require_admin),
+) -> QueueStatsResponse:
+    """Get real-time queue monitoring statistics (admin only).
+
+    Returns:
+    - total_pending: Articles in "pending" status in database
+    - being_processed: Tasks currently being executed by workers
+    - queued_in_redis: Tasks waiting in Redis queue
+    - total_processed: Articles that are approved or rejected
+    - capacity_available: Whether queue can accept more items
+    - queue_depth_percent: Percentage of max queue capacity used
+    """
+    try:
+        from app.workers.celery_app import celery_app
+
+        # Get pending searches from database
+        search_repo = PendingSearchRepository()
+        pending_searches = await search_repo.list_pending(limit=10000)
+        total_pending = len(pending_searches)
+
+        # Get Celery worker stats
+        inspector = celery_app.control.inspect()
+
+        # Get active tasks (being processed right now)
+        active_tasks = inspector.active() or {}
+        being_processed = sum(len(tasks) for tasks in active_tasks.values())
+
+        # Get reserved tasks (queued, waiting to be picked up)
+        reserved_tasks = inspector.reserved() or {}
+        queued_in_redis = sum(len(tasks) for tasks in reserved_tasks.values())
+
+        # Calculate processed count (this is approximate - queried from completed tasks)
+        # For now, we can estimate from processed + rejected in DB
+        # This could be enhanced to query a "processed" view
+        total_processed = 0  # Could be enhanced
+
+        # Configuration
+        MAX_QUEUE_DEPTH = 1000
+        current_queue_depth = total_pending + being_processed + queued_in_redis
+        queue_depth_percent = (current_queue_depth / MAX_QUEUE_DEPTH) * 100
+        capacity_available = current_queue_depth < MAX_QUEUE_DEPTH
+
+        return QueueStatsResponse(
+            success=True,
+            total_pending=total_pending,
+            being_processed=being_processed,
+            queued_in_redis=queued_in_redis,
+            total_processed=total_processed,
+            capacity_available=capacity_available,
+            queue_depth_percent=min(queue_depth_percent, 100.0),
+            timestamp=datetime.utcnow().isoformat(),
+        )
+
+    except Exception as e:
+        logger.error(f"[QUEUE_STATS] Error: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch queue stats: {str(e)}")

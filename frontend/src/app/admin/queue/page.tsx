@@ -74,6 +74,10 @@ export default function AdminQueuePage() {
   const [totalPages, setTotalPages] = useState(0);
   const LIMIT = 20;
 
+  // Queue monitoring
+  const [queueStats, setQueueStats] = useState<any>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+
   useEffect(() => {
     if (isHydrated && !user?.is_admin) {
       router.push('/');
@@ -109,6 +113,28 @@ export default function AdminQueuePage() {
       fetchQueue();
     }
   }, [isHydrated, currentPage]);
+
+  useEffect(() => {
+    const fetchQueueStats = async () => {
+      try {
+        setStatsLoading(true);
+        const { data: response } = await apiClient.get('/admin/queue/stats');
+        if (response.success) {
+          setQueueStats(response);
+        }
+      } catch (err) {
+        console.error('Error fetching queue stats:', err);
+      } finally {
+        setStatsLoading(false);
+      }
+    };
+
+    if (isHydrated && user?.is_admin) {
+      fetchQueueStats();
+      const interval = setInterval(fetchQueueStats, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [isHydrated, user?.is_admin]);
 
   const handleApprove = async (searchId: string) => {
     try {
@@ -404,6 +430,80 @@ export default function AdminQueuePage() {
           </div>
         </motion.div>
       </section>
+
+      {/* Queue Stats Section */}
+      {queueStats && (
+        <section className="pb-8">
+          <motion.div
+            variants={itemVariants}
+            className="app-page-container"
+          >
+            <div className="glass-panel p-4 sm:p-6 rounded-2xl">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="font-semibold text-black/80 flex items-center gap-2">
+                  <Eye size={18} />
+                  Real-Time Queue Status
+                </h2>
+                <div className="text-xs text-black/50">
+                  Updated: {new Date(queueStats.timestamp).toLocaleTimeString()}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {/* Pending */}
+                <div className="rounded-lg bg-blue-50/50 border border-blue-200/50 p-3">
+                  <div className="text-xs text-blue-600/70 font-medium mb-1">Pending</div>
+                  <div className="text-2xl font-bold text-blue-700">{queueStats.total_pending}</div>
+                </div>
+
+                {/* Being Processed */}
+                <div className="rounded-lg bg-green-50/50 border border-green-200/50 p-3">
+                  <div className="text-xs text-green-600/70 font-medium mb-1">Processing</div>
+                  <div className="text-2xl font-bold text-green-700">{queueStats.being_processed}</div>
+                </div>
+
+                {/* Queued in Redis */}
+                <div className="rounded-lg bg-amber-50/50 border border-amber-200/50 p-3">
+                  <div className="text-xs text-amber-600/70 font-medium mb-1">Queued</div>
+                  <div className="text-2xl font-bold text-amber-700">{queueStats.queued_in_redis}</div>
+                </div>
+
+                {/* Capacity */}
+                <div className={`rounded-lg ${queueStats.capacity_available ? 'bg-emerald-50/50 border border-emerald-200/50' : 'bg-red-50/50 border border-red-200/50'} p-3`}>
+                  <div className={`text-xs ${queueStats.capacity_available ? 'text-emerald-600/70' : 'text-red-600/70'} font-medium mb-1`}>
+                    {queueStats.capacity_available ? '✓ Capacity' : '⚠ Capacity'}
+                  </div>
+                  <div className={`text-2xl font-bold ${queueStats.capacity_available ? 'text-emerald-700' : 'text-red-700'}`}>
+                    {Math.round(queueStats.queue_depth_percent)}%
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="mt-4 pt-4 border-t border-black/10">
+                <div className="mb-2 flex items-center justify-between text-xs">
+                  <span className="text-black/60 font-medium">Queue Depth</span>
+                  <span className="text-black/50">
+                    {queueStats.total_pending + queueStats.being_processed + queueStats.queued_in_redis} / 1000
+                  </span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-black/10 overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-300 ${
+                      queueStats.queue_depth_percent > 80
+                        ? 'bg-red-500'
+                        : queueStats.queue_depth_percent > 50
+                        ? 'bg-amber-500'
+                        : 'bg-green-500'
+                    }`}
+                    style={{ width: `${Math.min(queueStats.queue_depth_percent, 100)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </section>
+      )}
 
       {/* Content Section */}
       <section className="pb-20">
