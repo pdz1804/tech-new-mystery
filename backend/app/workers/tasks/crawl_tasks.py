@@ -5,11 +5,10 @@ import uuid
 from datetime import datetime
 from slugify import slugify
 
-from app.integrations.crawler_client import get_crawler_client
 from app.repositories.article_repository import ArticleRepository
 from app.repositories.news_source_repository import NewsSourceRepository
 from app.utils.time import now_timestamp
-from app.workers.celery_app import celery_app
+from app.workers.celery_app import celery_app, get_process_crawler
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +42,7 @@ async def _crawl_all_sources() -> dict:
     try:
         source_repo = NewsSourceRepository()
         article_repo = ArticleRepository()
-        crawler = await get_crawler_client()
+        crawler = get_process_crawler()
 
         # Get all enabled sources
         sources = await source_repo.list_all()
@@ -134,7 +133,7 @@ async def _crawl_source(source_id: str) -> dict:
     try:
         source_repo = NewsSourceRepository()
         article_repo = ArticleRepository()
-        crawler = await get_crawler_client()
+        crawler = get_process_crawler()
 
         # Get source
         source = await source_repo.get_by_id(source_id)

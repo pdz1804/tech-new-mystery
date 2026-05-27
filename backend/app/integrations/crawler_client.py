@@ -256,24 +256,3 @@ class CrawlerClient:
                 logger.info("Crawler closed successfully")
             except Exception as e:
                 logger.error(f"Error closing crawler: {e}")
-
-
-# Singleton instance
-_crawler_client: Optional[CrawlerClient] = None
-
-
-async def get_crawler_client() -> CrawlerClient:
-    """Get or create crawler client instance."""
-    global _crawler_client
-    if _crawler_client is None:
-        _crawler_client = CrawlerClient()
-        await _crawler_client.initialize()
-    return _crawler_client
-
-
-async def shutdown_crawler():
-    """Shutdown crawler client."""
-    global _crawler_client
-    if _crawler_client:
-        await _crawler_client.close()
-        _crawler_client = None

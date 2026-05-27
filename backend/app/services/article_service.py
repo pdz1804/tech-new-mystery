@@ -424,16 +424,22 @@ class ArticleService:
         from app.services.scraping_service import ScrapingService
         scraper = ScrapingService()
 
-        # ✅ FIX: Add hard timeout to prevent 4+ hour hangs
-        # Increased from 120→180s to account for browser initialization delay in high-load scenarios
+        # ✅ FIX: Hard timeout with proper cleanup to prevent event loop errors
+        # Use 120s timeout (not 180) since retries will add more time
         try:
             scrape_result = await asyncio.wait_for(
                 scraper.scrape_url(url_str),
-                timeout=180  # Hard 3-minute limit for entire scraping operation
+                timeout=120  # Hard 2-minute limit for entire scraping operation
             )
         except asyncio.TimeoutError:
-            logger.error(f"Crawl4AI scraping TIMEOUT (>3min) for {url_str}")
+            logger.error(f"Crawl4AI scraping TIMEOUT (>2min) for {url_str}")
             raise Exception(f"Scraping timeout: URL took too long to load")
+        except Exception as e:
+            # Catch any asyncio.CancelledError or event loop errors from timeout cleanup
+            if "Event loop is closed" in str(e) or isinstance(e, asyncio.CancelledError):
+                logger.error(f"Crawl4AI event loop error (timeout cleanup): {str(e)}")
+                raise Exception(f"Scraping timeout: URL took too long to load")
+            raise
 
         if not scrape_result.get("success"):
             error_msg = scrape_result.get('error', 'Unknown error')

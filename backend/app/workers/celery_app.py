@@ -1,9 +1,12 @@
 """Celery app factory and beat schedule."""
 
-from celery import Celery
+import logging
+from celery import Celery, signals
 from celery.schedules import crontab
 
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 celery_app = Celery(
     "tech_news_mystery",
@@ -36,6 +39,49 @@ celery_app.conf.update(
         },
     },
 )
+
+# Process-local crawler instance initialized once per worker process
+_process_crawler = None
+
+
+def get_process_crawler():
+    """Get the process-local crawler initialized by worker startup signal."""
+    global _process_crawler
+    if _process_crawler is None:
+        raise RuntimeError("Crawler not initialized - worker process may not be ready")
+    return _process_crawler
+
+
+@signals.worker_process_init.connect
+def init_crawler_for_worker(sender=None, **kwargs):
+    """Initialize crawler once per worker process at startup.
+
+    This runs when each Celery worker process starts, not per task.
+    All tasks in that process will reuse the same browser instance.
+    """
+    global _process_crawler
+    try:
+        import asyncio
+        from app.integrations.crawler_client import CrawlerClient
+
+        logger.info("Initializing crawler for worker process")
+
+        # Create new crawler instance for this process
+        _process_crawler = CrawlerClient()
+
+        # Initialize asynchronously
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(_process_crawler.initialize())
+            logger.info("Crawler successfully initialized for worker process")
+        finally:
+            loop.close()
+
+    except Exception as e:
+        logger.error(f"Failed to initialize crawler for worker: {e}", exc_info=True)
+        _process_crawler = None
+
 
 # Import tasks after celery_app is created to avoid circular imports
 # This ensures all task decorators are registered with celery_app

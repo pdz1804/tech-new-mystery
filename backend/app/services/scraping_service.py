@@ -311,12 +311,17 @@ class ScrapingService:
 
         try:
             from app.integrations.crawler_client import CrawlerClient
+            from app.workers.celery_app import get_process_crawler
 
-            logger.debug("Creating new CrawlerClient instance (per-task, not singleton)")
-            # Create NEW instance per task instead of using singleton
-            # Singleton causes browser deadlock when multiple Celery workers use same browser
-            crawler_client = CrawlerClient()
-            await crawler_client.initialize()
+            # Try to get process-local crawler (initialized by worker startup)
+            try:
+                logger.debug("Using process-local crawler initialized by worker")
+                crawler_client = get_process_crawler()
+            except RuntimeError:
+                # Not in a worker process (e.g., API endpoint)
+                logger.debug("Creating new CrawlerClient instance (API endpoint context)")
+                crawler_client = CrawlerClient()
+                await crawler_client.initialize()
 
             # Use enhanced crawler with native media extraction
             logger.info(f"Crawling URL with native media extraction: {url}")

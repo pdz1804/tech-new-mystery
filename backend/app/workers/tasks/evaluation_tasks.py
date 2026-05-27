@@ -61,7 +61,7 @@ async def _evaluate_article(article_id: str) -> dict:
         raise
 
 
-@celery_app.task(bind=True, max_retries=1, default_retry_delay=120)
+@celery_app.task(bind=True, max_retries=0)
 def auto_process_single_search(self, search_id: str) -> dict:
     """Process a single pending search: approve → evaluate → publish/reject.
 
@@ -73,8 +73,9 @@ def auto_process_single_search(self, search_id: str) -> dict:
     Returns:
         Result dict with processing outcome
 
-    Note: max_retries=1 because timeout failures indicate browser contention,
-    not transient errors. Additional retries just add delay without improving success rate.
+    Note: max_retries=0 because Crawl4AI timeouts in worker environment indicate
+    browser/network contention that retries won't fix. Better to fail fast and
+    let queue dispatcher try again later when load is lower.
     """
     try:
         result = asyncio.run(_auto_process_single_search(search_id))
@@ -82,11 +83,18 @@ def auto_process_single_search(self, search_id: str) -> dict:
             logger.warning(f"[AUTO_PROCESS_SEARCH] Task failed for {search_id}: {result}")
         return result
     except Exception as exc:
+        # Don't retry - log and return failure
         logger.error(
-            f"[AUTO_PROCESS_SEARCH] Attempt {self.request.retries + 1}/{self.max_retries} failed for {search_id}: {type(exc).__name__}: {str(exc)}",
+            f"[AUTO_PROCESS_SEARCH] Failed for {search_id}: {type(exc).__name__}: {str(exc)}",
             exc_info=True
         )
-        raise self.retry(exc=exc)
+        # Return error as result instead of raising (no retry)
+        return {
+            "success": False,
+            "search_id": search_id,
+            "error": f"Task failed: {str(exc)}",
+            "action": "rejected",
+        }
 
 
 async def _auto_process_single_search(search_id: str) -> dict:
