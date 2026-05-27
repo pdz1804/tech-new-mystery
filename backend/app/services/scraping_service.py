@@ -215,8 +215,9 @@ class ScrapingService:
 
             logger.info(f"Found {len(image_urls)} images to process")
 
-            # Limit processing to first 5 images to avoid excessive API calls
-            image_urls = image_urls[:5]
+            # Limit processing to first 2 images to reduce memory/API overhead
+            # 2 images sufficient for article preview, reduces task memory by 40-50 MB
+            image_urls = image_urls[:2]
 
             processed_markdown = markdown
             images_processed = 0

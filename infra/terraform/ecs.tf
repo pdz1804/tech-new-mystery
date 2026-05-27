@@ -118,7 +118,7 @@ resource "aws_ecs_task_definition" "worker" {
     name        = "worker"
     image       = "${aws_ecr_repository.backend.repository_url}:${var.backend_image_tag}"
     essential   = true
-    command     = ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info", "--concurrency=2", "--max-tasks-per-child=10"]
+    command     = ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info", "--concurrency=2", "--max-tasks-per-child=5"]
     environment = local.backend_environment
     secrets     = local.backend_secrets
     logConfiguration = {
@@ -229,4 +229,56 @@ resource "aws_ecs_service" "beat" {
     security_groups  = [aws_security_group.ecs.id]
     assign_public_ip = true
   }
+}
+
+# CloudWatch Alarms for Worker Service Monitoring
+resource "aws_cloudwatch_metric_alarm" "worker_memory_high" {
+  alarm_name          = "${local.name_prefix}-worker-memory-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "MemoryUtilization"
+  namespace           = "AWS/ECS"
+  period              = 60
+  statistic           = "Average"
+  threshold           = 70
+  alarm_description   = "Alert when worker memory utilization exceeds 70% (healthy threshold with 2GB upgrade)"
+  dimensions = {
+    ServiceName = aws_ecs_service.worker.name
+    ClusterName = aws_ecs_cluster.app.name
+  }
+  treat_missing_data = "notBreaching"
+}
+
+resource "aws_cloudwatch_metric_alarm" "worker_cpu_sustained_high" {
+  alarm_name          = "${local.name_prefix}-worker-cpu-sustained-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 3
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/ECS"
+  period              = 60
+  statistic           = "Average"
+  threshold           = 80
+  alarm_description   = "Alert when worker CPU sustained > 80% for 3 minutes (indicates need for concurrency increase or horizontal scaling)"
+  dimensions = {
+    ServiceName = aws_ecs_service.worker.name
+    ClusterName = aws_ecs_cluster.app.name
+  }
+  treat_missing_data = "notBreaching"
+}
+
+resource "aws_cloudwatch_metric_alarm" "worker_task_count_anomaly" {
+  alarm_name          = "${local.name_prefix}-worker-task-count-low"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "RunningCount"
+  namespace           = "AWS/ECS"
+  period              = 60
+  statistic           = "Average"
+  threshold           = 0.5
+  alarm_description   = "Alert when worker running task count drops (indicates task failures or crash loop)"
+  dimensions = {
+    ServiceName = aws_ecs_service.worker.name
+    ClusterName = aws_ecs_cluster.app.name
+  }
+  treat_missing_data = "breaching"
 }

@@ -247,11 +247,12 @@ async def _auto_review_queue() -> dict:
         if not pending:
             return {"success": True, "total_pending": 0, "dispatched": 0, "total_batches": 0}
 
-        # Batch configuration: stagger load to prevent browser contention deadlock
-        # Reduced batch size (50→10) and increased delay (2→5s) prevent simultaneous
-        # Crawl4AI crawler initialization across all workers, reducing SQLite cache contention
-        BATCH_SIZE = 10
-        BATCH_DELAY_SECONDS = 5
+        # Batch configuration: optimize for 2GB memory upgrade + per-worker crawler init
+        # Increased batch size (10→20) and reduced delay (5→3s) for faster queue drain
+        # With 2GB memory, can safely handle 20 items per batch
+        # Per-worker init eliminates browser contention, allowing tighter batching
+        BATCH_SIZE = 20
+        BATCH_DELAY_SECONDS = 3
 
         # Dispatch worker tasks in batches to prevent queue flooding
         dispatched_ids = []
