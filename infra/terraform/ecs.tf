@@ -118,7 +118,7 @@ resource "aws_ecs_task_definition" "worker" {
     name        = "worker"
     image       = "${aws_ecr_repository.backend.repository_url}:${var.backend_image_tag}"
     essential   = true
-    command     = ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info", "--concurrency=6"]
+    command     = ["celery", "-A", "app.workers.celery_app", "worker", "--loglevel=info", "--concurrency=2", "--max-tasks-per-child=10"]
     environment = local.backend_environment
     secrets     = local.backend_secrets
     logConfiguration = {
