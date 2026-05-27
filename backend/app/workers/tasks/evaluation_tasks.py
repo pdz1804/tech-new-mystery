@@ -61,7 +61,7 @@ async def _evaluate_article(article_id: str) -> dict:
         raise
 
 
-@celery_app.task(bind=True, max_retries=3, default_retry_delay=60)
+@celery_app.task(bind=True, max_retries=1, default_retry_delay=120)
 def auto_process_single_search(self, search_id: str) -> dict:
     """Process a single pending search: approve → evaluate → publish/reject.
 
@@ -72,6 +72,9 @@ def auto_process_single_search(self, search_id: str) -> dict:
 
     Returns:
         Result dict with processing outcome
+
+    Note: max_retries=1 because timeout failures indicate browser contention,
+    not transient errors. Additional retries just add delay without improving success rate.
     """
     try:
         result = asyncio.run(_auto_process_single_search(search_id))
@@ -236,9 +239,11 @@ async def _auto_review_queue() -> dict:
         if not pending:
             return {"success": True, "total_pending": 0, "dispatched": 0, "total_batches": 0}
 
-        # Batch configuration
-        BATCH_SIZE = 50
-        BATCH_DELAY_SECONDS = 2
+        # Batch configuration: stagger load to prevent browser contention deadlock
+        # Reduced batch size (50→10) and increased delay (2→5s) prevent simultaneous
+        # Crawl4AI crawler initialization across all workers, reducing SQLite cache contention
+        BATCH_SIZE = 10
+        BATCH_DELAY_SECONDS = 5
 
         # Dispatch worker tasks in batches to prevent queue flooding
         dispatched_ids = []

@@ -143,6 +143,8 @@ class CrawlerClient:
         """Crawl a URL and extract content with media.
 
         Timeout increased to 60s to account for browser initialization (5-10s) + page load + extraction.
+
+        Note: Disable cache for worker tasks to reduce SQLite contention in multi-worker environments.
         """
         import time
         start_time = time.time()
@@ -162,7 +164,8 @@ class CrawlerClient:
             )
 
         try:
-            cache_mode = "always" if use_cache else "no"
+            # Always disable cache in worker context to prevent SQLite deadlocks with concurrent workers
+            cache_mode = "no"
             config = self._build_crawler_config(cache_mode=cache_mode)
 
             # Pass config parameters directly to arun()

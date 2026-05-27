@@ -425,13 +425,14 @@ class ArticleService:
         scraper = ScrapingService()
 
         # ✅ FIX: Add hard timeout to prevent 4+ hour hangs
+        # Increased from 120→180s to account for browser initialization delay in high-load scenarios
         try:
             scrape_result = await asyncio.wait_for(
                 scraper.scrape_url(url_str),
-                timeout=120  # Hard 2-minute limit for entire scraping operation
+                timeout=180  # Hard 3-minute limit for entire scraping operation
             )
         except asyncio.TimeoutError:
-            logger.error(f"Crawl4AI scraping TIMEOUT (>2min) for {url_str}")
+            logger.error(f"Crawl4AI scraping TIMEOUT (>3min) for {url_str}")
             raise Exception(f"Scraping timeout: URL took too long to load")
 
         if not scrape_result.get("success"):
