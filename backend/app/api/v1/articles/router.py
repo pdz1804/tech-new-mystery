@@ -16,6 +16,7 @@ from app.api.v1.articles.schemas import (
     CreateArticleFromUrlRequest,
     DeleteResponse,
     SummarizationResponse,
+    PaginationMeta,
 )
 from app.core.exceptions import ArticleNotFoundError
 from app.services.article_service import ArticleService
@@ -101,10 +102,19 @@ async def list_articles(
         **filters,
     )
     logger.info(f"[LIST_ARTICLES] Response: returned {len(result['data'])} articles")
+
+    # Build proper pagination metadata
+    has_next = result["meta"]["next_key"] is not None
+    pagination_meta = {
+        "limit": limit,
+        "has_next": has_next,
+        "next_cursor": result["meta"]["next_key"] if has_next else None,
+    }
+
     return ArticleListResponse(
         success=True,
         data=result["data"],
-        meta=result["meta"],
+        meta=pagination_meta,
     )
 
 
@@ -313,8 +323,9 @@ async def unsave_article(
 async def get_saved_articles(
     user_id: str = Depends(get_current_user_id),
     limit: int = Query(20, ge=1, le=100),
+    last_key: str | None = Query(None),
 ):
-    """Get all articles saved by the current user."""
+    """Get all articles saved by the current user with pagination."""
     from app.repositories.user_saves_repository import UserSavesRepository
     from app.repositories.article_repository import ArticleRepository
 
@@ -322,7 +333,7 @@ async def get_saved_articles(
     article_repo = ArticleRepository()
 
     try:
-        saved_items = await saves_repo.get_user_saves(user_id, limit=limit)
+        saved_items, next_key = await saves_repo.get_user_saves(user_id, limit=limit, last_key=last_key)
         articles = []
         for save in saved_items:
             article = await article_repo.get_by_id(save.article_id)
@@ -330,6 +341,19 @@ async def get_saved_articles(
                 from app.services.article_service import ArticleService
                 service = ArticleService(article_repo)
                 articles.append(service._serialize_article(article))
-        return {"success": True, "data": articles}
+
+        # Build pagination metadata
+        has_next = next_key is not None
+        pagination_meta = {
+            "limit": limit,
+            "has_next": has_next,
+            "next_cursor": next_key if has_next else None,
+        }
+
+        return {
+            "success": True,
+            "data": articles,
+            "meta": pagination_meta,
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

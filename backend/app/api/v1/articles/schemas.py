@@ -90,12 +90,21 @@ class ArticleDetailResponse(BaseModel):
     data: ArticleResponse
 
 
+class PaginationMeta(BaseModel):
+    """Pagination metadata for list responses."""
+
+    limit: int = Field(..., description="Items per page")
+    has_next: bool = Field(..., description="Whether more items exist")
+    next_cursor: str | None = Field(None, description="Cursor for next page (if has_next=true)")
+    total_count: int | None = Field(None, description="Total items available (optional)")
+
+
 class ArticleListResponse(BaseModel):
-    """Article list response."""
+    """Article list response with proper pagination."""
 
     success: bool = True
     data: list[ArticleResponse]
-    meta: dict = Field(default_factory=dict)
+    meta: PaginationMeta
 
 
 class SummarizationResponse(BaseModel):
