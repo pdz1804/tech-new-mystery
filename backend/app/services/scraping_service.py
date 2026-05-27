@@ -248,16 +248,19 @@ class ScrapingService:
             return markdown
 
     async def scrape_url(self, url: str) -> dict:
-        """Scrape content from URL using Crawl4AI with semantic content extraction.
+        """Scrape content from URL using fallback scraper (requests + BeautifulSoup).
 
         Pipeline:
         1. Validate URL format
         2. Check for unsupported content types (PDF, etc.)
-        3. Use CosineStrategy for semantic extraction (better for social media)
-        4. Execute crawl with JavaScript rendering and media discovery
-        5. Process native media items and fallback HTML extraction
-        6. Download and upload images to S3
-        7. Return structured result with markdown and images
+        3. Use simple requests + BeautifulSoup (no Playwright browser deadlock)
+        4. Extract text and convert to markdown
+        5. Download and upload images to S3
+        6. Return structured result with markdown and images
+
+        Note: Skips Crawl4AI due to AsyncWebCrawler singleton browser context deadlock
+        when multiple workers initialize simultaneously. Fallback scraper is more reliable
+        in high-concurrency worker environments.
 
         Args:
             url (str): The URL to scrape
@@ -280,7 +283,7 @@ class ScrapingService:
             ...     markdown = result['markdown_content']
             ...     html = result['raw_html']
         """
-        logger.info(f"Starting Crawl4AI scrape with semantic content extraction: {url}")
+        logger.info(f"Starting scrape with fallback scraper (no Crawl4AI): {url}")
         start_time = time.time()
 
         # Validate URL
@@ -309,97 +312,10 @@ class ScrapingService:
                 "images_processed": 0
             }
 
-        try:
-            from app.integrations.crawler_client import get_crawler_client
-
-            logger.debug("Getting CrawlerClient instance")
-            crawler_client = await get_crawler_client()
-
-            # Use enhanced crawler with native media extraction
-            logger.info(f"Crawling URL with native media extraction: {url}")
-            crawled_content = await crawler_client.crawl_url(url, use_cache=True)
-
-            elapsed_time = time.time() - start_time
-            logger.debug(f"Crawl4AI execution completed in {elapsed_time:.2f} seconds")
-
-            if not crawled_content.success:
-                logger.warning(f"Crawl4AI failed for {url}: {crawled_content.error}")
-                # Try fallback scraper if Crawl4AI fails
-                logger.info(f"Attempting fallback scraper for {url}")
-                return await self._fallback_scrape(url)
-
-            logger.debug(f"Crawl4AI extraction successful")
-            logger.debug(f"  - Markdown size: {len(crawled_content.markdown)} chars")
-            logger.debug(f"  - HTML size: {len(crawled_content.cleaned_html or '')} chars")
-            logger.debug(f"  - Media items found: {len(crawled_content.media_items)}")
-
-            # Clean up extracted content - remove common noise patterns
-            crawled_content.markdown = self._clean_extracted_content(crawled_content.markdown, url)
-
-            # LinkedIn group posts without auth return CSS metadata instead of content
-            # Detect and reject these to trigger fallback scraper
-            if self._is_css_documentation(crawled_content.markdown):
-                logger.warning(f"Detected CSS documentation instead of article content - using fallback")
-                return await self._fallback_scrape(url)
-
-            # Extract image URLs from native media items first, then fallback to HTML parsing
-            image_urls = []
-            if crawled_content.media_items:
-                image_urls = self._extract_media_urls_from_crawled_content(crawled_content.media_items)
-                logger.info(f"Extracted {len(image_urls)} image URLs from native Crawl4AI media extraction")
-            else:
-                logger.debug("No native media items, falling back to HTML parsing")
-
-            # If no images found via native extraction, try HTML parsing
-            if not image_urls and crawled_content.cleaned_html:
-                image_urls = self._extract_image_urls_from_html(crawled_content.cleaned_html, url)
-                logger.info(f"Extracted {len(image_urls)} image URLs from HTML fallback")
-
-            # Process images: download and upload to S3
-            markdown_with_images = crawled_content.markdown
-            images_processed = 0
-
-            if image_urls:
-                markdown_with_images = await self._process_images(
-                    crawled_content.markdown,
-                    crawled_content.cleaned_html or "",
-                    url,
-                    image_urls
-                )
-                images_processed = sum(1 for url_str in image_urls if url_str in markdown_with_images or f"({url_str})" in markdown_with_images)
-
-            return {
-                "markdown_content": markdown_with_images,
-                "raw_html": crawled_content.cleaned_html,
-                "success": True,
-                "error": None,
-                "images_processed": images_processed
-            }
-
-        except ImportError as e:
-            logger.error(f"[ERROR] CRITICAL: Crawl4AI library not installed: {str(e)}")
-            logger.error("Install with: pip install crawl4ai")
-            return {
-                "markdown_content": None,
-                "raw_html": None,
-                "success": False,
-                "error": "Crawl4AI library not installed"
-            }
-        except ValueError as e:
-            logger.warning(f"Invalid URL format for {url}: {str(e)}")
-            return {
-                "markdown_content": None,
-                "raw_html": None,
-                "success": False,
-                "error": f"Invalid URL format: {str(e)}"
-            }
-        except Exception as e:
-            logger.error(f"[ERROR] Crawl4AI scraping error for {url}: {type(e).__name__}: {str(e)}")
-            logger.debug(f"Error traceback:", exc_info=True)
-
-            # Fallback to simple HTML scraper for Windows/Playwright issues
-            logger.info(f"Attempting fallback scraper for {url}")
-            return await self._fallback_scrape(url)
+        # Bypass Crawl4AI entirely - use fallback scraper only
+        # Crawl4AI AsyncWebCrawler singleton causes browser deadlock in multi-worker environments
+        logger.info(f"Using fallback scraper to avoid Crawl4AI browser deadlock: {url}")
+        return await self._fallback_scrape(url)
 
     async def _fallback_scrape(self, url: str) -> dict:
         """Fallback scraper using requests + BeautifulSoup (no Playwright).
