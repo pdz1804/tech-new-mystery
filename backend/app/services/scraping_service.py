@@ -310,14 +310,17 @@ class ScrapingService:
             }
 
         try:
-            from app.integrations.crawler_client import get_crawler_client
+            from app.integrations.crawler_client import CrawlerClient
 
-            logger.debug("Getting CrawlerClient instance")
-            crawler_client = await get_crawler_client()
+            logger.debug("Creating new CrawlerClient instance (per-task, not singleton)")
+            # Create NEW instance per task instead of using singleton
+            # Singleton causes browser deadlock when multiple Celery workers use same browser
+            crawler_client = CrawlerClient()
+            await crawler_client.initialize()
 
             # Use enhanced crawler with native media extraction
             logger.info(f"Crawling URL with native media extraction: {url}")
-            crawled_content = await crawler_client.crawl_url(url, use_cache=True)
+            crawled_content = await crawler_client.crawl_url(url, use_cache=False)
 
             elapsed_time = time.time() - start_time
             logger.debug(f"Crawl4AI execution completed in {elapsed_time:.2f} seconds")
