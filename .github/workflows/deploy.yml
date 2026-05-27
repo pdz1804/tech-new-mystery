@@ -24,7 +24,6 @@ env:
   AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
   ECS_CLUSTER: ${{ vars.ECS_CLUSTER || 'tech-news-mystery-prod' }}
   BACKEND_ECR_REPOSITORY: ${{ vars.BACKEND_ECR_REPOSITORY || 'tech-news-mystery-prod-backend' }}
-  CELERY_ECR_REPOSITORY: ${{ vars.CELERY_ECR_REPOSITORY || 'tech-news-mystery-prod-celery' }}
   FRONTEND_ECR_REPOSITORY: ${{ vars.FRONTEND_ECR_REPOSITORY || 'tech-news-mystery-prod-frontend' }}
   NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || '/v1' }}
 
@@ -96,7 +95,7 @@ jobs:
       - id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Build and push backend image
+      - name: Build and push backend image (for api, worker, beat services)
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
@@ -105,16 +104,6 @@ jobs:
           docker tag "$ECR_REGISTRY/$BACKEND_ECR_REPOSITORY:$IMAGE_TAG" "$ECR_REGISTRY/$BACKEND_ECR_REPOSITORY:latest"
           docker push "$ECR_REGISTRY/$BACKEND_ECR_REPOSITORY:$IMAGE_TAG"
           docker push "$ECR_REGISTRY/$BACKEND_ECR_REPOSITORY:latest"
-
-      - name: Build and push celery image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
-        run: |
-          docker build -f infra/docker/celery.Dockerfile -t "$ECR_REGISTRY/$CELERY_ECR_REPOSITORY:$IMAGE_TAG" backend
-          docker tag "$ECR_REGISTRY/$CELERY_ECR_REPOSITORY:$IMAGE_TAG" "$ECR_REGISTRY/$CELERY_ECR_REPOSITORY:latest"
-          docker push "$ECR_REGISTRY/$CELERY_ECR_REPOSITORY:$IMAGE_TAG"
-          docker push "$ECR_REGISTRY/$CELERY_ECR_REPOSITORY:latest"
 
       - name: Build and push frontend image
         env:
