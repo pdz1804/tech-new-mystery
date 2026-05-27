@@ -828,10 +828,17 @@ class UpdateThresholdRequest(BaseModel):
     threshold: float = Field(..., ge=0.0, le=10.0)
 
 
-@router.post("/searches/auto-review", response_model=GenericSuccessResponse)
+class TaskResponse(BaseModel):
+    """Response for task-based operations (auto-review, backfill)."""
+    success: bool
+    message: str
+    task_id: str
+
+
+@router.post("/searches/auto-review", response_model=TaskResponse)
 async def trigger_auto_review(
     _: dict = Depends(require_admin),
-) -> GenericSuccessResponse:
+) -> TaskResponse:
     """Trigger auto-review of all pending searches (admin only).
 
     Dispatches worker tasks to evaluate and approve/reject each pending search.
@@ -842,9 +849,10 @@ async def trigger_auto_review(
         logger.info("[AUTO_REVIEW] Admin triggered auto-review of queue")
         task = auto_review_queue_task.delay()
 
-        return GenericSuccessResponse(
+        return TaskResponse(
             success=True,
-            message=f"Auto-review task queued. Task ID: {task.id}",
+            message="Auto-review task queued",
+            task_id=task.id,
         )
     except Exception as e:
         logger.error(f"[AUTO_REVIEW] Error: {str(e)}")
@@ -892,10 +900,10 @@ async def update_threshold(
         raise HTTPException(status_code=500, detail=f"Failed to update threshold: {str(e)}")
 
 
-@router.post("/articles/backfill-scores", response_model=GenericSuccessResponse)
+@router.post("/articles/backfill-scores", response_model=TaskResponse)
 async def trigger_score_backfill(
     _: dict = Depends(require_admin),
-) -> GenericSuccessResponse:
+) -> TaskResponse:
     """Trigger backfill of quality scores for existing articles (admin only).
 
     Finds articles without quality_score and dispatches evaluation tasks.
@@ -906,19 +914,20 @@ async def trigger_score_backfill(
         logger.warning("[BACKFILL_SCORES] Admin triggered backfill task")
         task = backfill_quality_scores_task.delay()
 
-        return GenericSuccessResponse(
+        return TaskResponse(
             success=True,
-            message=f"Backfill task queued. Task ID: {task.id}",
+            message="Backfill task queued",
+            task_id=task.id,
         )
     except Exception as e:
         logger.error(f"[BACKFILL_SCORES] Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to trigger backfill: {str(e)}")
 
 
-@router.post("/articles/backfill-scores-force", response_model=GenericSuccessResponse)
+@router.post("/articles/backfill-scores-force", response_model=TaskResponse)
 async def trigger_force_score_backfill(
     _: dict = Depends(require_admin),
-) -> GenericSuccessResponse:
+) -> TaskResponse:
     """Force backfill of quality scores for ALL articles (admin only).
 
     Re-evaluates all articles regardless of existing quality_score.
@@ -929,9 +938,10 @@ async def trigger_force_score_backfill(
         logger.warning("[BACKFILL_SCORES_FORCE] Admin triggered force backfill task")
         task = backfill_quality_scores_force_task.delay()
 
-        return GenericSuccessResponse(
+        return TaskResponse(
             success=True,
-            message=f"Force backfill task queued. Task ID: {task.id}",
+            message="Force backfill task queued",
+            task_id=task.id,
         )
     except Exception as e:
         logger.error(f"[BACKFILL_SCORES_FORCE] Error: {str(e)}")
