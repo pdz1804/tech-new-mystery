@@ -125,15 +125,15 @@ variable "beat_desired_count" {
 }
 
 variable "task_cpu" {
-  description = "Default Fargate CPU units."
+  description = "Default Fargate CPU units. Upgraded to 1024 (from 512) for worker stability."
   type        = number
-  default     = 512
+  default     = 1024
 }
 
 variable "task_memory" {
-  description = "Default Fargate memory in MiB."
+  description = "Default Fargate memory in MiB. Upgraded to 2048 (from 1024) for worker OOM fix."
   type        = number
-  default     = 1024
+  default     = 2048
 }
 
 variable "redis_node_type" {
