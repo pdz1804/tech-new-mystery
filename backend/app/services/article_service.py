@@ -21,6 +21,36 @@ from pydantic import ValidationError
 logger = logging.getLogger(__name__)
 
 
+def _is_permanent_scraping_failure(error_msg: str) -> bool:
+    """Detect permanent scraping failures that shouldn't be retried.
+
+    Returns True if error is: SSL/cert issues, DNS failures, site blocks, auth required.
+    These won't be fixed by retrying; skip them permanently.
+    """
+    error_lower = str(error_msg).lower()
+    permanent_indicators = [
+        "ssl",
+        "certificate",
+        "ssleof",
+        "unexpected_eof",
+        "dns",
+        "name resolution",
+        "connection refused",
+        "404",
+        "403",
+        "401",
+        "http error 403",
+        "http error 404",
+        "http error 401",
+        "cloudflare",
+        "blocked",
+        "access denied",
+        "authentication required",
+        "unauthorized",
+    ]
+    return any(indicator in error_lower for indicator in permanent_indicators)
+
+
 class ArticleService:
     """Service for managing articles and article engagement.
 
@@ -393,10 +423,25 @@ class ArticleService:
         logger.info(f"[ERROR] CRITICAL: Scraping URL with Crawl4AI: {url_str}")
         from app.services.scraping_service import ScrapingService
         scraper = ScrapingService()
-        scrape_result = await scraper.scrape_url(url_str)
+
+        # ✅ FIX: Add hard timeout to prevent 4+ hour hangs
+        try:
+            scrape_result = await asyncio.wait_for(
+                scraper.scrape_url(url_str),
+                timeout=120  # Hard 2-minute limit for entire scraping operation
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"Crawl4AI scraping TIMEOUT (>2min) for {url_str}")
+            raise Exception(f"Scraping timeout: URL took too long to load")
 
         if not scrape_result.get("success"):
             error_msg = scrape_result.get('error', 'Unknown error')
+
+            # ✅ FIX: Detect permanent failures (SSL, DNS, blocked) and don't retry
+            if _is_permanent_scraping_failure(error_msg):
+                logger.warning(f"Permanent scraping failure (not retryable) for {url_str}: {error_msg}")
+                raise ValueError(f"Site unavailable (permanent failure): {error_msg}")
+
             logger.error(f"Crawl4AI scraping failed for {url_str}: {error_msg}")
             raise Exception(f"Failed to scrape URL: {error_msg}")
 

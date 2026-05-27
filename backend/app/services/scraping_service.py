@@ -422,8 +422,19 @@ class ScrapingService:
                 'Upgrade-Insecure-Requests': '1'
             }
 
-            response = requests.get(url, headers=headers, timeout=10)
-            response.raise_for_status()
+            # ✅ FIX: Hard timeout on HTTP request (10s, much faster than Crawl4AI)
+            try:
+                response = requests.get(url, headers=headers, timeout=10)
+                response.raise_for_status()
+            except requests.Timeout:
+                logger.warning(f"Fallback scraper timeout (10s) for {url}")
+                return {
+                    "markdown_content": None,
+                    "raw_html": None,
+                    "success": False,
+                    "error": f"Timeout: Site took too long to respond",
+                    "images_processed": 0
+                }
 
             html = response.text
             soup = BeautifulSoup(html, 'html.parser')
