@@ -104,11 +104,11 @@ async def list_articles(
     logger.info(f"[LIST_ARTICLES] Response: returned {len(result['data'])} articles")
 
     # Build proper pagination metadata
-    has_next = result["meta"]["next_key"] is not None
+    has_next = result["meta"]["last_key"] is not None
     pagination_meta = {
         "limit": limit,
         "has_next": has_next,
-        "next_cursor": result["meta"]["next_key"] if has_next else None,
+        "next_cursor": result["meta"]["last_key"] if has_next else None,
     }
 
     return ArticleListResponse(
