@@ -1,6 +1,7 @@
 """Article endpoints."""
 
 import logging
+import json
 from fastapi import APIRouter, Depends, Query, HTTPException
 from datetime import datetime
 
@@ -95,9 +96,17 @@ async def list_articles(
     if min_quality_score is not None:
         filters["min_quality_score"] = min_quality_score
 
+    # Deserialize cursor if provided
+    last_key_obj = None
+    if last_key:
+        try:
+            last_key_obj = json.loads(last_key)
+        except (json.JSONDecodeError, TypeError):
+            last_key_obj = None
+
     result = await service.list_articles(
         limit=limit,
-        last_key=last_key,
+        last_key=last_key_obj,
         include_content=False,
         **filters,
     )
@@ -105,10 +114,14 @@ async def list_articles(
 
     # Build proper pagination metadata
     has_next = result["meta"]["last_key"] is not None
+    next_cursor = None
+    if has_next:
+        next_cursor = json.dumps(result["meta"]["last_key"])
+
     pagination_meta = {
         "limit": limit,
         "has_next": has_next,
-        "next_cursor": result["meta"]["last_key"] if has_next else None,
+        "next_cursor": next_cursor,
     }
 
     return ArticleListResponse(
@@ -332,8 +345,16 @@ async def get_saved_articles(
     saves_repo = UserSavesRepository()
     article_repo = ArticleRepository()
 
+    # Deserialize cursor if provided
+    last_key_obj = None
+    if last_key:
+        try:
+            last_key_obj = json.loads(last_key)
+        except (json.JSONDecodeError, TypeError):
+            last_key_obj = None
+
     try:
-        saved_items, next_key = await saves_repo.get_user_saves(user_id, limit=limit, last_key=last_key)
+        saved_items, next_key = await saves_repo.get_user_saves(user_id, limit=limit, last_key=last_key_obj)
         articles = []
         for save in saved_items:
             article = await article_repo.get_by_id(save.article_id)
@@ -344,10 +365,14 @@ async def get_saved_articles(
 
         # Build pagination metadata
         has_next = next_key is not None
+        cursor = None
+        if has_next:
+            cursor = json.dumps(next_key)
+
         pagination_meta = {
             "limit": limit,
             "has_next": has_next,
-            "next_cursor": next_key if has_next else None,
+            "next_cursor": cursor,
         }
 
         return {
