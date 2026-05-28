@@ -146,6 +146,71 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
         continue;
       }
 
+      // Tables: | header | header |
+      if (trimmed.startsWith('|')) {
+        const tableLines: string[] = [];
+        let isHeaderSeparator = false;
+
+        // Collect all table rows
+        while (i < lines.length && lines[i].trim().startsWith('|')) {
+          const currentLine = lines[i].trim();
+          tableLines.push(currentLine);
+
+          // Check if next line is separator (|---|---|)
+          if (i + 1 < lines.length) {
+            const nextLine = lines[i + 1].trim();
+            if (nextLine.startsWith('|') && nextLine.match(/\|\s*[-:]+\s*\|/)) {
+              isHeaderSeparator = true;
+            }
+          }
+          i++;
+        }
+
+        if (tableLines.length >= 2 && isHeaderSeparator) {
+          // Parse table
+          const headerRow = tableLines[0].split('|').map(cell => cell.trim()).filter(cell => cell);
+          const separatorRow = tableLines[1];
+          const bodyRows = tableLines.slice(2);
+
+          elements.push(
+            <div key={`table-${i}`} className="my-6 overflow-x-auto">
+              <table className="w-full border-collapse border border-slate-300">
+                <thead className="bg-slate-100">
+                  <tr>
+                    {headerRow.map((header, idx) => (
+                      <th
+                        key={`th-${idx}`}
+                        className="border border-slate-300 px-4 py-3 text-left font-semibold text-slate-900"
+                      >
+                        {renderInlineMarkdown(header)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {bodyRows.map((row, rowIdx) => {
+                    const cells = row.split('|').map(cell => cell.trim()).filter(cell => cell);
+                    return (
+                      <tr key={`tr-${rowIdx}`} className="hover:bg-slate-50">
+                        {cells.map((cell, cellIdx) => (
+                          <td
+                            key={`td-${rowIdx}-${cellIdx}`}
+                            className="border border-slate-300 px-4 py-2 text-slate-800"
+                          >
+                            {renderInlineMarkdown(cell)}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          );
+          continue;
+        }
+      }
+
       // Images
       const imageMatch = trimmed.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
       if (imageMatch) {
