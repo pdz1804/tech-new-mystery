@@ -242,11 +242,6 @@ class ArticleRepository:
     ) -> int:
         """Count all articles matching filters.
 
-        Uses DynamoDB's SELECT='COUNT' parameter for efficient counting.
-        This avoids fetching full items and only returns the count, significantly
-        reducing bandwidth and CPU usage for large datasets (1000+ items: ~10x faster,
-        90% less bandwidth).
-
         Args:
             category (str): Filter by category
             published_only (bool): Only count published articles
@@ -276,12 +271,9 @@ class ArticleRepository:
                 )
 
             results = await asyncio.to_thread(
-                lambda: ArticleModel.scan(
-                    filter_condition=filter_condition,
-                    Select='COUNT'
-                )
+                lambda: ArticleModel.scan(filter_condition=filter_condition)
             )
-            count = results.count
+            count = sum(1 for _ in results)
             logger.debug(f"Article count: {count}")
             return count
         except Exception as e:
@@ -295,11 +287,6 @@ class ArticleRepository:
         min_quality_score: float | None = None,
     ) -> int:
         """Count articles by source matching filters.
-
-        Uses DynamoDB's SELECT='COUNT' parameter for efficient counting on GSI.
-        This avoids fetching full items and only returns the count, significantly
-        reducing bandwidth and CPU usage for large datasets (1000+ items: ~10x faster,
-        90% less bandwidth).
 
         Args:
             source_id (str): Source ID to filter by
@@ -326,10 +313,9 @@ class ArticleRepository:
                 lambda: ArticleModel.source_date_index.query(
                     source_id,
                     filter_condition=filter_condition,
-                    Select='COUNT'
                 )
             )
-            count = results.count
+            count = sum(1 for _ in results)
             logger.debug(f"Source article count: {count}")
             return count
         except Exception as e:
