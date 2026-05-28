@@ -169,7 +169,6 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
         if (tableLines.length >= 2 && isHeaderSeparator) {
           // Parse table
           const headerRow = tableLines[0].split('|').map(cell => cell.trim()).filter(cell => cell);
-          const separatorRow = tableLines[1];
           const bodyRows = tableLines.slice(2);
 
           elements.push(
