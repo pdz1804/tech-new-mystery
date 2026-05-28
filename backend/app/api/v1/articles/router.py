@@ -122,6 +122,7 @@ async def list_articles(
         "limit": limit,
         "has_next": has_next,
         "next_cursor": next_cursor,
+        "total_count": result["meta"].get("total_count", 0),
     }
 
     return ArticleListResponse(

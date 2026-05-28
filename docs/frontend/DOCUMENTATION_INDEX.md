@@ -41,12 +41,44 @@
 | Page | Status | Key Features |
 |------|--------|--------------|
 | Landing (`/landing`) | ✅ | Login/Register redirects, Hero, Features, CTA |
-| Articles (`/articles`) | ✅ | Blue gradient hero, Glass filter bar, Pagination |
+| Articles (`/articles`) | ✅ | Blue gradient hero, Glass filter bar, Smart pagination, Total count display |
 | Search (`/search`) | ✅ | Bright hero, Category filters, Recent searches |
 | Profile (`/profile`) | ✅ | Tab navigation, Account/Preferences/Saved |
 | Admin (`/admin/articles`) | ✅ | Gradient header, Modern table, Pagination |
 | Article Detail (`/articles/[slug]`) | ✅ | Glass containers, Modern styling |
 | Auth (`/login`, `/register`) | ✅ | Glass cards, Input-base styling |
+
+---
+
+## 📄 Pagination System
+
+The Articles page implements an optimized pagination system with smart display for large page counts:
+
+### Features
+- **Total Article Count:** Retrieved from API's `meta.total_count` field
+- **Smart Pagination Display:** 
+  - For ≤7 pages: Shows all pages (1 2 3 4 5 6 7)
+  - For >7 pages: Shows smart ellipsis pattern (1 2 ... 49 50 51 ... 99 100)
+  - Non-clickable ellipsis with clickable page numbers
+- **Fetch Optimization:** Fetches 100 articles per request
+- **Client-side Display:** Shows 12 articles per page with local pagination
+
+### State Management
+- `totalArticles`: Total count from API (used for page calculation)
+- `allArticles`: Articles fetched from backend (limit=100)
+- `page`: Current page for display (1-based)
+- `totalPages`: Calculated as `Math.ceil(totalArticles / 12)`
+
+### Implementation Details
+- Helper function `getVisiblePages(currentPage, totalPages)` generates visible page numbers
+- Ellipsis (...) inserted when gaps >1 page exist
+- Maintains accessibility with ARIA labels on buttons
+- Backend API returns pagination metadata with total_count
+
+### Examples
+- 62 total articles → 6 pages → displays "1 2 3 4 5 6"
+- 245 total articles → 21 pages → displays "1 2 ... 10 11 12 ... 20 21"
+- 1000 articles → 84 pages → displays "1 2 ... 49 50 51 ... 83 84"
 
 ---
 
@@ -68,6 +100,10 @@
 - [x] Profile page enhanced with blue gradient form fields
 - [x] Landing page verified with proper redirects
 - [x] Testing completed and validated
+- [x] Pagination system optimized with smart display (ellipsis for large page counts)
+- [x] Total article count from API integrated (total_count field)
+- [x] Pages calculated using ceil(total_count / itemsPerPage)
+- [x] Backend count queries optimized (DynamoDB SELECT='COUNT')
 
 ---
 

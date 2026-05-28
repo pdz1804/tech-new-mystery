@@ -42,6 +42,7 @@ interface ArticleResponse {
   }>;
   meta: {
     limit: number;
+    total_count: number;
     last_key?: {
       article_id: { S: string };
     };
@@ -57,6 +58,47 @@ const getArticleTime = (article: ArticleResponse['data'][number]) => {
   return Number.isNaN(time) ? 0 : time;
 };
 
+const getVisiblePages = (currentPage: number, totalPages: number): (number | string)[] => {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, i) => i + 1);
+  }
+
+  const pages: (number | string)[] = [];
+  const firstPages = [1, 2];
+  const lastPages = [totalPages - 1, totalPages];
+  const neighbors = [currentPage - 1, currentPage, currentPage + 1].filter(p => p > 0 && p <= totalPages);
+
+  firstPages.forEach(p => {
+    if (!pages.includes(p)) pages.push(p);
+  });
+
+  const gapAfterFirst = neighbors[0] > 2 + 1;
+  if (gapAfterFirst) {
+    pages.push('...');
+    neighbors.forEach(p => {
+      if (!pages.includes(p)) pages.push(p);
+    });
+  } else {
+    neighbors.forEach(p => {
+      if (!pages.includes(p)) pages.push(p);
+    });
+  }
+
+  const gapBeforeLast = neighbors[neighbors.length - 1] < totalPages - 2;
+  if (gapBeforeLast) {
+    if (pages[pages.length - 1] !== '...') pages.push('...');
+    lastPages.forEach(p => {
+      if (!pages.includes(p)) pages.push(p);
+    });
+  } else {
+    lastPages.forEach(p => {
+      if (!pages.includes(p)) pages.push(p);
+    });
+  }
+
+  return pages;
+};
+
 export default function ArticlesPage() {
   const router = useRouter();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -68,6 +110,7 @@ export default function ArticlesPage() {
 
   const [page, setPage] = useState(1);
   const [allArticles, setAllArticles] = useState<ArticleResponse['data']>([]);
+  const [totalArticles, setTotalArticles] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -75,7 +118,7 @@ export default function ArticlesPage() {
   const [isArticleModalOpen, setIsArticleModalOpen] = useState(false);
 
   const categories = [
-    { name: 'All', count: allArticles.length },
+    { name: 'All', count: totalArticles },
     ...(filterData?.data?.categories || []),
   ];
 
@@ -96,7 +139,7 @@ export default function ArticlesPage() {
       try {
         // Build query params for backend filtering/sorting
         const params = new URLSearchParams();
-        params.append('limit', '50');
+        params.append('limit', '100');
         if (selectedCategory && selectedCategory !== 'All') {
           params.append('category', selectedCategory);
         }
@@ -111,6 +154,8 @@ export default function ArticlesPage() {
         const { data: responseData } = await apiClient.get<ArticleResponse>(`/articles?${params.toString()}`);
         if (responseData.success) {
           setAllArticles(responseData.data);
+          setTotalArticles(responseData.meta.total_count || 0);
+          setPage(1);
         } else {
           setError('Failed to load articles');
         }
@@ -142,7 +187,7 @@ export default function ArticlesPage() {
     sortedArticles.sort((a, b) => (b.view_count || 0) - (a.view_count || 0));
   }
 
-  const totalPages = Math.ceil(sortedArticles.length / itemsPerPage);
+  const totalPages = Math.ceil(totalArticles / itemsPerPage);
   const startIdx = (page - 1) * itemsPerPage;
   const endIdx = startIdx + itemsPerPage;
   const currentArticles = sortedArticles.slice(startIdx, endIdx);
@@ -166,7 +211,7 @@ export default function ArticlesPage() {
           const fetchArticles = async () => {
             try {
               const params = new URLSearchParams();
-              params.append('limit', '50');
+              params.append('limit', '100');
               if (selectedCategory && selectedCategory !== 'All') {
                 params.append('category', selectedCategory);
               }
@@ -179,6 +224,8 @@ export default function ArticlesPage() {
               const { data: responseData } = await apiClient.get<ArticleResponse>(`/articles?${params.toString()}`);
               if (responseData.success) {
                 setAllArticles(responseData.data);
+                setTotalArticles(responseData.meta.total_count || 0);
+                setPage(1);
               }
             } catch (err) {
               console.error(err);
@@ -200,7 +247,7 @@ export default function ArticlesPage() {
           <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <motion.div variants={itemVariants} className="min-w-0">
               <h1 className="font-sans text-3xl font-bold text-black sm:text-4xl">Articles</h1>
-              <p className="text-sm text-black/60">{allArticles.length} curated articles</p>
+              <p className="text-sm text-black/60">{totalArticles} total articles</p>
             </motion.div>
             <div className="flex min-w-0 flex-1 flex-col gap-3 lg:flex-row lg:items-center lg:justify-end">
               <div className="compact-toolbar">
@@ -311,19 +358,25 @@ export default function ArticlesPage() {
                     </button>
 
                     <div className="flex gap-2">
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                        <motion.button
-                          key={p}
-                          type="button"
-                          onClick={() => setPage(p)}
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                          className={`pagination-glass-btn ${page === p ? 'active' : 'inactive'}`}
-                          aria-label={`Go to page ${p}`}
-                          aria-current={page === p ? 'page' : undefined}
-                        >
-                          {p}
-                        </motion.button>
+                      {getVisiblePages(page, totalPages).map((p) => (
+                        p === '...' ? (
+                          <span key={`ellipsis-${Math.random()}`} className="px-2 py-1 text-slate-500">
+                            {p}
+                          </span>
+                        ) : (
+                          <motion.button
+                            key={p}
+                            type="button"
+                            onClick={() => setPage(p as number)}
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            className={`pagination-glass-btn ${page === p ? 'active' : 'inactive'}`}
+                            aria-label={`Go to page ${p}`}
+                            aria-current={page === p ? 'page' : undefined}
+                          >
+                            {p}
+                          </motion.button>
+                        )
                       ))}
                     </div>
 

@@ -180,8 +180,14 @@ class ArticleService:
         """
         logger.debug(f"list_articles: limit={limit}, category={category}, source={source_id}, sort={sort_by}, min_score={min_quality_score}")
 
-        # Use source-date index if filtering by source for better performance
+        # Get total count for pagination
+        total_count = 0
         if source_id and not category and not tags:
+            total_count = await self._article_repo.count_by_source(
+                source_id=source_id,
+                published_only=not include_content,
+                min_quality_score=min_quality_score,
+            )
             articles, next_key = await self._article_repo.query_by_source(
                 source_id=source_id,
                 limit=limit,
@@ -192,6 +198,11 @@ class ArticleService:
                 min_quality_score=min_quality_score,
             )
         else:
+            total_count = await self._article_repo.count_all(
+                category=category,
+                published_only=not include_content,
+                min_quality_score=min_quality_score,
+            )
             # Fall back to scan for general filtering, but only project card fields.
             if include_content:
                 articles, next_key = await self._article_repo.list_all(
@@ -229,7 +240,7 @@ class ArticleService:
 
         return {
             "data": [self._serialize_article(a) for a in filtered_articles],
-            "meta": {"limit": limit, "last_key": next_key},
+            "meta": {"limit": limit, "last_key": next_key, "total_count": total_count},
         }
 
     async def create_article(self, article_data: dict) -> dict:

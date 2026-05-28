@@ -129,10 +129,44 @@ Authorization: Bearer <token>
   ],
   "meta": {
     "limit": 20,
-    "last_key": null
+    "has_next": true,
+    "next_cursor": "{\"article_id\": {\"S\": \"844ebd6c-d1f8-467a-bb73-e24b8672ed09\"}}",
+    "total_count": 62
   }
 }
 ```
+
+#### Pagination Metadata
+
+The `meta` object in the list response contains:
+
+- **`limit`** (int) - Number of articles returned in this request
+- **`has_next`** (bool) - Whether more articles exist beyond this page
+- **`next_cursor`** (string) - Cursor for fetching the next page (base64 JSON). Only present if `has_next=true`
+- **`total_count`** (int) - **Total number of articles matching the filters** - use this to calculate total pages
+
+**Example Usage:**
+
+```javascript
+// Frontend: Calculate total pages
+const totalArticles = response.meta.total_count;  // 62
+const itemsPerPage = 12;
+const totalPages = Math.ceil(totalArticles / itemsPerPage);  // 6 pages
+
+// Pagination Display: Show smart pagination (e.g., page 3 of 100)
+// UI shows: 1 2 3 4 5 ... 99 100  (with ellipsis for gaps)
+
+// Backend: Fetch next page using cursor
+const nextResponse = await fetch(
+  `/articles?limit=20&last_key=${encodeURIComponent(response.meta.next_cursor)}`
+);
+```
+
+**Pagination Strategy:**
+- Use `limit` to control batch size (max 100)
+- Use `next_cursor` for server-side pagination (DynamoDB cursor-based)
+- Use `total_count` for UI pagination display (calculate total pages)
+- Combine `total_count` with client-side sorting/filtering for responsive UX
 
 ### Get Article Detail
 ```http
