@@ -124,6 +124,60 @@ variable "beat_desired_count" {
   default     = 1
 }
 
+variable "agent_core_image_tag" {
+  description = "Agent Core runtime image tag deployed by ECS."
+  type        = string
+  default     = "latest"
+}
+
+variable "agent_core_desired_count" {
+  description = "Desired Agent Core task count."
+  type        = number
+  default     = 2
+}
+
+variable "agent_core_min_count" {
+  description = "Minimum Agent Core task count for auto-scaling."
+  type        = number
+  default     = 2
+}
+
+variable "agent_core_max_count" {
+  description = "Maximum Agent Core task count for auto-scaling."
+  type        = number
+  default     = 10
+}
+
+variable "agent_core_cpu" {
+  description = "Fargate CPU units for Agent Core tasks."
+  type        = number
+  default     = 2048
+}
+
+variable "agent_core_memory" {
+  description = "Fargate memory in MiB for Agent Core tasks."
+  type        = number
+  default     = 4096
+}
+
+variable "agent_core_model" {
+  description = "Claude model for Agent Core runtime."
+  type        = string
+  default     = "claude-haiku-4-5-20251001"
+}
+
+variable "agent_core_memory_type" {
+  description = "Memory system type for Agent Core (short_term, long_term, or hybrid)."
+  type        = string
+  default     = "hybrid"
+}
+
+variable "agent_core_tool_timeout" {
+  description = "Tool execution timeout in seconds for Agent Core."
+  type        = number
+  default     = 30
+}
+
 variable "task_cpu" {
   description = "Default Fargate CPU units. Upgraded to 1024 (from 512) for worker stability."
   type        = number

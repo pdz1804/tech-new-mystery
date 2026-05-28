@@ -73,6 +73,17 @@ class Settings(BaseSettings):
 
     # OpenAI Embeddings (for vector search)
     openai_embedding_model: str = "text-embedding-3-small"
+    openai_embedding_batch_size: int = 100
+    openai_embedding_retry_max_attempts: int = 3
+
+    # Agent Core Memory
+    agent_memory_type: str = "SHORT_TERM"
+    agent_memory_retention_days: int = 90  # 90-day TTL matching DynamoDB
+
+    # Agent Core Client (HTTP API)
+    agent_core_base_url: str = "http://localhost:8000"  # Internal ALB endpoint
+    agent_core_api_key: str | None = None  # X-API-Key header
+    agent_core_timeout: int = 60  # Timeout in seconds
 
     # JWT
     jwt_secret_key: str

@@ -26,14 +26,26 @@ resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
     Version = "2012-10-17"
     Statement = [
       {
+        Sid    = "SecretsManager"
         Effect   = "Allow"
         Action   = ["secretsmanager:GetSecretValue"]
         Resource = local.app_secret_arn
       },
       {
+        Sid    = "KMSDecrypt"
         Effect   = "Allow"
         Action   = ["kms:Decrypt"]
         Resource = "*"
+      },
+      {
+        Sid    = "CloudWatchLogs"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${local.name_prefix}*"
       }
     ]
   })
@@ -184,6 +196,50 @@ resource "aws_iam_role_policy" "ecs_task_app" {
           "bedrock:InvokeModelWithResponseStream"
         ]
         Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "agent_core_access" {
+  name = "${local.name_prefix}-agent-core-access"
+  role = aws_iam_role.ecs_task.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "BedrockInvokeForAgentCore"
+        Effect = "Allow"
+        Action = [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "DynamoDBSessionAccess"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:Query"
+        ]
+        Resource = [
+          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_table_prefix}conversation_sessions",
+          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_table_prefix}conversation_messages",
+          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_table_prefix}conversation_sessions/index/*",
+          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_table_prefix}conversation_messages/index/*"
+        ]
+      },
+      {
+        Sid    = "CloudWatchLogs"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${local.name_prefix}-agent-core*"
       }
     ]
   })

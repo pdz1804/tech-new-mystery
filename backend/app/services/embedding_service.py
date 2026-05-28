@@ -2,8 +2,11 @@
 
 import logging
 import asyncio
-from typing import List
+from typing import List, Dict, Optional
+from datetime import datetime
 from app.config import settings
+from app.models.article_embedding import ArticleEmbeddingModel
+from app.models.article import ArticleModel
 
 logger = logging.getLogger(__name__)
 
@@ -158,3 +161,244 @@ class EmbeddingService:
         )
 
         return combined_text
+
+    def _check_cache(self, article_id: str) -> Optional[List[float]]:
+        """
+        Check if embedding exists in DynamoDB cache.
+
+        Args:
+            article_id: Article ID to check
+
+        Returns:
+            List[float]: Cached embedding or None if not found
+        """
+        try:
+            embedding_model = ArticleEmbeddingModel.get(article_id)
+            logger.debug(f"Cache hit for article {article_id}")
+            return embedding_model.embedding
+        except ArticleEmbeddingModel.DoesNotExist:
+            logger.debug(f"Cache miss for article {article_id}")
+            return None
+        except Exception as e:
+            logger.warning(f"Error checking cache for article {article_id}: {str(e)}")
+            return None
+
+    def _store_embedding(
+        self, article_id: str, embedding: List[float], timestamp: Optional[int] = None
+    ) -> None:
+        """
+        Store embedding in DynamoDB cache.
+
+        Args:
+            article_id: Article ID
+            embedding: Vector embedding
+            timestamp: Unix timestamp (defaults to now)
+        """
+        if timestamp is None:
+            timestamp = int(datetime.utcnow().timestamp())
+
+        try:
+            embedding_model = ArticleEmbeddingModel(
+                article_id=article_id,
+                embedding=embedding,
+                model=self.model,
+                timestamp=timestamp,
+            )
+            embedding_model.save()
+            logger.debug(f"Stored embedding for article {article_id}")
+        except Exception as e:
+            logger.error(f"Error storing embedding for article {article_id}: {str(e)}")
+            raise
+
+    def batch_embed_articles(
+        self,
+        articles: List[Dict],
+        force_regenerate: bool = False,
+    ) -> Dict[str, Dict]:
+        """
+        Batch embed multiple articles with caching and efficient API usage.
+
+        Args:
+            articles: List of article dicts with id, title, summary, content
+            force_regenerate: Force regeneration even if cached
+
+        Returns:
+            Dict mapping article_id to embedding response:
+            {
+                "article_id": {
+                    "embedding": [...],
+                    "model": "text-embedding-3-small",
+                    "cached": bool,
+                    "timestamp": int
+                }
+            }
+
+        Raises:
+            Exception: If all retry attempts fail
+        """
+        if not articles:
+            logger.debug("No articles provided for embedding")
+            return {}
+
+        total_articles = len(articles)
+        logger.info(f"Starting batch embedding for {total_articles} articles")
+
+        # Phase 1: Check cache and separate articles
+        articles_to_embed = []
+        cached_embeddings = {}
+        cache_hits = 0
+
+        for article in articles:
+            article_id = article.get("id") or article.get("article_id")
+            if not article_id:
+                logger.warning("Article missing id, skipping")
+                continue
+
+            if force_regenerate:
+                articles_to_embed.append(article)
+            else:
+                cached = self._check_cache(article_id)
+                if cached:
+                    cached_embeddings[article_id] = {
+                        "embedding": cached,
+                        "model": self.model,
+                        "cached": True,
+                        "timestamp": int(datetime.utcnow().timestamp()),
+                    }
+                    cache_hits += 1
+                else:
+                    articles_to_embed.append(article)
+
+        cache_hit_rate = (cache_hits / total_articles * 100) if total_articles > 0 else 0
+        logger.info(
+            f"Cache check complete: {cache_hits}/{total_articles} hits ({cache_hit_rate:.1f}%)"
+        )
+
+        # Phase 2: Batch API calls for uncached articles
+        api_embeddings = {}
+        if articles_to_embed:
+            api_embeddings = self._batch_api_embeddings(articles_to_embed)
+
+        # Combine results
+        result = {**cached_embeddings, **api_embeddings}
+        logger.info(
+            f"Batch embedding complete: {len(result)}/{total_articles} successful"
+        )
+
+        return result
+
+    def _batch_api_embeddings(self, articles: List[Dict]) -> Dict[str, Dict]:
+        """
+        Call OpenAI API for articles that aren't cached.
+
+        Args:
+            articles: Articles needing embeddings
+
+        Returns:
+            Dict of article_id -> embedding response
+        """
+        batch_size = settings.openai_embedding_batch_size
+        total = len(articles)
+        result = {}
+
+        logger.info(f"Preparing to embed {total} articles via API")
+
+        for batch_start in range(0, total, batch_size):
+            batch_end = min(batch_start + batch_size, total)
+            batch = articles[batch_start:batch_end]
+            batch_num = (batch_start // batch_size) + 1
+            total_batches = (total + batch_size - 1) // batch_size
+
+            logger.info(
+                f"Processing API batch {batch_num}/{total_batches} "
+                f"({len(batch)} articles)"
+            )
+
+            # Prepare texts for embedding
+            texts = []
+            article_ids = []
+            for article in batch:
+                article_id = article.get("id") or article.get("article_id")
+                text = self.prepare_text_for_embedding(
+                    title=article.get("title", ""),
+                    summary=article.get("summary"),
+                    content=article.get("content"),
+                )
+                texts.append(text)
+                article_ids.append(article_id)
+
+            # Call API with retry logic
+            embeddings = self._call_api_with_retry(texts)
+
+            # Store and collect results
+            timestamp = int(datetime.utcnow().timestamp())
+            for article_id, embedding in zip(article_ids, embeddings):
+                if embedding:
+                    self._store_embedding(article_id, embedding, timestamp)
+                    result[article_id] = {
+                        "embedding": embedding,
+                        "model": self.model,
+                        "cached": False,
+                        "timestamp": timestamp,
+                    }
+                else:
+                    logger.warning(f"Failed to get embedding for article {article_id}")
+
+        return result
+
+    def _call_api_with_retry(self, texts: List[str]) -> List[Optional[List[float]]]:
+        """
+        Call OpenAI API with exponential backoff retry.
+
+        Args:
+            texts: List of texts to embed
+
+        Returns:
+            List of embeddings (or None for failures)
+        """
+        max_retries = settings.openai_embedding_retry_max_attempts
+        backoff_times = [2 ** attempt for attempt in range(max_retries)]
+
+        for attempt in range(max_retries):
+            try:
+                import openai
+
+                client = openai.OpenAI(api_key=self.api_key)
+
+                logger.debug(
+                    f"API call attempt {attempt + 1}/{max_retries} for {len(texts)} texts"
+                )
+
+                response = client.embeddings.create(
+                    input=texts,
+                    model=self.model,
+                    dimensions=self.embedding_dim,
+                )
+
+                # Extract embeddings in order
+                embeddings = []
+                for item in response.data:
+                    embeddings.append(item.embedding)
+
+                logger.debug(
+                    f"API call successful: {len(embeddings)} embeddings received"
+                )
+
+                return embeddings
+
+            except Exception as e:
+                logger.warning(
+                    f"API call failed (attempt {attempt + 1}/{max_retries}): {str(e)}"
+                )
+
+                if attempt < max_retries - 1:
+                    wait_time = backoff_times[attempt]
+                    logger.info(f"Retrying in {wait_time} seconds...")
+                    asyncio.run(asyncio.sleep(wait_time))
+                else:
+                    logger.error(f"All {max_retries} API attempts failed")
+                    raise Exception(
+                        f"Failed to call OpenAI embedding API after {max_retries} attempts: {str(e)}"
+                    ) from e
+
+        return [None] * len(texts)

@@ -10,6 +10,7 @@ from app.api.v1.user.router import router as user_router
 from app.api.v1.comments.router import router as comments_router
 from app.api.v1.trending.router import router as trending_router
 from app.api.v1.admin.router import router as admin_router
+from app.api.v1.chat.router import router as chat_router
 
 router = APIRouter(prefix="/v1")
 
@@ -21,3 +22,4 @@ router.include_router(user_router)
 router.include_router(comments_router)
 router.include_router(trending_router)
 router.include_router(admin_router)
+router.include_router(chat_router)

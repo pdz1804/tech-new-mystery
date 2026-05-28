@@ -134,3 +134,45 @@ resource "aws_security_group" "redis" {
     security_groups = [aws_security_group.ecs.id]
   }
 }
+
+resource "aws_security_group" "agent_core" {
+  name_prefix = "${local.name_prefix}-agent-core-"
+  description = "Agent Core runtime - internal access only"
+  vpc_id      = local.vpc_id
+
+  ingress {
+    description     = "Agent Core from ALB"
+    from_port       = 8080
+    to_port         = 8080
+    protocol        = "tcp"
+    security_groups = [aws_security_group.agent_core_alb.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group" "agent_core_alb" {
+  name_prefix = "${local.name_prefix}-agent-core-alb-"
+  description = "Agent Core internal ALB"
+  vpc_id      = local.vpc_id
+
+  ingress {
+    description = "Agent Core API from VPC"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = [var.vpc_cidr]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}

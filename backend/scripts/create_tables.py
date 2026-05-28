@@ -8,6 +8,7 @@ from app.models.submission import SubmissionModel
 from app.models.user_saves import UserSavesModel
 from app.models.user_preferences import UserPreferencesModel
 from app.models.trending_article import TrendingArticleModel
+from app.models.article_embedding import ArticleEmbeddingModel
 
 
 def create_tables() -> None:
@@ -21,6 +22,7 @@ def create_tables() -> None:
         UserSavesModel,
         UserPreferencesModel,
         TrendingArticleModel,
+        ArticleEmbeddingModel,
     ]
 
     for model in models:

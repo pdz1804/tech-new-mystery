@@ -18,6 +18,11 @@ output "frontend_ecr_repository_url" {
   value       = aws_ecr_repository.frontend.repository_url
 }
 
+output "agent_core_ecr_repository_url" {
+  description = "Agent Core ECR repository."
+  value       = aws_ecr_repository.agent_core.repository_url
+}
+
 output "ecs_cluster_name" {
   description = "ECS cluster name."
   value       = aws_ecs_cluster.app.name
@@ -36,4 +41,14 @@ output "app_secret_arn" {
 output "redis_endpoint" {
   description = "ElastiCache Redis endpoint."
   value       = aws_elasticache_replication_group.redis.primary_endpoint_address
+}
+
+output "agent_core_alb_dns_name" {
+  description = "Internal ALB DNS name for Agent Core runtime."
+  value       = aws_lb.agent_core.dns_name
+}
+
+output "agent_core_endpoint" {
+  description = "Agent Core internal endpoint."
+  value       = "http://${aws_lb.agent_core.dns_name}:8080"
 }

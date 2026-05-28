@@ -282,3 +282,164 @@ resource "aws_cloudwatch_metric_alarm" "worker_task_count_anomaly" {
   }
   treat_missing_data = "breaching"
 }
+
+# Agent Core Runtime Task Definition
+resource "aws_ecs_task_definition" "agent_core" {
+  family                   = "${local.name_prefix}-agent-core"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = var.agent_core_cpu
+  memory                   = var.agent_core_memory
+  execution_role_arn       = aws_iam_role.ecs_task_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
+
+  container_definitions = jsonencode([{
+    name      = "agent-core"
+    image     = "${aws_ecr_repository.agent_core.repository_url}:${var.agent_core_image_tag}"
+    essential = true
+    command   = ["python", "-m", "agent_core.server"]
+    portMappings = [{
+      containerPort = 8080
+      protocol      = "tcp"
+    }]
+    environment = [
+      { name = "AWS_REGION", value = var.aws_region },
+      { name = "ENVIRONMENT", value = "production" },
+      { name = "DEBUG", value = "false" },
+      { name = "AGENT_MODEL", value = var.agent_core_model },
+      { name = "MEMORY_TYPE", value = var.agent_core_memory_type },
+      { name = "TOOL_TIMEOUT", value = tostring(var.agent_core_tool_timeout) },
+    ]
+    secrets = [
+      { name = "ANTHROPIC_API_KEY", valueFrom = "${local.app_secret_arn}:${var.secret_json_keys.anthropic_api_key}::" },
+    ]
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = aws_cloudwatch_log_group.agent_core.name
+        awslogs-region        = var.aws_region
+        awslogs-stream-prefix = "agent-core"
+      }
+    }
+  }])
+}
+
+# Agent Core Service
+resource "aws_ecs_service" "agent_core" {
+  name            = "agent-core"
+  cluster         = aws_ecs_cluster.app.id
+  task_definition = aws_ecs_task_definition.agent_core.arn
+  desired_count   = var.agent_core_desired_count
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets          = local.public_subnet_ids
+    security_groups  = [aws_security_group.agent_core.id]
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.agent_core.arn
+    container_name   = "agent-core"
+    container_port   = 8080
+  }
+
+  depends_on = [aws_lb_listener.agent_core]
+}
+
+# Auto-scaling for Agent Core
+resource "aws_appautoscaling_target" "agent_core" {
+  max_capacity       = var.agent_core_max_count
+  min_capacity       = var.agent_core_min_count
+  resource_id        = "service/${aws_ecs_cluster.app.name}/${aws_ecs_service.agent_core.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
+}
+
+resource "aws_appautoscaling_policy" "agent_core_cpu" {
+  name               = "${local.name_prefix}-agent-core-cpu"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.agent_core.resource_id
+  scalable_dimension = aws_appautoscaling_target.agent_core.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.agent_core.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ECSServiceAverageCPUUtilization"
+    }
+    target_value = 70.0
+  }
+}
+
+resource "aws_appautoscaling_policy" "agent_core_memory" {
+  name               = "${local.name_prefix}-agent-core-memory"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.agent_core.resource_id
+  scalable_dimension = aws_appautoscaling_target.agent_core.scalable_dimension
+  service_namespace  = aws_appautoscaling_target.agent_core.service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ECSServiceAverageMemoryUtilization"
+    }
+    target_value = 75.0
+  }
+}
+
+# CloudWatch Log Group for Agent Core
+resource "aws_cloudwatch_log_group" "agent_core" {
+  name              = "/ecs/${local.name_prefix}-agent-core"
+  retention_in_days = 30
+}
+
+# CloudWatch Alarms for Agent Core
+resource "aws_cloudwatch_metric_alarm" "agent_core_memory_high" {
+  alarm_name          = "${local.name_prefix}-agent-core-memory-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "MemoryUtilization"
+  namespace           = "AWS/ECS"
+  period              = 60
+  statistic           = "Average"
+  threshold           = 85
+  alarm_description   = "Alert when Agent Core memory utilization exceeds 85%"
+  dimensions = {
+    ServiceName = aws_ecs_service.agent_core.name
+    ClusterName = aws_ecs_cluster.app.name
+  }
+  treat_missing_data = "notBreaching"
+}
+
+resource "aws_cloudwatch_metric_alarm" "agent_core_cpu_high" {
+  alarm_name          = "${local.name_prefix}-agent-core-cpu-high"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "CPUUtilization"
+  namespace           = "AWS/ECS"
+  period              = 60
+  statistic           = "Average"
+  threshold           = 80
+  alarm_description   = "Alert when Agent Core CPU utilization exceeds 80% for 2 minutes"
+  dimensions = {
+    ServiceName = aws_ecs_service.agent_core.name
+    ClusterName = aws_ecs_cluster.app.name
+  }
+  treat_missing_data = "notBreaching"
+}
+
+resource "aws_cloudwatch_metric_alarm" "agent_core_unhealthy_hosts" {
+  alarm_name          = "${local.name_prefix}-agent-core-unhealthy"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "UnHealthyHostCount"
+  namespace           = "AWS/ApplicationELB"
+  period              = 60
+  statistic           = "Average"
+  threshold           = 0
+  alarm_description   = "Alert when Agent Core has unhealthy targets"
+  dimensions = {
+    TargetGroup  = aws_lb_target_group.agent_core.arn_suffix
+    LoadBalancer = aws_lb.agent_core.arn_suffix
+  }
+  treat_missing_data = "notBreaching"
+}

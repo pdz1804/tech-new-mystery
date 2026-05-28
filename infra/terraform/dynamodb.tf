@@ -242,3 +242,172 @@ resource "aws_dynamodb_table" "submissions" {
     enabled = true
   }
 }
+
+resource "aws_dynamodb_table" "conversation_sessions" {
+  count        = var.create_dynamodb_tables ? 1 : 0
+  name         = "${var.dynamodb_table_prefix}conversation_sessions"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "user_id"
+  range_key    = "session_id"
+
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "session_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "last_message_at"
+    type = "N"
+  }
+
+  global_secondary_index {
+    name            = "user-last-message-index"
+    hash_key        = "user_id"
+    range_key       = "last_message_at"
+    projection_type = "ALL"
+  }
+
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+}
+
+resource "aws_dynamodb_table" "conversation_messages" {
+  count        = var.create_dynamodb_tables ? 1 : 0
+  name         = "${var.dynamodb_table_prefix}conversation_messages"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "session_id"
+  range_key    = "message_id"
+
+  attribute {
+    name = "session_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "message_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "timestamp"
+    type = "N"
+  }
+
+  global_secondary_index {
+    name            = "session-timestamp-index"
+    hash_key        = "session_id"
+    range_key       = "timestamp"
+    projection_type = "ALL"
+  }
+
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+}
+
+resource "aws_dynamodb_table" "chat_user_preferences" {
+  count        = var.create_dynamodb_tables ? 1 : 0
+  name         = "${var.dynamodb_table_prefix}chat_user_preferences"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "user_id"
+
+  attribute {
+    name = "user_id"
+    type = "S"
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+}
+
+resource "aws_dynamodb_table" "article_clusters" {
+  count        = var.create_dynamodb_tables ? 1 : 0
+  name         = "${var.dynamodb_table_prefix}article_clusters"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "cluster_id"
+  range_key    = "article_id"
+
+  attribute {
+    name = "cluster_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "article_id"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "article-id-index"
+    hash_key        = "article_id"
+    projection_type = "ALL"
+  }
+
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+}
+
+resource "aws_dynamodb_table" "cluster_metadata" {
+  count        = var.create_dynamodb_tables ? 1 : 0
+  name         = "${var.dynamodb_table_prefix}cluster_metadata"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "cluster_id"
+
+  attribute {
+    name = "cluster_id"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+}
+
+resource "aws_dynamodb_table" "article_embeddings" {
+  count        = var.create_dynamodb_tables ? 1 : 0
+  name         = "${var.dynamodb_table_prefix}article_embeddings"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "article_id"
+
+  attribute {
+    name = "article_id"
+    type = "S"
+  }
+
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+}

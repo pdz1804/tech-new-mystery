@@ -18,6 +18,10 @@ from app.services.source_service import SourceService
 from app.services.comment_service import CommentService
 from app.services.user_service import UserService
 from app.services.trending_service import TrendingService
+from app.integrations.agent_core_memory import (
+    AgentCoreMemory,
+    get_agent_memory as create_agent_memory,
+)
 
 
 def get_pagination(
@@ -115,3 +119,23 @@ def get_trending_service() -> TrendingService:
     """Dependency to get TrendingService."""
     trending_repo = TrendingRepository()
     return TrendingService(trending_repo=trending_repo)
+
+
+async def get_agent_memory() -> AgentCoreMemory:
+    """Dependency for per-request Agent Core memory isolation.
+
+    Each request gets its own fresh AgentCoreMemory instance via FastAPI's
+    dependency injection system. This prevents state leakage between
+    concurrent requests.
+
+    Usage in route handlers:
+        @router.post("/chat")
+        async def chat_endpoint(memory: AgentCoreMemory = Depends(get_agent_memory)):
+            # Each request gets its own isolated memory instance
+            await memory.initialize_memory(session_id, user_id)
+            ...
+
+    Returns:
+        AgentCoreMemory: Fresh instance for this request only
+    """
+    return create_agent_memory()

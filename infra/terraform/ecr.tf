@@ -16,6 +16,15 @@ resource "aws_ecr_repository" "frontend" {
   }
 }
 
+resource "aws_ecr_repository" "agent_core" {
+  name                 = "${local.name_prefix}-agent-core"
+  image_tag_mutability = "MUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
 resource "aws_ecr_lifecycle_policy" "backend" {
   repository = aws_ecr_repository.backend.name
   policy     = file("${path.module}/policies/ecr-lifecycle.json")
@@ -23,5 +32,10 @@ resource "aws_ecr_lifecycle_policy" "backend" {
 
 resource "aws_ecr_lifecycle_policy" "frontend" {
   repository = aws_ecr_repository.frontend.name
+  policy     = file("${path.module}/policies/ecr-lifecycle.json")
+}
+
+resource "aws_ecr_lifecycle_policy" "agent_core" {
+  repository = aws_ecr_repository.agent_core.name
   policy     = file("${path.module}/policies/ecr-lifecycle.json")
 }

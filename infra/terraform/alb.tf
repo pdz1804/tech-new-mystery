@@ -98,3 +98,42 @@ resource "aws_lb_listener_rule" "api_https" {
     }
   }
 }
+
+# Internal ALB for Agent Core Runtime
+resource "aws_lb" "agent_core" {
+  name               = substr("${local.name_prefix}-agent-core-alb", 0, 32)
+  load_balancer_type = "application"
+  subnets            = local.public_subnet_ids
+  security_groups    = [aws_security_group.agent_core_alb.id]
+  internal           = true
+  idle_timeout       = 120
+}
+
+resource "aws_lb_target_group" "agent_core" {
+  name                 = substr("${local.name_prefix}-agent-core", 0, 32)
+  port                 = 8080
+  protocol             = "HTTP"
+  target_type          = "ip"
+  vpc_id               = local.vpc_id
+  deregistration_delay = 30
+
+  health_check {
+    path                = "/health"
+    matcher             = "200-399"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+  }
+}
+
+resource "aws_lb_listener" "agent_core" {
+  load_balancer_arn = aws_lb.agent_core.arn
+  port              = 8080
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.agent_core.arn
+  }
+}
