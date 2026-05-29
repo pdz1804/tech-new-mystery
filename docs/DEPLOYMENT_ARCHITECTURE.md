@@ -1,101 +1,66 @@
 # Deployment Architecture
 
-Production is deployed to AWS `us-west-2` with Terraform in
-`infra/terraform`.
+## Infrastructure
 
-## AWS Topology
+Infrastructure is managed in `infra/terraform`.
 
-```mermaid
-flowchart TB
-  Internet((Internet)) --> ALB[Application Load Balancer]
+Main deployed compute services on ECS:
+- `frontend`
+- `api`
+- `worker`
+- `beat`
+- `agent-core`
 
-  subgraph VPC[tech-news-mystery-prod VPC]
-    subgraph Public[Public subnets]
-      ALB
-      FrontendSvc[ECS service: frontend]
-      ApiSvc[ECS service: api]
-      WorkerSvc[ECS service: worker]
-      BeatSvc[ECS service: beat]
-    end
+The `agent-core` runtime is deployed separately from backend/frontend and is invoked by backend over internal HTTP.
 
-    subgraph Private[Private subnets]
-      Redis[(ElastiCache Redis)]
-    end
-  end
+## CI/CD
 
-  ALB -->|/| FrontendSvc
-  ALB -->|/v1/* and /health| ApiSvc
+### App pipeline
+Workflow: `.github/workflows/deploy.yml`
 
-  ApiSvc --> Dynamo[(DynamoDB)]
-  ApiSvc --> S3[(S3 images bucket)]
-  ApiSvc --> Redis
-  WorkerSvc --> Redis
-  WorkerSvc --> Dynamo
-  WorkerSvc --> S3
-  BeatSvc --> Redis
+- Runs backend/frontend checks.
+- Builds and pushes Docker images:
+  - backend image
+  - frontend image
+  - agent-core image
+- Forces ECS rollout for:
+  - `api`
+  - `frontend`
+  - `worker`
+  - `beat`
+  - `agent-core`
 
-  ApiSvc --> Secrets[Secrets Manager]
-  WorkerSvc --> Secrets
-  BeatSvc --> Secrets
-  ApiSvc --> Bedrock[AWS Bedrock]
-  WorkerSvc --> Bedrock
-```
+### Terraform pipeline
+Workflow: `.github/workflows/terraform.yml`
 
-## CI/CD Flow
+- `terraform fmt -check`
+- `terraform init`
+- `terraform validate`
+- `terraform plan`
+- `terraform apply` on `main` push
 
-```mermaid
-flowchart LR
-  PR[Pull request] --> Checks[Backend and frontend checks]
-  Main[Push to main] --> Checks
-  Checks --> Build[Build backend and frontend images]
-  Build --> ECR[ECR images]
-  ECR --> ECS[ECS force new deployment]
-  ECS --> ALB[Public ALB URL]
-  Infra[Manual Terraform CLI] -. only when infra changes .-> AWSInfra[AWS infrastructure]
-```
+## Required CI/CD Variables/Secrets
 
-The active GitHub workflow is `.github/workflows/deploy.yml`. The Terraform
-workflow is parked as `.github/workflows/terraform.yml.bak`, so app commits do
-not automatically redeploy infrastructure.
+- `AWS_ROLE_TO_ASSUME` (secret)
+- `TF_STATE_BUCKET` (secret)
+- `TF_STATE_LOCK_TABLE` (secret)
+- `AWS_REGION` (variable, default `us-west-2`)
+- `ECS_CLUSTER` (variable)
+- `BACKEND_ECR_REPOSITORY` (variable)
+- `FRONTEND_ECR_REPOSITORY` (variable)
+- `AGENT_CORE_ECR_REPOSITORY` (variable)
 
-## Terraform State
+## Agent Core AWS Secrets (Secrets Manager JSON keys)
 
-```mermaid
-flowchart LR
-  Terraform[Terraform CLI] --> StateBucket[(S3 tfstate bucket)]
-  Terraform --> LockTable[(DynamoDB lock table)]
-  Terraform --> AWS[AWS resources]
-```
+These keys must exist in the app Secrets Manager secret:
 
-State backend resources:
+| Key | Required | Purpose |
+|---|---|---|
+| `OPENAI_API_KEY` | Yes | Embeddings for semantic search |
+| `QDRANT_URL` | Yes | Vector DB endpoint |
+| `QDRANT_API_KEY` | Yes | Vector DB auth |
+| `AGENT_CORE_MEMORY_ID` | Optional | AWS Bedrock AgentCore Memory resource ID — omit to disable long-term memory |
+| `AGENT_CORE_API_KEY` | Optional | Shared secret for backend→agent-core auth |
 
-| Resource | Name |
-| --- | --- |
-| S3 state bucket | `tech-news-mystery-tfstate-381492273521` |
-| DynamoDB lock table | `tech-news-mystery-terraform-locks` |
+To provision a Memory resource, use the AWS console or add a `aws_bedrock_agentcore_memory` resource to Terraform once the provider supports it, then set `AGENT_CORE_MEMORY_ID` to the returned memory ID.
 
-## Existing Imported Resources
-
-These resources existed before Terraform and are imported into state:
-
-| Type | Name |
-| --- | --- |
-| S3 bucket | `tech-news-articles-381492273521` |
-| DynamoDB table | `tech-news-users` |
-| DynamoDB table | `tech-news-articles` |
-| DynamoDB table | `tech-news-comments` |
-| DynamoDB table | `tech-news-user_saves` |
-| DynamoDB table | `tech-news-user_likes` |
-| DynamoDB table | `tech-news-user_preferences` |
-| DynamoDB table | `tech-news-news_sources` |
-| DynamoDB table | `tech-news-pending-searches` |
-| DynamoDB table | `tech-news-trending_articles` |
-| DynamoDB table | `tech-news-submissions` |
-
-## Operational Checks
-
-```powershell
-terraform output
-aws ecs describe-services --region us-west-2 --cluster tech-news-mystery-prod --services frontend api worker beat
-aws logs tail /ecs/tech-news-mystery-prod --region us-west-2 --follow
-```

@@ -1,83 +1,52 @@
 # GitHub CI/CD
 
-The repository currently has one active GitHub Actions workflow:
+## Active Workflows
 
-| Workflow | File | Purpose |
-| --- | --- | --- |
-| App CI/CD | `.github/workflows/deploy.yml` | Checks backend/frontend, builds images, pushes to ECR, and rolls ECS services |
+- App CI/CD: `.github/workflows/deploy.yml`
+- Terraform CI/CD: `.github/workflows/terraform.yml`
 
-The Terraform workflow is intentionally parked as
-`.github/workflows/terraform.yml.bak`. It is kept as a reference, but it does
-not run automatically. This avoids accidental infrastructure redeploys when
-normal app code is committed.
+## App CI/CD Behavior
 
-## Required Repository Secrets
+Trigger paths: `backend/**`, `frontend/**`, `agent_core/**`, `infra/docker/**`
 
-| Secret | Purpose |
-| --- | --- |
-| `AWS_ROLE_TO_ASSUME` | IAM role GitHub Actions assumes through OIDC |
+On PRs and pushes (matching paths), the workflow runs three parallel check jobs:
+- `backend-checks` — `python -m compileall app`
+- `frontend-checks` — type-check, tests, build
+- `agent-core-checks` — `python -m compileall agent_core` + unit tests
 
-## Optional Repository Variables
+On push to `main`, after all checks pass it additionally:
+- builds and pushes Docker images to ECR:
+  - backend
+  - frontend
+  - agent-core
+- forces ECS deployment of:
+  - `api`
+  - `frontend`
+  - `worker`
+  - `beat`
+  - `agent-core`
 
-Defaults are already set in the workflows, but these variables can override them.
+## Terraform Workflow Behavior
 
-| Variable | Default |
-| --- | --- |
-| `AWS_REGION` | `us-west-2` |
-| `ECS_CLUSTER` | `tech-news-mystery-prod` |
-| `BACKEND_ECR_REPOSITORY` | `tech-news-mystery-prod-backend` |
-| `FRONTEND_ECR_REPOSITORY` | `tech-news-mystery-prod-frontend` |
-| `NEXT_PUBLIC_API_URL` | `/v1` |
+On PRs/pushes for `infra/terraform/**`, the workflow runs:
+- `terraform fmt -check -recursive`
+- `terraform init`
+- `terraform validate`
+- `terraform plan`
+- `terraform apply` on `main` push
 
-## Checks
+## Required Secrets
 
-Pull requests and pushes touching app code run:
+- `AWS_ROLE_TO_ASSUME`
+- `TF_STATE_BUCKET`
+- `TF_STATE_LOCK_TABLE`
 
-| Area | Check |
-| --- | --- |
-| Backend | `pip install -r requirements.txt` and `python -m compileall app scripts` |
-| Frontend | `npm ci`, `npm run type-check`, `npm test`, `npm run build` |
+## Useful Variables
 
-Pull requests stop after checks. Pushes to `main` continue to deployment.
+- `AWS_REGION` (default `us-west-2`)
+- `ECS_CLUSTER`
+- `BACKEND_ECR_REPOSITORY`
+- `FRONTEND_ECR_REPOSITORY`
+- `AGENT_CORE_ECR_REPOSITORY`
+- `NEXT_PUBLIC_API_URL`
 
-## Deploy Behavior
-
-The deploy workflow pushes two tags for each image:
-
-| Tag | Use |
-| --- | --- |
-| `${{ github.sha }}` | Immutable traceability for the commit |
-| `latest` | Tag consumed by the current ECS task definitions |
-
-After pushing images, the workflow forces a new ECS deployment for:
-
-- `frontend`
-- `api`
-- `worker`
-- `beat`
-
-Then it waits until all four services are stable.
-
-## Infrastructure Changes
-
-Infrastructure is managed manually from `infra/terraform`.
-
-Use this flow only when infrastructure really changed:
-
-
-```powershell
-cd infra/terraform
-terraform init
-terraform plan
-terraform apply
-```
-
-When app secrets change:
-
-```powershell
-cd infra/terraform
-.\scripts\put-app-secret-from-env.ps1 -EnvFile ..\..\backend\.env -Region us-west-2
-```
-
-The archived Terraform workflow can be restored by renaming
-`.github/workflows/terraform.yml.bak` back to `.github/workflows/terraform.yml`.
