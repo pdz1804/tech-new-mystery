@@ -1,101 +1,63 @@
 # Tech News Mystery
 
-Tech News Mystery is a full-stack technology news platform for discovering,
-searching, processing, reading, saving, and discussing AI/tech articles. The
-app uses a Next.js frontend, FastAPI backend, DynamoDB persistence, S3 image
-storage, Redis/Celery background processing, Qdrant semantic search, and
-LLM-powered article enrichment.
+Tech News Mystery is a full-stack tech news application with two major AI features:
+- Semantic article clustering (HDBSCAN + evaluation metrics)
+- Chatbot with a separate Agent Core runtime (LangGraph + LangChain + Bedrock)
 
-## Quick Links
+## Current Feature Status
 
-| Area | Link |
-| --- | --- |
-| API reference | [docs/API_REFERENCE.md](docs/API_REFERENCE.md) |
-| System architecture | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| Deployment architecture | [docs/DEPLOYMENT_ARCHITECTURE.md](docs/DEPLOYMENT_ARCHITECTURE.md) |
-| GitHub CI/CD | [docs/GITHUB_CICD.md](docs/GITHUB_CICD.md) |
-| Terraform stack | [infra/terraform/README.md](infra/terraform/README.md) |
+### Clustering
+- Backend clustering pipeline is implemented with:
+  - OpenAI embeddings (`text-embedding-3-small`)
+  - HDBSCAN clustering (`metric=cosine`, `algorithm=generic`)
+  - Quality metrics: Silhouette, Davies-Bouldin, Calinski-Harabasz
+  - Evaluation persistence and trending/list/detail APIs
+- Frontend topics/cluster pages are integrated in the main app.
 
-Production app endpoint:
+### Chatbot
+- Chat is integrated as `/chatbot` in the existing frontend app (not a separate frontend).
+- Chat sessions/messages are persisted in DynamoDB:
+  - `tech-news-conversation_sessions`
+  - `tech-news-conversation_messages`
+- Backend supports create/list/get/rename/archive/restore/delete sessions and SSE streaming.
+- Backend streams to a separate `agent-core` service via HTTP and persists user/assistant messages.
 
-```text
-http://tech-news-mystery-prod-alb-840627461.us-west-2.elb.amazonaws.com
-```
+## Runtime Architecture
 
-## Features
+- `frontend`: Next.js
+- `api`: FastAPI
+- `worker`: Celery worker
+- `beat`: Celery beat scheduler
+- `agent-core`: separate agent runtime service (LangGraph/LangChain/Bedrock)
 
-- Article listing, detail pages, search, saves, likes, comments, and profiles
-- Admin-only article creation, queue review, web/news search triggers, and user role management
-- Hybrid semantic/keyword search backed by Qdrant
-- AI-assisted extraction, summarization, category classification, and metadata generation
-- Background workers for scheduled discovery and article processing
-- Apple-inspired glass UI with responsive top navigation
-- AWS production deployment through ECS Fargate, ALB, ECR, DynamoDB, S3, ElastiCache, Secrets Manager, and Bedrock
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/DEPLOYMENT_ARCHITECTURE.md](docs/DEPLOYMENT_ARCHITECTURE.md).
 
-## Stack
+## CI/CD and Infra
 
-| Layer | Technology |
-| --- | --- |
-| Frontend | Next.js 14, React 18, TypeScript, Tailwind CSS, Zustand, TanStack Query |
-| Backend | FastAPI, Python 3.11, PynamoDB, Celery |
-| Data | DynamoDB, S3, Qdrant |
-| Async/cache | Redis locally, ElastiCache Redis in AWS |
-| AI/search | AWS Bedrock, OpenAI fallback, Tavily, NewsAPI |
-| Deployment | Docker, ECR, ECS Fargate, ALB, Terraform, GitHub Actions |
+- App CI/CD: `.github/workflows/deploy.yml`
+  - Runs backend/frontend checks
+  - Builds and pushes images for `backend`, `frontend`, and `agent-core`
+  - Forces ECS rollout for `api`, `frontend`, `worker`, `beat`, `agent-core`
+- Terraform workflow: `.github/workflows/terraform.yml`
+  - `fmt`, `init`, `validate`, `plan`
+  - `apply` on push to `main`
 
-<details>
-<summary>System Architecture</summary>
+## Local Development
 
-```mermaid
-flowchart LR
-  Browser[Browser] --> Frontend[Next.js frontend]
-  Frontend --> API[FastAPI API]
-  API --> Dynamo[(DynamoDB)]
-  API --> S3[(S3 images)]
-  API --> Redis[(Redis)]
-  API --> Qdrant[(Qdrant)]
-  API --> Bedrock[AWS Bedrock]
-  API --> OpenAI[OpenAI fallback]
-  Worker[Celery worker] --> Redis
-  Worker --> Dynamo
-  Worker --> S3
-  Worker --> Bedrock
-  Beat[Celery beat] --> Redis
-```
-
-Production runs four ECS services:
-
-| Service | Purpose |
-| --- | --- |
-| `frontend` | Serves the Next.js production UI |
-| `api` | Serves FastAPI HTTP routes under `/v1` |
-| `worker` | Runs Celery background jobs |
-| `beat` | Runs Celery schedules |
-
-More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-</details>
-
-<details>
-<summary>Local Development</summary>
-
-Start Redis:
-
+1. Start infrastructure services:
 ```powershell
 cd infra
-docker compose up redis
+docker compose up redis agent-core
 ```
 
-Start backend:
-
+2. Start backend:
 ```powershell
 cd backend
 pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Start frontend:
-
+3. Start frontend:
 ```powershell
 cd frontend
 npm install
@@ -103,117 +65,17 @@ npm run dev
 ```
 
 Local URLs:
+- Frontend: `http://localhost:3000`
+- Backend: `http://localhost:8000`
+- Swagger: `http://localhost:8000/docs`
+- Agent Core health: `http://localhost:8080/health`
 
-| Service | URL |
-| --- | --- |
-| Frontend | `http://localhost:3000` |
-| Backend | `http://localhost:8000` |
-| Swagger | `http://localhost:8000/docs` |
+## Docs Index
 
-</details>
+- [docs/README.md](docs/README.md)
+- [docs/API_REFERENCE.md](docs/API_REFERENCE.md)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+- [docs/DEPLOYMENT_ARCHITECTURE.md](docs/DEPLOYMENT_ARCHITECTURE.md)
+- [docs/MANUAL_STARTUP.md](docs/MANUAL_STARTUP.md)
+- [docs/GITHUB_CICD.md](docs/GITHUB_CICD.md)
 
-<details>
-<summary>Configuration</summary>
-
-The backend reads runtime settings from environment variables through
-`backend/app/config.py`.
-
-Important settings:
-
-| Variable | Purpose |
-| --- | --- |
-| `AWS_REGION` | AWS region, currently `us-west-2` |
-| `DYNAMODB_TABLE_PREFIX` | DynamoDB table prefix, currently `tech-news-` |
-| `S3_BUCKET` | Article image/object bucket |
-| `REDIS_URL` | Cache Redis URL |
-| `CELERY_BROKER_URL` | Celery broker Redis URL |
-| `CELERY_RESULT_BACKEND` | Celery result Redis URL |
-| `LLM_PROVIDER` | Ordered LLM providers, for example `bedrock,openai` |
-| `BEDROCK_MODEL` | Bedrock model ID |
-| `QDRANT_MODE` | `cloud` or `docker` |
-| `QDRANT_URL` | Qdrant Cloud endpoint when using cloud mode |
-
-Local manual mode commonly uses `localhost:6379`; Docker Compose uses
-`redis://redis:6379`; AWS ECS uses the Terraform-created ElastiCache endpoint.
-
-</details>
-
-<details>
-<summary>Deployment</summary>
-
-Infrastructure is managed manually with Terraform in `infra/terraform`.
-The Terraform workflow is intentionally parked as:
-
-```text
-.github/workflows/terraform.yml.bak
-```
-
-That means normal pushes do not redeploy infrastructure.
-
-App CI/CD is handled by `.github/workflows/deploy.yml`:
-
-- Pull requests run backend compile checks and frontend type-check/test/build.
-- Pushes to `main` run the same checks, build backend/frontend Docker images,
-  push them to ECR, and force a new ECS rollout.
-- Only app code/container changes deploy automatically.
-
-Current AWS production resources:
-
-| Resource | Name |
-| --- | --- |
-| Region | `us-west-2` |
-| ECS cluster | `tech-news-mystery-prod` |
-| ALB | `tech-news-mystery-prod-alb-840627461.us-west-2.elb.amazonaws.com` |
-| S3 article bucket | `tech-news-articles-381492273521` |
-| ECR backend | `tech-news-mystery-prod-backend` |
-| ECR frontend | `tech-news-mystery-prod-frontend` |
-| Redis | `tech-news-mystery-prod-redis.jx9fd6.ng.0001.usw2.cache.amazonaws.com` |
-
-More detail: [docs/DEPLOYMENT_ARCHITECTURE.md](docs/DEPLOYMENT_ARCHITECTURE.md)
-and [docs/GITHUB_CICD.md](docs/GITHUB_CICD.md).
-
-</details>
-
-<details>
-<summary>Useful Commands</summary>
-
-Frontend checks:
-
-```powershell
-cd frontend
-npm run type-check
-npm test
-npm run build
-```
-
-Backend checks:
-
-```powershell
-cd backend
-python -m compileall app scripts
-pytest
-```
-
-AWS service status:
-
-```powershell
-aws ecs describe-services --region us-west-2 --cluster tech-news-mystery-prod --services frontend api worker beat
-aws logs tail /ecs/tech-news-mystery-prod --region us-west-2 --follow
-```
-
-</details>
-
-## Repository Layout
-
-| Path | Purpose |
-| --- | --- |
-| `backend/` | FastAPI app, Celery tasks, repositories, services |
-| `frontend/` | Next.js application |
-| `infra/docker/` | Production Dockerfiles |
-| `infra/terraform/` | AWS infrastructure as code |
-| `docs/` | Maintained project documentation |
-| `.github/workflows/deploy.yml` | Active app CI/CD workflow |
-
-## License
-
-MIT. See [LICENSE](LICENSE).

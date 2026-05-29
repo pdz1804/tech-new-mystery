@@ -85,6 +85,17 @@ def create_app() -> FastAPI:
             logger.warning(f"Celery health check failed: {e}")
             return {"status": "error", "service": "celery", "error": str(e)}
 
+    # Agent Core circuit breaker status
+    @app.get("/health/agent-core")
+    async def agent_core_health():
+        """Check Agent Core circuit breaker state."""
+        from app.integrations.agent_core_client import _circuit_breaker
+        return {
+            "status": "ok" if not _circuit_breaker.is_open else "degraded",
+            "circuit_state": _circuit_breaker.state.value,
+            "failure_count": _circuit_breaker.failure_count,
+        }
+
     # LLM health check endpoint
     @app.get("/health/llm")
     async def llm_health_check():
