@@ -209,7 +209,7 @@ resource "aws_iam_role_policy" "agent_core_access" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "BedrockInvokeForAgentCore"
+        Sid    = "BedrockInvoke"
         Effect = "Allow"
         Action = [
           "bedrock:InvokeModel",
@@ -218,6 +218,45 @@ resource "aws_iam_role_policy" "agent_core_access" {
         Resource = "*"
       },
       {
+        # AWS Bedrock AgentCore Memory — create/retrieve conversation events
+        Sid    = "AgentCoreMemory"
+        Effect = "Allow"
+        Action = [
+          "bedrock-agentcore:CreateEvent",
+          "bedrock-agentcore:GetEvent",
+          "bedrock-agentcore:ListEvents",
+          "bedrock-agentcore:RetrieveMemory",
+          "bedrock-agentcore:GetMemory",
+          "bedrock-agentcore:ListMemories"
+        ]
+        Resource = "*"
+      },
+      {
+        # AWS Bedrock AgentCore Browser Tool — managed browser sessions
+        Sid    = "AgentCoreBrowser"
+        Effect = "Allow"
+        Action = [
+          "bedrock-agentcore:StartBrowserSession",
+          "bedrock-agentcore:StopBrowserSession",
+          "bedrock-agentcore:InvokeOnBrowserSession",
+          "bedrock-agentcore:GetBrowserSession"
+        ]
+        Resource = "*"
+      },
+      {
+        # AWS Bedrock AgentCore Code Interpreter — managed code execution sandbox
+        Sid    = "AgentCoreCodeInterpreter"
+        Effect = "Allow"
+        Action = [
+          "bedrock-agentcore:StartCodeInterpreterSession",
+          "bedrock-agentcore:StopCodeInterpreterSession",
+          "bedrock-agentcore:InvokeOnCodeInterpreterSession",
+          "bedrock-agentcore:GetCodeInterpreterSession"
+        ]
+        Resource = "*"
+      },
+      {
+        # DynamoDB — read conversation sessions/messages for context injection
         Sid    = "DynamoDBSessionAccess"
         Effect = "Allow"
         Action = [

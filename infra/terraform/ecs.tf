@@ -25,6 +25,9 @@ locals {
     { name = "OPENAI_MODEL", value = "gpt-4o-mini" },
     { name = "GEMINI_MODEL", value = "gemini-1.5-mini" },
     { name = "QDRANT_MODE", value = "cloud" },
+    { name = "QDRANT_COLLECTION_NAME", value = var.qdrant_collection_name },
+    { name = "OPENAI_EMBEDDING_MODEL", value = var.openai_embedding_model },
+    { name = "AGENT_CORE_BASE_URL", value = "http://${aws_lb.agent_core.dns_name}:8080" },
     { name = "REDIS_URL", value = "redis://${local.redis_endpoint}:6379/0" },
     { name = "CELERY_BROKER_URL", value = "redis://${local.redis_endpoint}:6379/1" },
     { name = "CELERY_RESULT_BACKEND", value = "redis://${local.redis_endpoint}:6379/2" },
@@ -306,12 +309,26 @@ resource "aws_ecs_task_definition" "agent_core" {
       { name = "AWS_REGION", value = var.aws_region },
       { name = "ENVIRONMENT", value = "production" },
       { name = "DEBUG", value = "false" },
+      { name = "BEDROCK_REGION", value = var.aws_region },
       { name = "AGENT_MODEL", value = var.agent_core_model },
-      { name = "MEMORY_TYPE", value = var.agent_core_memory_type },
       { name = "TOOL_TIMEOUT", value = tostring(var.agent_core_tool_timeout) },
+      { name = "BROWSER_TIMEOUT", value = "60" },
+      { name = "CODE_INTERPRETER_TIMEOUT", value = "60" },
+      { name = "BROWSER_IDENTIFIER", value = "aws.browser.v1" },
+      { name = "CODE_INTERPRETER_IDENTIFIER", value = "aws.codeinterpreter.v1" },
+      { name = "QDRANT_MODE", value = "cloud" },
+      { name = "QDRANT_COLLECTION_NAME", value = var.qdrant_collection_name },
+      { name = "OPENAI_EMBEDDING_MODEL", value = var.openai_embedding_model },
+      { name = "MAX_SEARCH_RESULTS", value = "8" },
     ]
     secrets = [
-      { name = "ANTHROPIC_API_KEY", valueFrom = "${local.app_secret_arn}:${var.secret_json_keys.anthropic_api_key}::" },
+      { name = "OPENAI_API_KEY", valueFrom = "${local.app_secret_arn}:${var.secret_json_keys.openai_api_key}::" },
+      { name = "QDRANT_URL", valueFrom = "${local.app_secret_arn}:${var.secret_json_keys.qdrant_url}::" },
+      { name = "QDRANT_API_KEY", valueFrom = "${local.app_secret_arn}:${var.secret_json_keys.qdrant_api_key}::" },
+      # MEMORY_ID: optional — set to the AWS Bedrock AgentCore Memory resource ID after creation
+      { name = "MEMORY_ID", valueFrom = "${local.app_secret_arn}:${var.secret_json_keys.agent_core_memory_id}::" },
+      # AGENT_CORE_API_KEY: used by backend to authenticate calls to this service
+      { name = "AGENT_CORE_API_KEY", valueFrom = "${local.app_secret_arn}:${var.secret_json_keys.agent_core_api_key}::" },
     ]
     logConfiguration = {
       logDriver = "awslogs"
@@ -335,7 +352,7 @@ resource "aws_ecs_service" "agent_core" {
   network_configuration {
     subnets          = local.public_subnet_ids
     security_groups  = [aws_security_group.agent_core.id]
-    assign_public_ip = false
+    assign_public_ip = true
   }
 
   load_balancer {

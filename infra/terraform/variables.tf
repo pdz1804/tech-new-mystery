@@ -161,9 +161,9 @@ variable "agent_core_memory" {
 }
 
 variable "agent_core_model" {
-  description = "Claude model for Agent Core runtime."
+  description = "Bedrock Claude model ID for Agent Core runtime."
   type        = string
-  default     = "claude-haiku-4-5-20251001"
+  default     = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 }
 
 variable "agent_core_memory_type" {
@@ -176,6 +176,18 @@ variable "agent_core_tool_timeout" {
   description = "Tool execution timeout in seconds for Agent Core."
   type        = number
   default     = 30
+}
+
+variable "qdrant_collection_name" {
+  description = "Qdrant collection used by backend indexing and Agent Core semantic search."
+  type        = string
+  default     = "articles"
+}
+
+variable "openai_embedding_model" {
+  description = "OpenAI embedding model used for backend indexing and Agent Core search queries."
+  type        = string
+  default     = "text-embedding-3-small"
 }
 
 variable "task_cpu" {
@@ -217,25 +229,75 @@ variable "secrets_manager_arn" {
 variable "secret_json_keys" {
   description = "JSON keys expected inside the app secret."
   type = object({
-    secret_key        = string
-    jwt_secret_key    = string
-    openai_api_key    = string
-    tavily_api_key    = string
-    newsapi_key       = string
-    qdrant_url        = string
-    qdrant_api_key    = string
-    gemini_api_key    = string
-    anthropic_api_key = string
+    secret_key            = string
+    jwt_secret_key        = string
+    openai_api_key        = string
+    tavily_api_key        = string
+    newsapi_key           = string
+    qdrant_url            = string
+    qdrant_api_key        = string
+    gemini_api_key        = string
+    anthropic_api_key     = string
+    agent_core_api_key    = string
+    agent_core_memory_id  = string
   })
   default = {
-    secret_key        = "SECRET_KEY"
-    jwt_secret_key    = "JWT_SECRET_KEY"
-    openai_api_key    = "OPENAI_API_KEY"
-    tavily_api_key    = "TAVILY_API_KEY"
-    newsapi_key       = "NEWSAPI_KEY"
-    qdrant_url        = "QDRANT_URL"
-    qdrant_api_key    = "QDRANT_API_KEY"
-    gemini_api_key    = "GEMINI_API_KEY"
-    anthropic_api_key = "ANTHROPIC_API_KEY"
+    secret_key            = "SECRET_KEY"
+    jwt_secret_key        = "JWT_SECRET_KEY"
+    openai_api_key        = "OPENAI_API_KEY"
+    tavily_api_key        = "TAVILY_API_KEY"
+    newsapi_key           = "NEWSAPI_KEY"
+    qdrant_url            = "QDRANT_URL"
+    qdrant_api_key        = "QDRANT_API_KEY"
+    gemini_api_key        = "GEMINI_API_KEY"
+    anthropic_api_key     = "ANTHROPIC_API_KEY"
+    agent_core_api_key    = "AGENT_CORE_API_KEY"
+    agent_core_memory_id  = "AGENT_CORE_MEMORY_ID"
   }
+}
+
+# ============================================================================
+# CLUSTERING WORKER CONFIGURATION
+# ============================================================================
+
+variable "clustering_desired_count" {
+  description = "Desired number of clustering worker tasks."
+  type        = number
+  default     = 1
+}
+
+variable "clustering_min_count" {
+  description = "Minimum clustering worker task count for auto-scaling."
+  type        = number
+  default     = 1
+}
+
+variable "clustering_max_count" {
+  description = "Maximum clustering worker task count for auto-scaling."
+  type        = number
+  default     = 5
+}
+
+variable "clustering_task_cpu" {
+  description = "Fargate CPU units for clustering tasks. Higher CPU needed for embeddings and HDBSCAN."
+  type        = number
+  default     = 2048  # 2 vCPU
+}
+
+variable "clustering_task_memory" {
+  description = "Fargate memory in MiB for clustering tasks. Higher memory for embeddings processing."
+  type        = number
+  default     = 4096  # 4 GB
+}
+
+variable "clustering_cpu_target" {
+  description = "Target CPU utilization percentage for clustering auto-scaling."
+  type        = number
+  default     = 70
+}
+
+variable "clustering_memory_target" {
+  description = "Target memory utilization percentage for clustering auto-scaling."
+  type        = number
+  default     = 75
 }

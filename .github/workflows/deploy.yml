@@ -5,6 +5,7 @@ on:
     paths:
       - "backend/**"
       - "frontend/**"
+      - "agent_core/**"
       - "infra/docker/**"
       - ".github/workflows/deploy.yml"
   push:
@@ -12,6 +13,7 @@ on:
     paths:
       - "backend/**"
       - "frontend/**"
+      - "agent_core/**"
       - "infra/docker/**"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
@@ -25,6 +27,7 @@ env:
   ECS_CLUSTER: ${{ vars.ECS_CLUSTER || 'tech-news-mystery-prod' }}
   BACKEND_ECR_REPOSITORY: ${{ vars.BACKEND_ECR_REPOSITORY || 'tech-news-mystery-prod-backend' }}
   FRONTEND_ECR_REPOSITORY: ${{ vars.FRONTEND_ECR_REPOSITORY || 'tech-news-mystery-prod-frontend' }}
+  AGENT_CORE_ECR_REPOSITORY: ${{ vars.AGENT_CORE_ECR_REPOSITORY || 'tech-news-mystery-prod-agent-core' }}
   NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || '/v1' }}
 
 jobs:
@@ -45,7 +48,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Compile backend
-        run: python -m compileall app scripts
+        run: python -m compileall app
 
   frontend-checks:
     runs-on: ubuntu-latest
@@ -74,11 +77,33 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+  agent-core-checks:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install agent-core dependencies
+        run: pip install -r agent_core/requirements.txt
+
+      - name: Compile agent-core
+        run: python -m compileall agent_core
+
+      - name: Run agent-core unit tests
+        env:
+          PYTHONPATH: .
+        run: python -m pytest agent_core/tests/ -v --tb=short
+
   deploy:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs:
       - backend-checks
       - frontend-checks
+      - agent-core-checks
     runs-on: ubuntu-latest
     concurrency:
       group: deploy-${{ github.ref }}
@@ -115,13 +140,24 @@ jobs:
           docker push "$ECR_REGISTRY/$FRONTEND_ECR_REPOSITORY:$IMAGE_TAG"
           docker push "$ECR_REGISTRY/$FRONTEND_ECR_REPOSITORY:latest"
 
+      - name: Build and push agent-core image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -f infra/docker/agent-core.Dockerfile -t "$ECR_REGISTRY/$AGENT_CORE_ECR_REPOSITORY:$IMAGE_TAG" .
+          docker tag "$ECR_REGISTRY/$AGENT_CORE_ECR_REPOSITORY:$IMAGE_TAG" "$ECR_REGISTRY/$AGENT_CORE_ECR_REPOSITORY:latest"
+          docker push "$ECR_REGISTRY/$AGENT_CORE_ECR_REPOSITORY:$IMAGE_TAG"
+          docker push "$ECR_REGISTRY/$AGENT_CORE_ECR_REPOSITORY:latest"
+
       - name: Force ECS rollout
         run: |
           aws ecs update-service --cluster "$ECS_CLUSTER" --service api --force-new-deployment
           aws ecs update-service --cluster "$ECS_CLUSTER" --service frontend --force-new-deployment
           aws ecs update-service --cluster "$ECS_CLUSTER" --service worker --force-new-deployment
           aws ecs update-service --cluster "$ECS_CLUSTER" --service beat --force-new-deployment
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service agent-core --force-new-deployment
 
       - name: Wait for ECS services
         run: |
-          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services api frontend worker beat
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services api frontend worker beat agent-core
