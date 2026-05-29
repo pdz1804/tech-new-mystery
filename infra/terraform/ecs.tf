@@ -325,10 +325,8 @@ resource "aws_ecs_task_definition" "agent_core" {
       { name = "OPENAI_API_KEY", valueFrom = "${local.app_secret_arn}:${var.secret_json_keys.openai_api_key}::" },
       { name = "QDRANT_URL", valueFrom = "${local.app_secret_arn}:${var.secret_json_keys.qdrant_url}::" },
       { name = "QDRANT_API_KEY", valueFrom = "${local.app_secret_arn}:${var.secret_json_keys.qdrant_api_key}::" },
-      # MEMORY_ID: optional — set to the AWS Bedrock AgentCore Memory resource ID after creation
+      # MEMORY_ID: optional — set to AWS Bedrock AgentCore Memory resource ID after provisioning
       { name = "MEMORY_ID", valueFrom = "${local.app_secret_arn}:${var.secret_json_keys.agent_core_memory_id}::" },
-      # AGENT_CORE_API_KEY: used by backend to authenticate calls to this service
-      { name = "AGENT_CORE_API_KEY", valueFrom = "${local.app_secret_arn}:${var.secret_json_keys.agent_core_api_key}::" },
     ]
     logConfiguration = {
       logDriver = "awslogs"

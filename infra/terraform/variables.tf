@@ -229,30 +229,28 @@ variable "secrets_manager_arn" {
 variable "secret_json_keys" {
   description = "JSON keys expected inside the app secret."
   type = object({
-    secret_key            = string
-    jwt_secret_key        = string
-    openai_api_key        = string
-    tavily_api_key        = string
-    newsapi_key           = string
-    qdrant_url            = string
-    qdrant_api_key        = string
-    gemini_api_key        = string
-    anthropic_api_key     = string
-    agent_core_api_key    = string
-    agent_core_memory_id  = string
+    secret_key           = string
+    jwt_secret_key       = string
+    openai_api_key       = string
+    tavily_api_key       = string
+    newsapi_key          = string
+    qdrant_url           = string
+    qdrant_api_key       = string
+    gemini_api_key       = string
+    anthropic_api_key    = string
+    agent_core_memory_id = string
   })
   default = {
-    secret_key            = "SECRET_KEY"
-    jwt_secret_key        = "JWT_SECRET_KEY"
-    openai_api_key        = "OPENAI_API_KEY"
-    tavily_api_key        = "TAVILY_API_KEY"
-    newsapi_key           = "NEWSAPI_KEY"
-    qdrant_url            = "QDRANT_URL"
-    qdrant_api_key        = "QDRANT_API_KEY"
-    gemini_api_key        = "GEMINI_API_KEY"
-    anthropic_api_key     = "ANTHROPIC_API_KEY"
-    agent_core_api_key    = "AGENT_CORE_API_KEY"
-    agent_core_memory_id  = "AGENT_CORE_MEMORY_ID"
+    secret_key           = "SECRET_KEY"
+    jwt_secret_key       = "JWT_SECRET_KEY"
+    openai_api_key       = "OPENAI_API_KEY"
+    tavily_api_key       = "TAVILY_API_KEY"
+    newsapi_key          = "NEWSAPI_KEY"
+    qdrant_url           = "QDRANT_URL"
+    qdrant_api_key       = "QDRANT_API_KEY"
+    gemini_api_key       = "GEMINI_API_KEY"
+    anthropic_api_key    = "ANTHROPIC_API_KEY"
+    agent_core_memory_id = "AGENT_CORE_MEMORY_ID"
   }
 }
 
