@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { flushSync } from 'react-dom';
 import { getSessionMessages, readChatMessageStream } from '@/lib/api/chat';
 import type { ChatMessage, SSEEvent, ToolCall } from '@/types/chat';
 
@@ -142,15 +141,13 @@ export function useStreamChat(sessionId?: string, onError?: (error: string) => v
       const toolCalls = new Map<string, ToolCall>();
 
       const updateAssistantMessage = (patch: Partial<ChatMessage>) => {
-        flushSync(() => {
-          setMessages((prev) =>
-            prev.map((message) =>
-              message.id === assistantMessageId
-                ? { ...message, ...patch }
-                : message
-            )
-          );
-        });
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id === assistantMessageId
+              ? { ...message, ...patch }
+              : message
+          )
+        );
       };
 
       const eventQueue: SSEEvent[] = [];
