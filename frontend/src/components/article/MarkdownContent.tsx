@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import CodeBlock from './CodeBlock';
 
 interface MarkdownContentProps {
@@ -9,7 +9,7 @@ interface MarkdownContentProps {
 }
 
 export function MarkdownContent({ content, className = '' }: MarkdownContentProps) {
-  const parseMarkdown = (markdown: string): React.ReactNode[] => {
+  const parseMarkdown = useCallback((markdown: string): React.ReactNode[] => {
     const lines = markdown.split('\n');
     const elements: React.ReactNode[] = [];
     let i = 0;
@@ -253,7 +253,7 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
     }
 
     return elements;
-  };
+  }, []);
 
   const renderInlineMarkdown = (text: string): React.ReactNode => {
     const parts: React.ReactNode[] = [];
@@ -349,7 +349,7 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
     return parts.length > 0 ? parts : text;
   };
 
-  const parsedContent = useMemo(() => parseMarkdown(content), [content]);
+  const parsedContent = useMemo(() => parseMarkdown(content), [content, parseMarkdown]);
 
   return (
     <div className={`prose prose-sm sm:prose-base lg:prose-lg max-w-none space-y-4 ${className}`}>

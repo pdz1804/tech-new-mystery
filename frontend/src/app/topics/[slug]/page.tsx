@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ChevronLeft, ChevronRight, ExternalLink, Zap } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Zap } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { apiClient } from '@/lib/api/client';
@@ -140,7 +140,7 @@ export default function ClusterDetailPage() {
     }
 
     return pages;
-  }, [state.currentPage, state.cluster?.pagination.total_pages]);
+  }, [state.currentPage, state.cluster]);
 
   if (!isAuthenticated) {
     return <AppLoadingState />;

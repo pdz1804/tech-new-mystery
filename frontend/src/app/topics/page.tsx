@@ -228,7 +228,7 @@ export default function TopicsPage() {
             // Auto-reload page to show new clusters
             window.location.reload();
           }
-        } catch (e) {
+        } catch {
           // Continue polling even if status check fails
         }
       }, 3000);

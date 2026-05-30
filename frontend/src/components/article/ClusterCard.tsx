@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ArrowRight, Heart, TrendingUp, ChevronRight } from 'lucide-react';
+import { Heart, TrendingUp, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import type { Cluster } from '@/types/cluster';
@@ -12,15 +12,6 @@ export interface ClusterCardProps {
   onClick?: (clusterId: string) => void;
   variant?: 'compact' | 'full';
   className?: string;
-}
-
-function SizeIcon({ category }: { category: string }) {
-  const icons = {
-    SMALL: '●',
-    MEDIUM: '●●',
-    LARGE: '●●●',
-  };
-  return <span className="text-slate-400">{icons[category as keyof typeof icons] || '●'}</span>;
 }
 
 export function ClusterCard({
