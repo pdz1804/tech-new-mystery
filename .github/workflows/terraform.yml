@@ -39,6 +39,10 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Clear Terraform Cache
+        working-directory: infra/terraform
+        run: rm -rf .terraform .terraform.lock.hcl
+
       - name: Terraform Init
         working-directory: infra/terraform
         run: |
@@ -94,6 +98,10 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Clear Terraform Cache
+        working-directory: infra/terraform
+        run: rm -rf .terraform .terraform.lock.hcl
 
       - name: Terraform Init
         working-directory: infra/terraform
