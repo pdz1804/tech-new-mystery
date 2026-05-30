@@ -11,6 +11,8 @@ from app.services.search_service import SearchService
 from app.repositories.article_repository import ArticleRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.pending_search_repository import PendingSearchRepository
+from app.api.v1.admin.clustering_config import router as clustering_config_router
+from app.api.v1.admin.evaluation import router as evaluation_router
 
 logger = logging.getLogger(__name__)
 
@@ -948,6 +950,43 @@ async def trigger_force_score_backfill(
         raise HTTPException(status_code=500, detail=f"Failed to trigger force backfill: {str(e)}")
 
 
+@router.get("/clustering/visualization/metrics")
+async def get_clustering_visualization(
+    limit: int = Query(5, ge=1, le=20, description="Last N evaluations to include"),
+    _: dict = Depends(require_admin),
+) -> dict:
+    """Get visualization data for 3-metric clustering quality plot (admin only).
+
+    Returns radar/spider chart data showing:
+    - Silhouette Score (0-1, higher is better)
+    - Davies-Bouldin Index (inverted, higher normalized is better)
+    - Calinski-Harabasz Index (percentile-normalized, higher is better)
+
+    Query Parameters:
+    - limit: Number of latest evaluations to include (1-20, default 5)
+
+    Response includes:
+    - Latest N evaluation results with normalized metrics
+    - Threshold lines for each metric
+    - Normalization info for frontend charting
+    """
+    try:
+        from app.services.visualization_service import VisualizationService
+
+        logger.info(f"[CLUSTERING_VIZ] Admin requesting visualization with limit={limit}")
+
+        service = VisualizationService()
+        visualization_data = await service.get_metrics_visualization(limit=limit)
+
+        logger.info(f"[CLUSTERING_VIZ] Generated visualization with {len(visualization_data.get('datasets', []))} datasets")
+
+        return visualization_data
+
+    except Exception as e:
+        logger.error(f"[CLUSTERING_VIZ] Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate visualization: {str(e)}")
+
+
 @router.get("/queue/stats", response_model=QueueStatsResponse)
 async def get_queue_stats(
     _: dict = Depends(require_admin),
@@ -1065,3 +1104,8 @@ async def get_queue_stats(
     except Exception as e:
         logger.error(f"[QUEUE_STATS] Error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to fetch queue stats: {str(e)}")
+
+
+# Include clustering configuration and evaluation sub-routers
+router.include_router(clustering_config_router)
+router.include_router(evaluation_router)

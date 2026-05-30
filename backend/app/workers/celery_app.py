@@ -1,7 +1,7 @@
 """Celery app factory and beat schedule."""
 
 import logging
-from celery import Celery, signals
+from celery import Celery
 from celery.schedules import crontab
 
 from app.config import settings
@@ -24,6 +24,8 @@ celery_app.conf.update(
     # Default is too short and causes "missed heartbeat" errors
     worker_heartbeat_interval=5,  # Send heartbeat every 5 seconds
     worker_heartbeat_timeout=300,  # Allow 5 minutes without heartbeat before declaring worker dead
+    worker_concurrency=settings.celery_worker_concurrency,
+    worker_max_tasks_per_child=settings.celery_worker_max_tasks_per_child,
     beat_schedule={
         "crawl-news-daily": {
             "task": "app.workers.tasks.crawl_tasks.daily_crawl_task",
@@ -37,6 +39,14 @@ celery_app.conf.update(
             "task": "app.workers.tasks.tavily_tasks.tavily_scheduled_task",
             "schedule": crontab(minute=0, hour="*/6"),  # Every 6 hours
         },
+        "cluster-articles-morning": {
+            "task": "tasks.cluster_articles",
+            "schedule": crontab(hour=6, minute=0),  # 6:00 AM UTC
+        },
+        "cluster-articles-evening": {
+            "task": "tasks.cluster_articles",
+            "schedule": crontab(hour=18, minute=0),  # 6:00 PM UTC
+        },
     },
 )
 
@@ -45,42 +55,14 @@ _process_crawler = None
 
 
 def get_process_crawler():
-    """Get the process-local crawler initialized by worker startup signal."""
+    """Get a process-local crawler, creating it lazily for crawl tasks only."""
     global _process_crawler
     if _process_crawler is None:
-        raise RuntimeError("Crawler not initialized - worker process may not be ready")
-    return _process_crawler
-
-
-@signals.worker_process_init.connect
-def init_crawler_for_worker(sender=None, **kwargs):
-    """Initialize crawler once per worker process at startup.
-
-    This runs when each Celery worker process starts, not per task.
-    All tasks in that process will reuse the same browser instance.
-    """
-    global _process_crawler
-    try:
-        import asyncio
         from app.integrations.crawler_client import CrawlerClient
 
-        logger.info("Initializing crawler for worker process")
-
-        # Create new crawler instance for this process
+        logger.info("Creating lazy crawler for worker process")
         _process_crawler = CrawlerClient()
-
-        # Initialize asynchronously
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(_process_crawler.initialize())
-            logger.info("Crawler successfully initialized for worker process")
-        finally:
-            loop.close()
-
-    except Exception as e:
-        logger.error(f"Failed to initialize crawler for worker: {e}", exc_info=True)
-        _process_crawler = None
+    return _process_crawler
 
 
 # Import tasks after celery_app is created to avoid circular imports
@@ -88,7 +70,9 @@ def init_crawler_for_worker(sender=None, **kwargs):
 try:
     from app.workers.tasks import (
         tavily_tasks, newsapi_tasks, crawl_tasks, trending_tasks,
-        digest_tasks, submission_tasks, summary_tasks, evaluation_tasks
+        digest_tasks, submission_tasks, summary_tasks, evaluation_tasks,
+        clustering_tasks, embedding_tasks
     )
 except ImportError:
-    pass
+    logger.exception("Failed to import Celery task modules")
+    raise

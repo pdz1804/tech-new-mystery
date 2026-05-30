@@ -69,7 +69,10 @@ def _make_browser_tool(settings: Settings):
             from playwright.sync_api import sync_playwright
 
             logger.info("[BROWSER] Starting session for %s", url)
-            with browser_session(region=settings.aws_region) as browser:
+            with browser_session(
+                region=settings.aws_region,
+                identifier=settings.browser_id or settings.browser_identifier,
+            ) as browser:
                 ws_url, headers = browser.generate_ws_headers()
                 logger.debug("[BROWSER] CDP endpoint: %s", ws_url)
 
@@ -123,7 +126,10 @@ def _make_code_interpreter_tool(settings: Settings):
             from bedrock_agentcore.tools.code_interpreter_client import code_session
 
             logger.info("[CODE] Executing %s code (%d chars)", language, len(code))
-            with code_session(region=settings.aws_region) as interp:
+            with code_session(
+                region=settings.aws_region,
+                identifier=settings.code_interpreter_id or settings.code_interpreter_identifier,
+            ) as interp:
                 result = interp.execute_code(
                     code=code,
                     language=language,

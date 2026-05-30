@@ -300,3 +300,92 @@ def get_agent_memory() -> AgentCoreMemory:
         AgentCoreMemory: Fresh instance for this request
     """
     return AgentCoreMemory()
+
+
+class RequestAgentMemory:
+    """Request-scoped Agent Memory with context manager for cleanup.
+
+    Provides per-request isolation and automatic cleanup of memory
+    after request completion.
+    """
+
+    def __init__(self, memory: AgentCoreMemory):
+        """Initialize with memory instance.
+
+        Args:
+            memory: AgentCoreMemory instance for this request
+        """
+        self._memory = memory
+        self._initialized_sessions: set[str] = set()
+
+    async def initialize(
+        self,
+        session_id: str,
+        user_id: str,
+        recent_events: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        """Initialize memory for a session.
+
+        Args:
+            session_id: Session identifier
+            user_id: User identifier
+            recent_events: Optional recent events to load
+
+        Returns:
+            Initialization result
+        """
+        result = await self._memory.initialize_memory(
+            session_id=session_id,
+            user_id=user_id,
+            recent_events=recent_events,
+        )
+        self._initialized_sessions.add(session_id)
+        return result
+
+    async def log_message(
+        self,
+        session_id: str,
+        role: str,
+        content: str,
+        timestamp: Optional[float] = None,
+    ) -> Dict[str, Any]:
+        """Log a message to memory.
+
+        Args:
+            session_id: Session identifier
+            role: Message role
+            content: Message content
+            timestamp: Optional timestamp
+
+        Returns:
+            Log result
+        """
+        return await self._memory.log_message(
+            session_id=session_id,
+            role=role,
+            content=content,
+            timestamp=timestamp,
+        )
+
+    async def get_memory_context(self, session_id: str) -> List[Dict[str, Any]]:
+        """Get memory context for a session.
+
+        Args:
+            session_id: Session identifier
+
+        Returns:
+            List of memory events
+        """
+        return await self._memory.get_memory_context(session_id)
+
+    async def cleanup(self) -> None:
+        """Clean up memory for all initialized sessions.
+
+        Called automatically at request end to prevent memory leakage.
+        """
+        for session_id in self._initialized_sessions:
+            # Clear old memory entries (expired events)
+            await self._memory.clear_old_memory(session_id)
+
+        # Clear tracking set for next request
+        self._initialized_sessions.clear()

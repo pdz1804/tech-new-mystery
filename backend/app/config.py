@@ -11,6 +11,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",
     )
 
     # App
@@ -56,6 +57,8 @@ class Settings(BaseSettings):
     celery_broker_url: str = "redis://redis:6379/1"
     celery_result_backend: str = "redis://redis:6379/2"
     celery_task_timeout: int = 300
+    celery_worker_concurrency: int = 1
+    celery_worker_max_tasks_per_child: int = 10
 
     # Tavily
     tavily_api_key: str | None = None
@@ -76,14 +79,40 @@ class Settings(BaseSettings):
     openai_embedding_batch_size: int = 100
     openai_embedding_retry_max_attempts: int = 3
 
+    # Clustering Configuration
+    clustering_min_cluster_size: int = 5
+    clustering_min_samples: int = 3
+    clustering_batch_size: int = 100
+    clustering_task_timeout: int = 600
+    clustering_ttl_days: int = 7
+
+    # Clustering Evaluation Configuration
+    clustering_evaluation_enabled: bool = True
+    clustering_k_min: int = 5
+    clustering_k_max: int = 10
+    clustering_evaluation_timeout: int = 300
+    clustering_quality_threshold: float = 0.6
+    clustering_silhouette_weight: float = 0.5
+    clustering_davies_bouldin_weight: float = 0.3
+    clustering_calinski_harabasz_weight: float = 0.2
+
+    # DynamoDB Table Names
+    dynamodb_article_clusters_table: str = "tech-news-article_clusters"
+    dynamodb_cluster_metadata_table: str = "tech-news-cluster_metadata"
+    dynamodb_clustering_evaluation_table: str = "tech-news-clustering_evaluation"
+    clustering_evaluation_ttl_days: int = 30
+
     # Agent Core Memory
     agent_memory_type: str = "SHORT_TERM"
     agent_memory_retention_days: int = 90  # 90-day TTL matching DynamoDB
 
-    # Agent Core Client (HTTP API)
-    agent_core_base_url: str = "http://localhost:8000"  # Internal ALB endpoint
-    agent_core_api_key: str | None = None  # X-API-Key header
-    agent_core_timeout: int = 60  # Timeout in seconds
+    # Agent Core — production uses boto3 invoke_agent_runtime via runtime ARN.
+    # Local dev falls back to HTTP POST if only base_url is set.
+    agent_core_runtime_arn: str | None = None   # Set in ECS via Terraform output
+    agent_core_base_url: str | None = "http://localhost:8080"  # Local dev fallback
+    agent_core_api_key: str | None = None
+    agent_core_timeout: int = 60
+    agent_core_require_true_streaming: bool = True
 
     # JWT
     jwt_secret_key: str

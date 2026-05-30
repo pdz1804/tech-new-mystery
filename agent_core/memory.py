@@ -1,7 +1,9 @@
 """AWS Bedrock AgentCore Memory integration.
 
-Uses MemorySessionManager for conversational event storage.
-Falls back gracefully when MEMORY_ID is not configured (local dev without AWS Memory resource).
+Uses bedrock_agentcore.memory.client.MemoryClient directly.
+Saves conversation turns and retrieves recent history per session.
+
+Falls back silently when MEMORY_ID is not configured (local dev).
 """
 
 from __future__ import annotations
@@ -16,37 +18,25 @@ logger = logging.getLogger(__name__)
 
 
 class AgentMemory:
-    """Thin async wrapper around MemorySessionManager.
-
-    When settings.memory_id is None (local dev / no Memory resource provisioned),
-    all operations are no-ops so the rest of the agent continues working.
-    """
+    """Async wrapper around MemoryClient for conversation persistence."""
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._manager = None
+        self._client = None
 
         if settings.memory_id:
             try:
-                from bedrock_agentcore.memory.session import MemorySessionManager
-
-                self._manager = MemorySessionManager(
-                    memory_id=settings.memory_id,
-                    region_name=settings.aws_region,
-                )
-                logger.info("[MEMORY] MemorySessionManager ready — memory_id=%s", settings.memory_id)
+                from bedrock_agentcore.memory.client import MemoryClient
+                self._client = MemoryClient(region_name=settings.aws_region)
+                logger.info("[MEMORY] MemoryClient ready — memory_id=%s", settings.memory_id)
             except Exception as exc:
-                logger.warning("[MEMORY] Could not init MemorySessionManager: %s", exc)
+                logger.warning("[MEMORY] Could not init MemoryClient: %s", exc)
         else:
             logger.info("[MEMORY] No MEMORY_ID configured — memory persistence disabled")
 
     @property
     def enabled(self) -> bool:
-        return self._manager is not None
-
-    # ------------------------------------------------------------------
-    # Retrieve conversation history
-    # ------------------------------------------------------------------
+        return self._client is not None and bool(self._settings.memory_id)
 
     async def get_last_k_turns(
         self,
@@ -54,17 +44,13 @@ class AgentMemory:
         session_id: str,
         k: int = 5,
     ) -> list[tuple[str, str]]:
-        """Return last k (user, assistant) message pairs from AWS memory.
-
-        Returns:
-            List of (role, content) tuples in chronological order.
-        """
-        if not self._manager:
+        """Return last k (role, content) pairs from AgentCore Memory."""
+        if not self.enabled:
             return []
-
         try:
             turns = await asyncio.to_thread(
-                self._manager.get_last_k_turns,
+                self._client.get_last_k_turns,
+                memory_id=self._settings.memory_id,
                 actor_id=actor_id,
                 session_id=session_id,
                 k=k,
@@ -81,10 +67,6 @@ class AgentMemory:
             logger.warning("[MEMORY] get_last_k_turns failed: %s", exc)
             return []
 
-    # ------------------------------------------------------------------
-    # Save conversation turn
-    # ------------------------------------------------------------------
-
     async def save_turn(
         self,
         actor_id: str,
@@ -92,20 +74,20 @@ class AgentMemory:
         user_message: str,
         assistant_message: str,
     ) -> None:
-        """Persist a user/assistant exchange to AWS AgentCore Memory."""
-        if not self._manager:
+        """Persist a user/assistant exchange to AgentCore Memory."""
+        if not self.enabled:
             return
-
         try:
             from bedrock_agentcore.memory.constants import ConversationalMessage, MessageRole
 
             await asyncio.to_thread(
-                self._manager.add_turns,
+                self._client.save_conversation,
+                memory_id=self._settings.memory_id,
                 actor_id=actor_id,
                 session_id=session_id,
                 messages=[
-                    ConversationalMessage(user_message, MessageRole.USER),
-                    ConversationalMessage(assistant_message, MessageRole.ASSISTANT),
+                    (MessageRole.USER, user_message),
+                    (MessageRole.ASSISTANT, assistant_message),
                 ],
             )
             logger.debug("[MEMORY] Saved turn for session %s", session_id)

@@ -309,6 +309,85 @@ class ChatService:
 
         return await asyncio.to_thread(_get_and_update)
 
+    async def restore_session(self, session_id: str, user_id: str) -> dict | None:
+        """Restore (reactivate) an archived conversation session."""
+        now = now_timestamp()
+
+        def _restore():
+            try:
+                session = ConversationSessionModel.get(user_id, session_id)
+                session.is_active = True
+                session.updated_at = now
+                session.save()
+                return session
+            except DoesNotExist:
+                return None
+
+        restored = await asyncio.to_thread(_restore)
+        if not restored:
+            return None
+        return {
+            "session_id": restored.session_id,
+            "user_id": restored.user_id,
+            "title": restored.title,
+            "description": restored.description,
+            "created_at": restored.created_at,
+            "updated_at": restored.updated_at,
+            "last_message_at": restored.last_message_at,
+            "message_count": restored.message_count,
+            "is_active": restored.is_active,
+        }
+
+    async def rename_session(self, session_id: str, user_id: str, title: str) -> dict | None:
+        """Rename a conversation session."""
+        now = now_timestamp()
+
+        def _rename():
+            try:
+                session = ConversationSessionModel.get(user_id, session_id)
+                session.title = title
+                session.updated_at = now
+                session.save()
+                return session
+            except DoesNotExist:
+                return None
+
+        renamed = await asyncio.to_thread(_rename)
+        if not renamed:
+            return None
+        return {
+            "session_id": renamed.session_id,
+            "user_id": renamed.user_id,
+            "title": renamed.title,
+            "description": renamed.description,
+            "created_at": renamed.created_at,
+            "updated_at": renamed.updated_at,
+            "last_message_at": renamed.last_message_at,
+            "message_count": renamed.message_count,
+            "is_active": renamed.is_active,
+        }
+
+    async def delete_session(self, session_id: str, user_id: str) -> bool:
+        """Hard delete a session and all its messages."""
+        # Validate ownership
+        session = await self.get_session(session_id, user_id)
+        if not session:
+            return False
+
+        def _delete():
+            # Delete messages first
+            for item in ConversationMessageModel.session_timestamp_index.query(session_id):
+                item.delete()
+            # Delete session
+            try:
+                s = ConversationSessionModel.get(user_id, session_id)
+                s.delete()
+                return True
+            except DoesNotExist:
+                return False
+
+        return await asyncio.to_thread(_delete)
+
     async def _update_session_metadata(self, session_id: str, user_id: str) -> None:
         """Update session's last_message_at and message_count.
 

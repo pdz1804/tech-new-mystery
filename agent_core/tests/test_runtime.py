@@ -9,7 +9,6 @@ import pytest
 
 from agent_core.config import Settings
 from agent_core.graph import AgentRuntime
-from agent_core.memory import AgentMemory
 from agent_core.tools import get_tools
 
 
@@ -36,6 +35,7 @@ def test_tools_registered():
 
 
 def test_memory_disabled_without_memory_id():
+    from agent_core.memory import AgentMemory
     mem = AgentMemory(_settings())
     assert not mem.enabled
 
@@ -48,7 +48,7 @@ def test_graph_build_input_shapes():
         context={},
     )
     assert "messages" in inp
-    assert len(inp["messages"]) >= 3  # 2 history + 1 current
+    assert len(inp["messages"]) >= 3  # 2 history + 1 user message
 
 
 def test_sse_event_contract():

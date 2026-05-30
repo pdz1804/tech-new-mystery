@@ -37,7 +37,7 @@ def get_article_repo() -> ArticleRepository:
 async def list_clusters(
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
-    sort_by: str = Query("size", regex="^(size|recency|diversity)$", description="Sort by: size, recency, or diversity"),
+    sort_by: str = Query("size", pattern="^(size|recency|diversity)$", description="Sort by: size, recency, or diversity"),
     cluster_repo: ClusterRepository = Depends(get_cluster_repo),
 ) -> ClusterListResponse:
     """List all active clusters with metadata.
@@ -55,21 +55,19 @@ async def list_clusters(
     )
 
     try:
-        # Get total count
-        total_count = await cluster_repo.count_clusters()
+        # Fetch all clusters then paginate in memory.
+        # Avoids relying on DynamoDB count() which uses eventual consistency
+        # and can lag behind recent writes by several seconds.
+        all_clusters, _ = await cluster_repo.list_cluster_metadata(
+            limit=10000,
+            sort_by=sort_by,
+        )
+        total_count = len(all_clusters)
 
         # Calculate pagination
         total_pages = (total_count + page_size - 1) // page_size
         if page > total_pages and total_pages > 0:
             raise HTTPException(status_code=400, detail="Page number exceeds total pages")
-
-        # Get clusters for this page
-        # For simple offset-based pagination, we fetch all and slice
-        # For production, consider implementing cursor-based pagination
-        all_clusters, _ = await cluster_repo.list_cluster_metadata(
-            limit=total_count if total_count > 0 else 1,
-            sort_by=sort_by,
-        )
 
         # Apply pagination
         offset = (page - 1) * page_size
@@ -86,7 +84,7 @@ async def list_clusters(
                     TopArticleItem(
                         id=article.article_id,
                         title=article.title,
-                        engagement_score=float(article.engagement_score),
+                        engagement_score=float(article.engagement_score or 0),
                     )
                     for article in (cluster.top_articles or [])
                 ],
@@ -283,7 +281,7 @@ async def get_cluster_articles(
     cluster_id: str,
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
-    sort: str = Query("date", regex="^(date|engagement|title)$", description="Sort by: date, engagement, or title"),
+    sort: str = Query("date", pattern="^(date|engagement|title)$", description="Sort by: date, engagement, or title"),
     cluster_repo: ClusterRepository = Depends(get_cluster_repo),
     article_repo: ArticleRepository = Depends(get_article_repo),
 ) -> ClusterArticlesResponse:

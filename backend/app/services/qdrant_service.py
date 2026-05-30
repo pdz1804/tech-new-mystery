@@ -1,5 +1,6 @@
 """Qdrant vector database service for semantic search and article indexing."""
 
+import asyncio
 import logging
 import time
 from typing import List, Optional, Tuple
@@ -174,7 +175,8 @@ class QdrantService:
             # Upsert point in Qdrant (insert or update if exists)
             from qdrant_client.http import models
 
-            self.client.upsert(
+            await asyncio.to_thread(
+                self.client.upsert,
                 collection_name=self.collection_name,
                 points=[
                     models.PointStruct(
@@ -263,7 +265,8 @@ class QdrantService:
 
             from qdrant_client.http import models
 
-            self.client.delete(
+            await asyncio.to_thread(
+                self.client.delete,
                 collection_name=self.collection_name,
                 points_selector=models.PointIdsList(points=[point_id]),
             )
@@ -275,6 +278,48 @@ class QdrantService:
             logger.warning(f"Failed to delete article {article_id} from Qdrant: {str(e)}")
             # Don't raise - continue even if deletion fails
             return False
+
+    async def get_embeddings_by_article_ids(
+        self, article_ids: List[str]
+    ) -> dict[str, List[float]]:
+        """Retrieve stored embedding vectors from Qdrant for a list of article IDs.
+
+        Returns a dict mapping article_id → embedding vector for every ID found.
+        Missing IDs are simply absent from the result.
+        """
+        if not self.client or not article_ids:
+            return {}
+
+        id_map: dict[int, str] = {}
+        for article_id in article_ids:
+            try:
+                point_id = int(UUID(article_id).int % (2**63))
+            except ValueError:
+                point_id = hash(article_id) % (2**63)
+            id_map[point_id] = article_id
+
+        try:
+            points = await asyncio.to_thread(
+                self.client.retrieve,
+                collection_name=self.collection_name,
+                ids=list(id_map.keys()),
+                with_vectors=True,
+            )
+            result: dict[str, List[float]] = {}
+            for point in points:
+                article_id = id_map.get(point.id)
+                if article_id and point.vector:
+                    vec = point.vector
+                    result[article_id] = vec if isinstance(vec, list) else list(vec)
+            logger.info(
+                "Qdrant vector fetch: requested=%d found=%d",
+                len(article_ids),
+                len(result),
+            )
+            return result
+        except Exception as exc:
+            logger.warning("get_embeddings_by_article_ids failed: %s", exc)
+            return {}
 
     async def article_exists(self, article_id: str) -> bool:
         """
@@ -296,7 +341,8 @@ class QdrantService:
                 point_id = hash(article_id) % (2**63)
 
             # Try to retrieve point
-            result = self.client.retrieve(
+            result = await asyncio.to_thread(
+                self.client.retrieve,
                 collection_name=self.collection_name,
                 ids=[point_id],
             )
@@ -335,7 +381,8 @@ class QdrantService:
             query_embedding = await self.embedding_service.generate_embedding(query)
 
             # Search in Qdrant using query_points with vector
-            results = self.client.query_points(
+            results = await asyncio.to_thread(
+                self.client.query_points,
                 collection_name=self.collection_name,
                 query=query_embedding,
                 limit=limit,
@@ -384,7 +431,8 @@ class QdrantService:
             logger.debug(f"Performing BM25 search: query='{query}', limit={limit}")
 
             # Search using BM25 on text fields
-            results = self.client.scroll(
+            results = await asyncio.to_thread(
+                self.client.scroll,
                 collection_name=self.collection_name,
                 limit=1000,  # Get all points for filtering
             )
@@ -552,7 +600,7 @@ class QdrantService:
             return {"points_count": 0, "error": "Qdrant client unavailable"}
 
         try:
-            info = self.client.get_collection(self.collection_name)
+            info = await asyncio.to_thread(self.client.get_collection, self.collection_name)
             logger.debug(f"Collection stats: {info.points_count} points")
 
             return {

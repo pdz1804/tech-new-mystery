@@ -32,6 +32,12 @@ class MessageRequest(BaseModel):
     content: str = Field(..., min_length=1, max_length=4000)
 
 
+class UpdateSessionRequest(BaseModel):
+    """Update session metadata request."""
+
+    title: str = Field(..., min_length=1, max_length=255)
+
+
 class MessageResponse(BaseModel):
     """Chat message response."""
 
@@ -71,3 +77,44 @@ class ErrorResponse(BaseModel):
     success: bool = False
     error: str
     code: str
+
+
+class StreamEventToken(BaseModel):
+    """SSE token event."""
+
+    type: str = "token"
+    content: str
+
+
+class StreamEventToolInvocation(BaseModel):
+    """SSE tool invocation event."""
+
+    type: str = "tool_invocation"
+    tool_name: str
+    tool_id: Optional[str] = None
+    tool_args: Optional[dict] = None
+
+
+class StreamEventToolResult(BaseModel):
+    """SSE tool result event."""
+
+    type: str = "tool_result"
+    tool_name: str
+    result_summary: Optional[str] = None
+    status: str = "completed"
+
+
+class StreamEventDone(BaseModel):
+    """SSE done event (stream complete)."""
+
+    type: str = "done"
+    message_id: str
+    tokens: int
+
+
+class StreamEventError(BaseModel):
+    """SSE error event."""
+
+    type: str = "error"
+    error: str
+    code: str = "UNKNOWN_ERROR"

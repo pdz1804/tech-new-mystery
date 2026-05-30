@@ -16,8 +16,7 @@ COPY agent_core/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Install Playwright browser (Chromium only — used by browse_web tool)
-RUN python -m playwright install chromium --with-deps 2>/dev/null || \
-    playwright install chromium 2>/dev/null || true
+RUN python -m playwright install chromium --with-deps
 
 COPY agent_core ./agent_core
 

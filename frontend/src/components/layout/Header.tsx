@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -15,8 +16,10 @@ import {
   Home,
   Compass,
   List,
-  CheckSquare,
-  Users,
+  MessageCircle,
+  Settings,
+  ChevronDown,
+  BarChart3,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/stores/authStore';
 import GlassContainer from '@/components/ui/GlassContainer';
@@ -24,9 +27,11 @@ import SquircleButton from '@/components/ui/SquircleButton';
 
 export function Header() {
   const router = useRouter();
+  const pathname = usePathname();
   const [searchQuery, setSearchQuery] = useState('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showAdminMenu, setShowAdminMenu] = useState(false);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const user = useAuthStore((s) => s.user);
   const clearAuth = useAuthStore((s) => s.clearAuth);
@@ -140,7 +145,7 @@ export function Header() {
                   type="button"
                   onClick={() => setShowUserMenu(!showUserMenu)}
                   aria-label={`User menu for ${user?.username}`}
-                  aria-expanded={showUserMenu}
+                  aria-expanded={showUserMenu ? 'true' : 'false'}
                   aria-haspopup="menu"
                   className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-black/5 transition-all duration-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500/50"
                 >
@@ -201,16 +206,69 @@ export function Header() {
           </div>
 
           {/* Navigation Links */}
-          <nav className="flex gap-8 border-t border-black/8 pt-3 -mx-4 px-4" aria-label="Main navigation">
-            <NavLink href="/" icon={<Home size={18} />} label="Home" />
-            <NavLink href="/articles" icon={<List size={18} />} label="Articles" />
-            <NavLink href="/search" icon={<Compass size={18} />} label="Browse" />
-            <NavLink href="/profile?tab=saved" icon={<Bookmark size={18} />} label="Saved" />
+          <nav className="flex items-center gap-1 border-t border-black/8 pt-3 -mx-4 px-4" aria-label="Main navigation">
+            <NavLink href="/" icon={<Home size={16} />} label="Home" pathname={pathname} />
+            <NavLink href="/articles" icon={<List size={16} />} label="Discover" pathname={pathname} />
+            <NavLink href="/topics" icon={<Compass size={16} />} label="Topics" pathname={pathname} />
+            <NavLink href="/chatbot" icon={<MessageCircle size={16} />} label="Chat" pathname={pathname} />
             {user?.is_admin && (
-              <>
-                <NavLink href="/admin/queue" icon={<CheckSquare size={18} />} label="Queue" />
-                <NavLink href="/admin/users" icon={<Users size={18} />} label="Users" />
-              </>
+              <div className="relative ml-auto">
+                <button
+                  type="button"
+                  onClick={() => setShowAdminMenu(!showAdminMenu)}
+                  aria-expanded={showAdminMenu ? 'true' : 'false'}
+                  aria-haspopup="menu"
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-full transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${
+                    pathname.startsWith('/admin')
+                      ? 'bg-white/60 backdrop-blur-sm shadow-sm border border-white/40 text-blue-600'
+                      : 'text-slate-600 hover:bg-black/5'
+                  }`}
+                >
+                  <Settings size={16} aria-hidden="true" />
+                  Admin
+                  <ChevronDown size={14} className={`transition-transform duration-150 ${showAdminMenu ? 'rotate-180' : ''}`} aria-hidden="true" />
+                </button>
+                <AnimatePresence>
+                  {showAdminMenu && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -6, scale: 0.96 }}
+                      transition={{ duration: 0.15 }}
+                      role="menu"
+                      className="absolute right-0 mt-2 w-44 z-50 rounded-2xl border border-white/30 bg-white/70 backdrop-blur-xl shadow-xl p-2"
+                    >
+                      <Link
+                        href="/admin/queue"
+                        className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-black/5 hover:text-black rounded-xl transition-colors duration-150 focus:outline-none focus:bg-black/5"
+                        onClick={() => setShowAdminMenu(false)}
+                        role="menuitem"
+                      >
+                        <List size={15} aria-hidden="true" />
+                        Queue
+                      </Link>
+                      <Link
+                        href="/admin/users"
+                        className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-black/5 hover:text-black rounded-xl transition-colors duration-150 focus:outline-none focus:bg-black/5"
+                        onClick={() => setShowAdminMenu(false)}
+                        role="menuitem"
+                      >
+                        <Settings size={15} aria-hidden="true" />
+                        Users
+                      </Link>
+                      <Link
+                        href="/admin/clustering"
+                        className="flex items-center gap-2.5 px-3 py-2 text-sm text-slate-700 hover:bg-black/5 hover:text-black rounded-xl transition-colors duration-150 focus:outline-none focus:bg-black/5"
+                        onClick={() => setShowAdminMenu(false)}
+                        role="menuitem"
+                      >
+                        <BarChart3 size={15} aria-hidden="true" />
+                        Clustering
+                      </Link>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             )}
           </nav>
         </div>
@@ -230,7 +288,7 @@ export function Header() {
               type="button"
               onClick={() => setIsMenuOpen(!isMenuOpen)}
               aria-label="Toggle navigation menu"
-              aria-expanded={isMenuOpen}
+              aria-expanded={isMenuOpen ? 'true' : 'false'}
               aria-controls="mobile-menu"
               className="p-2 text-black/60 hover:bg-black/5 rounded-lg transition-all duration-100 focus:outline-none focus:ring-2 focus:ring-blue-500/50"
             >
@@ -267,14 +325,16 @@ export function Header() {
               className="md:hidden mt-3 border-t border-black/8 pt-3"
             >
               <div className="space-y-1">
-                <MobileNavLink href="/" icon={<Home size={18} />} label="Home" />
-                <MobileNavLink href="/articles" icon={<List size={18} />} label="Articles" />
-                <MobileNavLink href="/search" icon={<Compass size={18} />} label="Browse" />
-                <MobileNavLink href="/profile?tab=saved" icon={<Bookmark size={18} />} label="Saved" />
+                <MobileNavLink href="/" icon={<Home size={18} />} label="Home" pathname={pathname} />
+                <MobileNavLink href="/articles" icon={<List size={18} />} label="Articles" pathname={pathname} />
+                <MobileNavLink href="/topics" icon={<Compass size={18} />} label="Topics" pathname={pathname} />
+                <MobileNavLink href="/chatbot" icon={<MessageCircle size={18} />} label="Chat" pathname={pathname} />
+                <MobileNavLink href="/profile?tab=saved" icon={<Bookmark size={18} />} label="Saved" pathname={pathname} />
                 {user?.is_admin && (
                   <>
-                    <MobileNavLink href="/admin/queue" icon={<CheckSquare size={18} />} label="Queue" />
-                    <MobileNavLink href="/admin/users" icon={<Users size={18} />} label="Users" />
+                    <MobileNavLink href="/admin/queue" icon={<List size={18} />} label="Queue" pathname={pathname} />
+                    <MobileNavLink href="/admin/users" icon={<Settings size={18} />} label="Users" pathname={pathname} />
+                    <MobileNavLink href="/admin/clustering" icon={<BarChart3 size={18} />} label="Clustering" pathname={pathname} />
                   </>
                 )}
                 <button
@@ -297,15 +357,25 @@ function NavLink({
   href,
   icon,
   label,
+  pathname,
 }: {
   href: string;
   icon: React.ReactNode;
   label: string;
+  pathname: string;
 }) {
+  const path = href.split('?')[0];
+  const isActive = path === '/' ? pathname === '/' : pathname.startsWith(path);
+
   return (
     <Link
       href={href}
-      className="inline-flex items-center gap-2 text-sm font-medium text-black/60 transition-colors duration-150 hover:text-black border-b-2 border-transparent hover:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded px-2 py-1"
+      aria-current={isActive ? 'page' : undefined}
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-full transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 ${
+        isActive
+          ? 'bg-white/60 backdrop-blur-sm shadow-sm border border-white/40 text-blue-600'
+          : 'text-slate-600 hover:bg-black/5'
+      }`}
     >
       {icon}
       {label}
@@ -317,15 +387,23 @@ function MobileNavLink({
   href,
   icon,
   label,
+  pathname,
 }: {
   href: string;
   icon: React.ReactNode;
   label: string;
+  pathname: string;
 }) {
+  const path = href.split('?')[0];
+  const isActive = path === '/' ? pathname === '/' : pathname.startsWith(path);
+
   return (
     <Link
       href={href}
-      className="flex items-center gap-3 px-3 py-2.5 text-sm font-medium text-black/60 rounded-lg hover:bg-black/5 hover:text-black transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500"
+      aria-current={isActive ? 'page' : undefined}
+      className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+        isActive ? 'bg-black/5 text-black' : 'text-black/60 hover:bg-black/5 hover:text-black'
+      }`}
     >
       {icon}
       {label}

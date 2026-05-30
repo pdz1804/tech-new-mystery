@@ -62,6 +62,7 @@ const config: Config = {
         glass: '8px',
         heavy: '12px',
         '3xl': '48px',
+        'ultra': '64px',
       },
       backgroundImage: {
         'gradient-primary': 'linear-gradient(135deg, #0066FF 0%, #0084FF 100%)',
@@ -78,9 +79,15 @@ const config: Config = {
         // Glass effects
         'glass': '0 8px 32px rgba(0, 0, 0, 0.1)',
         'glass-hover': '0 12px 48px rgba(0, 0, 0, 0.15)',
+        'glass-glow': '0 8px 32px rgba(0, 0, 0, 0.08), 0 0 30px rgba(0, 122, 255, 0.15)',
+        'glass-lg': '0 20px 48px rgba(0, 0, 0, 0.12)',
         // Special effects
-        'glow-blue': '0 0 20px rgba(0, 102, 255, 0.3)',
-        'glow-purple': '0 0 20px rgba(124, 58, 237, 0.3)',
+        'glow-blue': '0 0 20px rgba(0, 122, 255, 0.3)',
+        'glow-purple': '0 0 20px rgba(175, 82, 222, 0.3)',
+        'glow-cyan': '0 0 20px rgba(52, 199, 89, 0.3)',
+        'glow-sm': '0 0 15px rgba(0, 122, 255, 0.15)',
+        // Elevated shadow (upward)
+        'shadow-up': '0 -8px 24px rgba(0, 0, 0, 0.08)',
       },
       animation: {
         // Entrance animations
@@ -93,6 +100,12 @@ const config: Config = {
         // Micro interactions
         'shake': 'shake 150ms ease-in-out',
         'float': 'float 3s ease-in-out infinite',
+        'float-slow': 'float 6s ease-in-out infinite',
+        // Blob animations
+        'blob': 'blob 7s infinite',
+        'blob-slow': 'blob 10s infinite',
+        // Glass effects
+        'glass-glow-pulse': 'glassGlowPulse 3s ease-in-out infinite',
       },
       keyframes: {
         fadeIn: {
@@ -124,6 +137,25 @@ const config: Config = {
           '0%, 100%': { transform: 'translateY(0px)' },
           '50%': { transform: 'translateY(-8px)' },
         },
+        blob: {
+          '0%, 100%': {
+            transform: 'translate(0, 0) scale(1)',
+          },
+          '33%': {
+            transform: 'translate(30px, -50px) scale(1.1)',
+          },
+          '66%': {
+            transform: 'translate(-20px, 20px) scale(0.9)',
+          },
+        },
+        glassGlowPulse: {
+          '0%, 100%': {
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08), 0 0 20px rgba(0, 122, 255, 0.05)',
+          },
+          '50%': {
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08), 0 0 30px rgba(0, 122, 255, 0.15)',
+          },
+        },
       },
       transitionDuration: {
         micro: '150ms',
@@ -136,20 +168,73 @@ const config: Config = {
         'ease-in': 'cubic-bezier(0.4, 0, 1, 1)',
         'ease-in-out': 'cubic-bezier(0.4, 0, 0.2, 1)',
       },
+      animationDelay: {
+        0: '0ms',
+        2000: '2000ms',
+        4000: '4000ms',
+      },
     },
   },
   plugins: [
     function ({ addComponents, theme }: any) {
       addComponents({
-        // Glass components
+        // Liquid Glass components - using only standard opacity values
         '.glass-base': {
-          '@apply bg-white/70 backdrop-blur-[8px] border border-white/50': {},
+          background: 'rgba(255, 255, 255, 0.08)',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(255, 255, 255, 0.2)',
+          borderRadius: '1rem',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
         },
         '.glass-card': {
-          '@apply bg-white/70 backdrop-blur-[8px] border border-white/50 rounded-xl shadow-glass': {},
+          background: 'rgba(255, 255, 255, 0.08)',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(255, 255, 255, 0.2)',
+          borderRadius: '1rem',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
+        },
+        '.glass-card-lg': {
+          background: 'rgba(255, 255, 255, 0.08)',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(255, 255, 255, 0.2)',
+          borderRadius: '1rem',
+          boxShadow: '0 20px 48px rgba(0, 0, 0, 0.12)',
+          padding: '1.5rem',
         },
         '.glass-dark': {
-          '@apply bg-slate-900/70 backdrop-blur-[8px] border border-slate-700/30': {},
+          background: 'rgba(30, 30, 35, 0.1)',
+          backdropFilter: 'blur(16px)',
+          border: '1px solid rgba(255, 255, 255, 0.1)',
+          borderRadius: '1rem',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.1)',
+        },
+        '.glass-ultra': {
+          background: 'rgba(255, 255, 255, 0.1)',
+          backdropFilter: 'blur(48px)',
+          border: '1px solid rgba(255, 255, 255, 0.15)',
+          borderRadius: '1.75rem',
+          boxShadow: '0 20px 48px rgba(0, 0, 0, 0.12)',
+        },
+        '.glass-glow-blue': {
+          background: 'linear-gradient(135deg, rgba(0, 122, 255, 0.08) 0%, rgba(0, 122, 255, 0.05) 100%)',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(0, 122, 255, 0.15)',
+          borderRadius: '1rem',
+          boxShadow: '0 8px 32px rgba(0, 122, 255, 0.1), 0 0 30px rgba(0, 122, 255, 0.15)',
+        },
+        '.glass-glow-purple': {
+          background: 'linear-gradient(135deg, rgba(175, 82, 222, 0.08) 0%, rgba(175, 82, 222, 0.05) 100%)',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(175, 82, 222, 0.15)',
+          borderRadius: '1rem',
+          boxShadow: '0 8px 32px rgba(175, 82, 222, 0.1), 0 0 25px rgba(175, 82, 222, 0.15)',
+        },
+        '.glass-glow-cyan': {
+          background: 'linear-gradient(135deg, rgba(52, 199, 89, 0.08) 0%, rgba(52, 199, 89, 0.05) 100%)',
+          backdropFilter: 'blur(20px)',
+          border: '1px solid rgba(52, 199, 89, 0.15)',
+          borderRadius: '1rem',
+          boxShadow: '0 8px 32px rgba(52, 199, 89, 0.1), 0 0 20px rgba(52, 199, 89, 0.15)',
         },
 
         // Input styles (improved)
@@ -209,6 +294,21 @@ const config: Config = {
         },
         '.transition-smoother': {
           '@apply transition-all duration-base ease-out': {},
+        },
+        '.transition-glass': {
+          '@apply transition-all duration-300 cubic-bezier(0.34, 1.56, 0.64, 1)': {},
+        },
+
+        // Responsive glass utilities
+        '@screen md': {
+          '.glass-responsive': {
+            '@apply backdrop-blur-[24px]': {},
+          },
+        },
+        '@screen lg': {
+          '.glass-responsive': {
+            '@apply backdrop-blur-[32px]': {},
+          },
         },
       });
     },

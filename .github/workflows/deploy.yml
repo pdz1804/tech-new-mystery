@@ -28,6 +28,8 @@ env:
   BACKEND_ECR_REPOSITORY: ${{ vars.BACKEND_ECR_REPOSITORY || 'tech-news-mystery-prod-backend' }}
   FRONTEND_ECR_REPOSITORY: ${{ vars.FRONTEND_ECR_REPOSITORY || 'tech-news-mystery-prod-frontend' }}
   AGENT_CORE_ECR_REPOSITORY: ${{ vars.AGENT_CORE_ECR_REPOSITORY || 'tech-news-mystery-prod-agent-core' }}
+  AGENT_CORE_CODEBUILD_PROJECT: ${{ vars.AGENT_CORE_CODEBUILD_PROJECT || 'tech-news-mystery-prod-agent-core-arm64-image' }}
+  AGENT_CORE_CODEBUILD_SOURCE_BUCKET: ${{ vars.AGENT_CORE_CODEBUILD_SOURCE_BUCKET || 'tech-news-mystery-prod-codebuild-sources-381492273521' }}
   NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || '/v1' }}
 
 jobs:
@@ -141,14 +143,28 @@ jobs:
           docker push "$ECR_REGISTRY/$FRONTEND_ECR_REPOSITORY:latest"
 
       - name: Build and push agent-core image
-        env:
-          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -f infra/docker/agent-core.Dockerfile -t "$ECR_REGISTRY/$AGENT_CORE_ECR_REPOSITORY:$IMAGE_TAG" .
-          docker tag "$ECR_REGISTRY/$AGENT_CORE_ECR_REPOSITORY:$IMAGE_TAG" "$ECR_REGISTRY/$AGENT_CORE_ECR_REPOSITORY:latest"
-          docker push "$ECR_REGISTRY/$AGENT_CORE_ECR_REPOSITORY:$IMAGE_TAG"
-          docker push "$ECR_REGISTRY/$AGENT_CORE_ECR_REPOSITORY:latest"
+          git archive --format=zip --output source.zip HEAD
+          aws s3 cp source.zip "s3://$AGENT_CORE_CODEBUILD_SOURCE_BUCKET/agent-core/source.zip"
+
+          BUILD_ID=$(aws codebuild start-build \
+            --project-name "$AGENT_CORE_CODEBUILD_PROJECT" \
+            --environment-variables-override name=IMAGE_TAG,value=${{ github.sha }},type=PLAINTEXT \
+            --query 'build.id' \
+            --output text)
+
+          while true; do
+            STATUS=$(aws codebuild batch-get-builds \
+              --ids "$BUILD_ID" \
+              --query 'builds[0].buildStatus' \
+              --output text)
+
+            case "$STATUS" in
+              SUCCEEDED) break ;;
+              FAILED|FAULT|STOPPED|TIMED_OUT) exit 1 ;;
+              *) sleep 15 ;;
+            esac
+          done
 
       - name: Force ECS rollout
         run: |
@@ -156,8 +172,7 @@ jobs:
           aws ecs update-service --cluster "$ECS_CLUSTER" --service frontend --force-new-deployment
           aws ecs update-service --cluster "$ECS_CLUSTER" --service worker --force-new-deployment
           aws ecs update-service --cluster "$ECS_CLUSTER" --service beat --force-new-deployment
-          aws ecs update-service --cluster "$ECS_CLUSTER" --service agent-core --force-new-deployment
 
       - name: Wait for ECS services
         run: |
-          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services api frontend worker beat agent-core
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services api frontend worker beat

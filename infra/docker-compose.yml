@@ -28,7 +28,10 @@ services:
       retries: 5
       start_period: 15s
 
-  # Agent Core Runtime (AWS Bedrock AgentCore + LangGraph)
+  # Agent Core — LOCAL DEV ONLY
+  # In production this is deployed to AWS Bedrock AgentCore Runtime (managed service).
+  # Backend calls it via boto3.client('bedrock-agentcore').invoke_agent_runtime().
+  # Locally: backend falls back to HTTP POST /invocations via AGENT_CORE_BASE_URL.
   agent-core:
     build:
       context: ..
@@ -38,6 +41,7 @@ services:
       - "8080:8080"
     volumes:
       - ../agent_core:/app/agent_core
+      - ~/.aws:/root/.aws:ro
     env_file:
       - ../.env
     environment:
@@ -47,14 +51,11 @@ services:
       AGENT_MODEL: us.anthropic.claude-haiku-4-5-20251001-v1:0
       QDRANT_MODE: cloud
       TOOL_TIMEOUT: "30"
-      BROWSER_TIMEOUT: "60"
-      CODE_INTERPRETER_TIMEOUT: "60"
-      BROWSER_IDENTIFIER: aws.browser.v1
-      CODE_INTERPRETER_IDENTIFIER: aws.codeinterpreter.v1
       MAX_SEARCH_RESULTS: "8"
-      # MEMORY_ID: set to your AWS Bedrock AgentCore Memory ID after provisioning
-      # AGENT_CORE_API_KEY: shared secret for backend→agent-core auth
-    # BedrockAgentCoreApp exposes /ping not /health
+      # MEMORY_ID: set to AWS Bedrock AgentCore Memory resource ID (optional)
+      # BROWSER_ID: set to AWS Bedrock AgentCore Browser resource ID (optional)
+      # CODE_INTERPRETER_ID: set to AWS Bedrock AgentCore Code Interpreter ID (optional)
+    # BedrockAgentCoreApp exposes /ping (not /health)
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/ping"]
       interval: 10s

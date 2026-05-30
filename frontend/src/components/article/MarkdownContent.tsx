@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import CodeBlock from './CodeBlock';
 
 interface MarkdownContentProps {
@@ -348,9 +349,11 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
     return parts.length > 0 ? parts : text;
   };
 
+  const parsedContent = useMemo(() => parseMarkdown(content), [content]);
+
   return (
     <div className={`prose prose-sm sm:prose-base lg:prose-lg max-w-none space-y-4 ${className}`}>
-      {parseMarkdown(content)}
+      {parsedContent}
     </div>
   );
 }

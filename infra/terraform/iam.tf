@@ -26,13 +26,13 @@ resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "SecretsManager"
+        Sid      = "SecretsManager"
         Effect   = "Allow"
         Action   = ["secretsmanager:GetSecretValue"]
         Resource = local.app_secret_arn
       },
       {
-        Sid    = "KMSDecrypt"
+        Sid      = "KMSDecrypt"
         Effect   = "Allow"
         Action   = ["kms:Decrypt"]
         Resource = "*"
@@ -111,7 +111,9 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
         ]
         Resource = [
           aws_iam_role.ecs_task_execution.arn,
-          aws_iam_role.ecs_task.arn
+          aws_iam_role.ecs_task.arn,
+          aws_iam_role.agentcore_runtime.arn,
+          aws_iam_role.agentcore_memory.arn
         ]
       },
       {
@@ -121,6 +123,27 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
           "ecr:GetDownloadUrlForLayer",
           "ecr:BatchGetImage"
         ]
+        Resource = "*"
+      },
+      {
+        Sid    = "AgentCoreCodeBuildSourceUpload"
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject"
+        ]
+        Resource = "${aws_s3_bucket.codebuild_sources.arn}/agent-core/*"
+      },
+      {
+        Sid      = "AgentCoreCodeBuildStart"
+        Effect   = "Allow"
+        Action   = ["codebuild:StartBuild"]
+        Resource = aws_codebuild_project.agent_core_image.arn
+      },
+      {
+        Sid      = "AgentCoreCodeBuildRead"
+        Effect   = "Allow"
+        Action   = ["codebuild:BatchGetBuilds"]
         Resource = "*"
       },
       {
@@ -137,7 +160,9 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
           "cloudwatch:*",
           "acm:*",
           "route53:*",
-          "sns:*"
+          "sns:*",
+          "bedrock-agentcore:*",
+          "codebuild:*"
         ]
         Resource = "*"
       }
@@ -201,85 +226,19 @@ resource "aws_iam_role_policy" "ecs_task_app" {
   })
 }
 
-resource "aws_iam_role_policy" "agent_core_access" {
-  name = "${local.name_prefix}-agent-core-access"
+# Backend ECS tasks only need to call InvokeAgentRuntime.
+# All AgentCore tool/memory/browser permissions are on agentcore_runtime role (agentcore.tf).
+resource "aws_iam_role_policy" "backend_invoke_agentcore" {
+  name = "${local.name_prefix}-invoke-agentcore"
   role = aws_iam_role.ecs_task.id
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "BedrockInvoke"
-        Effect = "Allow"
-        Action = [
-          "bedrock:InvokeModel",
-          "bedrock:InvokeModelWithResponseStream"
-        ]
-        Resource = "*"
-      },
-      {
-        # AWS Bedrock AgentCore Memory — create/retrieve conversation events
-        Sid    = "AgentCoreMemory"
-        Effect = "Allow"
-        Action = [
-          "bedrock-agentcore:CreateEvent",
-          "bedrock-agentcore:GetEvent",
-          "bedrock-agentcore:ListEvents",
-          "bedrock-agentcore:RetrieveMemory",
-          "bedrock-agentcore:GetMemory",
-          "bedrock-agentcore:ListMemories"
-        ]
-        Resource = "*"
-      },
-      {
-        # AWS Bedrock AgentCore Browser Tool — managed browser sessions
-        Sid    = "AgentCoreBrowser"
-        Effect = "Allow"
-        Action = [
-          "bedrock-agentcore:StartBrowserSession",
-          "bedrock-agentcore:StopBrowserSession",
-          "bedrock-agentcore:InvokeOnBrowserSession",
-          "bedrock-agentcore:GetBrowserSession"
-        ]
-        Resource = "*"
-      },
-      {
-        # AWS Bedrock AgentCore Code Interpreter — managed code execution sandbox
-        Sid    = "AgentCoreCodeInterpreter"
-        Effect = "Allow"
-        Action = [
-          "bedrock-agentcore:StartCodeInterpreterSession",
-          "bedrock-agentcore:StopCodeInterpreterSession",
-          "bedrock-agentcore:InvokeOnCodeInterpreterSession",
-          "bedrock-agentcore:GetCodeInterpreterSession"
-        ]
-        Resource = "*"
-      },
-      {
-        # DynamoDB — read conversation sessions/messages for context injection
-        Sid    = "DynamoDBSessionAccess"
-        Effect = "Allow"
-        Action = [
-          "dynamodb:GetItem",
-          "dynamodb:Query"
-        ]
-        Resource = [
-          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_table_prefix}conversation_sessions",
-          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_table_prefix}conversation_messages",
-          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_table_prefix}conversation_sessions/index/*",
-          "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_table_prefix}conversation_messages/index/*"
-        ]
-      },
-      {
-        Sid    = "CloudWatchLogs"
-        Effect = "Allow"
-        Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents"
-        ]
-        Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${local.name_prefix}-agent-core*"
-      }
-    ]
+    Statement = [{
+      Sid      = "InvokeAgentRuntime"
+      Effect   = "Allow"
+      Action   = ["bedrock-agentcore:InvokeAgentRuntime"]
+      Resource = aws_bedrockagentcore_agent_runtime.agent_core.agent_runtime_arn
+    }]
   })
 }

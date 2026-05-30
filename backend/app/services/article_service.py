@@ -270,26 +270,24 @@ class ArticleService:
             }
         )
 
-        # Index in Qdrant asynchronously (don't block article creation)
+        # Queue embedding indexing to Celery worker (guaranteed to complete)
         try:
-            from app.services.qdrant_service import QdrantService
-            qdrant_service = QdrantService()
-            asyncio_task = asyncio.create_task(
-                qdrant_service.index_article(
-                    article_id=article.article_id,
-                    slug=article.slug,
-                    title=article.title,
-                    summary=article.summary,
-                    content=article.content,
-                    category=article.category,
-                    author=article.author,
-                    published_at=article.published_at,
-                    view_count=article.view_count,
-                    source_id=article.source_id,
-                )
+            from app.workers.tasks.embedding_tasks import index_article_task
+            index_article_task.delay(
+                article_id=article.article_id,
+                slug=article.slug,
+                title=article.title,
+                summary=article.summary,
+                content=article.content,
+                category=article.category,
+                author=article.author,
+                published_at=article.published_at,
+                view_count=article.view_count,
+                source_id=article.source_id,
             )
+            logger.info(f"[EMBEDDING] Queued indexing task for article {article_id}")
         except Exception as e:
-            logger.warning(f"Failed to queue Qdrant indexing for {article_id}: {str(e)}")
+            logger.warning(f"Failed to queue embedding task for {article_id}: {str(e)}")
 
         return self._serialize_article_detail(article)
 
@@ -366,15 +364,13 @@ class ArticleService:
             image_service = ImageStorageService()
             await image_service.delete_images_from_markdown(article.markdown_content)
 
-        # Delete from Qdrant asynchronously (don't block article deletion)
+        # Queue embedding deletion to Celery worker (guaranteed to complete)
         try:
-            from app.services.qdrant_service import QdrantService
-            qdrant_service = QdrantService()
-            asyncio_task = asyncio.create_task(
-                qdrant_service.delete_article(article.article_id)
-            )
+            from app.workers.tasks.embedding_tasks import delete_embedding_task
+            delete_embedding_task.delay(article_id=article.article_id)
+            logger.info(f"[EMBEDDING] Queued deletion task for article {article.article_id}")
         except Exception as e:
-            logger.warning(f"Failed to queue Qdrant deletion for {article.article_id}: {str(e)}")
+            logger.warning(f"Failed to queue embedding deletion for {article.article_id}: {str(e)}")
 
         return await self._article_repo.delete(article.article_id)
 
@@ -543,26 +539,24 @@ class ArticleService:
         article = await self._create_article_with_size_handling(article_data)
         logger.info(f"[SUCCESS] Article created successfully: {article_id} (slug: {slug})")
 
-        # Index in Qdrant asynchronously (don't block article creation)
+        # Queue embedding indexing to Celery worker (guaranteed to complete)
         try:
-            from app.services.qdrant_service import QdrantService
-            qdrant_service = QdrantService()
-            asyncio_task = asyncio.create_task(
-                qdrant_service.index_article(
-                    article_id=article.article_id,
-                    slug=article.slug,
-                    title=article.title,
-                    summary=article.summary,
-                    content=article.content,
-                    category=article.category,
-                    author=article.author,
-                    published_at=article.published_at,
-                    view_count=article.view_count,
-                    source_id=article.source_id,
-                )
+            from app.workers.tasks.embedding_tasks import index_article_task
+            index_article_task.delay(
+                article_id=article.article_id,
+                slug=article.slug,
+                title=article.title,
+                summary=article.summary,
+                content=article.content,
+                category=article.category,
+                author=article.author,
+                published_at=article.published_at,
+                view_count=article.view_count,
+                source_id=article.source_id,
             )
+            logger.info(f"[EMBEDDING] Queued indexing task for article {article_id}")
         except Exception as e:
-            logger.warning(f"Failed to queue Qdrant indexing for {article_id}: {str(e)}")
+            logger.warning(f"Failed to queue embedding task for {article_id}: {str(e)}")
 
         return self._serialize_article_detail(article)
 

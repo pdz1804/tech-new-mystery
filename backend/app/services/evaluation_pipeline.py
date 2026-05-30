@@ -122,12 +122,40 @@ class EvaluationPipeline:
         """
         logger.info(f"Starting clustering evaluation: k_min={k_min}, k_max={k_max}")
 
-        if len(embeddings) < k_min:
+        sample_count = len(embeddings)
+        if sample_count < 3:
             logger.warning(
-                f"Only {len(embeddings)} articles available, less than k_min={k_min}. "
-                f"Adjusting k_max to {len(embeddings)}"
+                "At least 3 embeddings are required for clustering evaluation; received %d",
+                sample_count,
             )
-            k_max = min(k_max, len(embeddings))
+            return [], {
+                "selected_k_value": None,
+                "best_composite_score": 0.0,
+                "evaluation_results": [],
+                "metrics_summary": {},
+            }
+
+        if len(article_ids) != sample_count:
+            logger.warning(
+                "Embedding/article ID count mismatch: %d embeddings for %d article IDs. "
+                "Evaluation will use the embedding count.",
+                sample_count,
+                len(article_ids),
+            )
+
+        adjusted_k_min = max(2, min(k_min, sample_count - 1))
+        adjusted_k_max = max(adjusted_k_min, min(k_max, sample_count - 1))
+        if adjusted_k_min != k_min or adjusted_k_max != k_max:
+            logger.warning(
+                "Adjusted k range from [%d, %d] to [%d, %d] for %d embeddings",
+                k_min,
+                k_max,
+                adjusted_k_min,
+                adjusted_k_max,
+                sample_count,
+            )
+            k_min = adjusted_k_min
+            k_max = adjusted_k_max
 
         # Step 1: Calculate metrics for each k value
         results = []

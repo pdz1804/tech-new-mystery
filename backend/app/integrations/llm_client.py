@@ -1,6 +1,8 @@
 """Multi-provider LLM client supporting OpenAI, Gemini, Bedrock, Ollama, and Claude."""
 
+import asyncio
 import json
+import threading
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -360,15 +362,20 @@ class LLMClient:
                 await provider.close()
 
 
-# Singleton instance
+# Singleton instance — guarded by a threading.Lock so concurrent coroutines (or
+# threads) cannot each see _llm_client is None and create multiple instances.
 _llm_client: Optional[LLMClient] = None
+_llm_client_lock = threading.Lock()
 
 
 async def get_llm_client() -> LLMClient:
-    """Get or create LLM client instance."""
+    """Get or create LLM client instance (thread-safe)."""
     global _llm_client
     if _llm_client is None:
-        _llm_client = LLMClient()
+        # Double-checked locking: avoid holding the lock on every call.
+        with _llm_client_lock:
+            if _llm_client is None:
+                _llm_client = LLMClient()
     return _llm_client
 
 

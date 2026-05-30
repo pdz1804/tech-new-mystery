@@ -2,7 +2,8 @@
 
 import asyncio
 import logging
-from typing import Optional
+import numpy as np
+from typing import Optional, List
 
 from app.workers.celery_app import celery_app
 from app.repositories.article_repository import ArticleRepository
@@ -10,7 +11,12 @@ from app.repositories.pending_search_repository import PendingSearchRepository
 from app.repositories.system_settings_repository import SystemSettingsRepository
 from app.services.article_service import ArticleService
 from app.services.evaluation_service import EvaluationService
+from app.services.evaluation_pipeline import EvaluationPipeline
+from app.models.clustering import ClusteringEvaluationModel
+from app.config import settings
 from app.utils.time import now_timestamp
+from time import time as timestamp
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -402,4 +408,220 @@ async def _backfill_quality_scores_force() -> dict:
 
     except Exception as e:
         logger.error(f"[BACKFILL_SCORES_FORCE] Error in async helper: {str(e)}", exc_info=True)
+        raise
+
+
+@celery_app.task(
+    name="tasks.evaluate_clustering_quality",
+    bind=True,
+    max_retries=2,
+    default_retry_delay=60,
+)
+def evaluate_clustering_quality(
+    self,
+    embeddings: List[List[float]],
+    article_ids: List[str],
+    num_articles: int,
+    evaluation_type: str = "scheduled",
+) -> dict:
+    """
+    Evaluate clustering quality across k values and select optimal k.
+
+    Triggered after cluster_articles task completes.
+    Calculates Silhouette Score, Davies-Bouldin Index, and Calinski-Harabasz Index
+    for each k in [k_min, k_max] using weighted composite scoring.
+
+    Args:
+        embeddings: List of embeddings (1536 dims each) for all articles
+        article_ids: List of article IDs in matching order
+        num_articles: Total count of articles evaluated
+        evaluation_type: "scheduled" or "manual" (default "scheduled")
+
+    Returns:
+        dict: Evaluation results with selected k_value and metrics
+    """
+    try:
+        result = asyncio.run(_evaluate_clustering_quality_async(
+            embeddings=embeddings,
+            article_ids=article_ids,
+            num_articles=num_articles,
+            evaluation_type=evaluation_type,
+        ))
+        logger.info(f"[EVALUATE_CLUSTERING] Task completed: {result}")
+        return result
+    except Exception as exc:
+        logger.error(f"[EVALUATE_CLUSTERING] Task failed: {str(exc)}", exc_info=True)
+        raise self.retry(exc=exc)
+
+
+async def _evaluate_clustering_quality_async(
+    embeddings: List[List[float]],
+    article_ids: List[str],
+    num_articles: int,
+    evaluation_type: str = "scheduled",
+) -> dict:
+    """
+    Async helper: run evaluation pipeline and store results in DynamoDB.
+
+    Args:
+        embeddings: List of embedding vectors
+        article_ids: List of article IDs
+        num_articles: Total article count
+        evaluation_type: "scheduled" or "manual"
+
+    Returns:
+        dict with evaluation_id and selected k_value
+    """
+    try:
+        embeddings_count = len(embeddings)
+        article_id_count = len(article_ids)
+        if embeddings_count != article_id_count:
+            logger.warning(
+                "[EVALUATE_CLUSTERING] Input mismatch: %d embeddings for %d article IDs",
+                embeddings_count,
+                article_id_count,
+            )
+
+        articles_evaluated = min(embeddings_count, article_id_count)
+        logger.info(
+            f"[EVALUATE_CLUSTERING] Starting evaluation: "
+            f"{embeddings_count} embeddings for {num_articles} requested articles "
+            f"({articles_evaluated} evaluable)"
+        )
+        if articles_evaluated < 3:
+            logger.error("[EVALUATE_CLUSTERING] Need at least 3 embeddings to evaluate clustering")
+            return {
+                "success": False,
+                "error": "At least 3 embeddings are required",
+                "articles_evaluated": articles_evaluated,
+                "articles_requested": num_articles,
+            }
+        start_time = timestamp()
+
+        # Convert embeddings to numpy array
+        embeddings_array = np.array(embeddings[:articles_evaluated], dtype=np.float32)
+        article_ids = article_ids[:articles_evaluated]
+
+        # Initialize evaluation pipeline with admin-configured weights
+        pipeline = EvaluationPipeline(
+            silhouette_weight=settings.clustering_silhouette_weight,
+            davies_bouldin_weight=settings.clustering_davies_bouldin_weight,
+            calinski_harabasz_weight=settings.clustering_calinski_harabasz_weight,
+        )
+
+        logger.info(
+            f"[EVALUATE_CLUSTERING] Using weights: "
+            f"silhouette={settings.clustering_silhouette_weight}, "
+            f"davies_bouldin={settings.clustering_davies_bouldin_weight}, "
+            f"calinski_harabasz={settings.clustering_calinski_harabasz_weight}"
+        )
+
+        # Run evaluation pipeline
+        results, summary = pipeline.evaluate_clustering(
+            embeddings=embeddings_array,
+            cluster_assignments={},  # Not used in k-means evaluation
+            article_ids=article_ids,
+            k_min=settings.clustering_k_min,
+            k_max=settings.clustering_k_max,
+        )
+
+        if not results:
+            logger.error("[EVALUATE_CLUSTERING] No evaluation results generated")
+            return {
+                "success": False,
+                "error": "No evaluation results",
+                "articles_evaluated": articles_evaluated,
+                "articles_requested": num_articles,
+            }
+
+        # Generate evaluation ID
+        now = now_timestamp()
+        eval_id = f"eval-{datetime.utcfromtimestamp(now).strftime('%Y-%m-%d-%H-%M')}"
+        logger.info(f"[EVALUATE_CLUSTERING] Generated evaluation_id: {eval_id}")
+
+        # Prepare evaluation results for storage
+        evaluation_results = [r.to_dict() for r in results]
+
+        # Check quality threshold
+        best_composite_score = summary["best_composite_score"]
+        quality_threshold_met = (
+            best_composite_score >= settings.clustering_quality_threshold
+        )
+
+        logger.info(
+            f"[EVALUATE_CLUSTERING] Quality assessment: "
+            f"best_composite_score={best_composite_score:.4f}, "
+            f"threshold={settings.clustering_quality_threshold}, "
+            f"met={quality_threshold_met}"
+        )
+
+        # Prepare metrics summary for DynamoDB storage
+        metrics_summary_dict = {}
+        if "metrics_summary" in summary:
+            for metric_name, metric_stats in summary["metrics_summary"].items():
+                metrics_summary_dict[metric_name] = metric_stats
+
+        # Save evaluation results to DynamoDB
+        now_ts = now_timestamp()
+        ttl = now_ts + (settings.clustering_evaluation_ttl_days * 86400)
+
+        # Convert evaluation results to proper format for DynamoDB
+        eval_items = []
+        for result_dict in evaluation_results:
+            eval_items.append(result_dict)
+
+        evaluation_model = ClusteringEvaluationModel(
+            eval_id,
+            run_timestamp=now,
+            evaluation_type=evaluation_type,
+            total_articles_evaluated=articles_evaluated,
+            evaluation_results=eval_items,
+            selected_k_value=summary["selected_k_value"],
+            best_composite_score=best_composite_score,
+            admin_weights={
+                "silhouette_weight": settings.clustering_silhouette_weight,
+                "davies_bouldin_weight": settings.clustering_davies_bouldin_weight,
+                "calinski_harabasz_weight": settings.clustering_calinski_harabasz_weight,
+            },
+            quality_threshold_met=quality_threshold_met,
+            metrics_summary=metrics_summary_dict,
+            completed_at=now_timestamp(),
+            ttl=ttl,
+        )
+
+        # Save to DynamoDB (run in thread to avoid blocking)
+        await asyncio.to_thread(evaluation_model.save)
+        logger.info(f"[EVALUATE_CLUSTERING] Saved evaluation results to DynamoDB: {eval_id}")
+
+        # Queue clustering task to generate clusters with selected K
+        selected_k = summary["selected_k_value"]
+        logger.info(f"[EVALUATE_CLUSTERING] Queuing clustering task with K={selected_k}")
+
+        from app.workers.tasks.clustering_tasks import cluster_articles
+        cluster_articles.delay(
+            embeddings=embeddings,
+            article_ids=article_ids,
+            k_value=selected_k,
+            evaluation_id=eval_id,
+        )
+
+        duration = timestamp() - start_time
+
+        return {
+            "success": True,
+            "evaluation_id": eval_id,
+            "articles_evaluated": articles_evaluated,
+            "articles_requested": num_articles,
+            "selected_k_value": summary["selected_k_value"],
+            "best_composite_score": best_composite_score,
+            "quality_threshold_met": quality_threshold_met,
+            "num_k_values_evaluated": len(results),
+            "duration_seconds": duration,
+        }
+
+    except Exception as e:
+        logger.error(
+            f"[EVALUATE_CLUSTERING] Error in async helper: {str(e)}",
+            exc_info=True
+        )
         raise

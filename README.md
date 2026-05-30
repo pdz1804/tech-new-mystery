@@ -1,12 +1,23 @@
 # Tech News Mystery
 
 Tech News Mystery is a full-stack tech news application with two major AI features:
+
 - Semantic article clustering (HDBSCAN + evaluation metrics)
 - Chatbot with a separate Agent Core runtime (LangGraph + LangChain + Bedrock)
+
+## Recent Fixes (May 31)
+
+Token-by-token streaming is now fully working:
+- Fixed SSE first-token rendering delay (was 1.3s, now ~50-100ms)
+- Implemented memoized markdown parsing for progressive rendering
+- Tool results display correctly with collapsible previews
+- Markdown renders progressively as tokens arrive
+- Final answer tokens stream correctly after tool execution
 
 ## Current Feature Status
 
 ### Clustering
+
 - Backend clustering pipeline is implemented with:
   - OpenAI embeddings (`text-embedding-3-small`)
   - HDBSCAN clustering (`metric=cosine`, `algorithm=generic`)
@@ -15,6 +26,7 @@ Tech News Mystery is a full-stack tech news application with two major AI featur
 - Frontend topics/cluster pages are integrated in the main app.
 
 ### Chatbot
+
 - Chat is integrated as `/chatbot` in the existing frontend app (not a separate frontend).
 - Chat sessions/messages are persisted in DynamoDB:
   - `tech-news-conversation_sessions`
@@ -45,12 +57,14 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/DEPLOYMENT_ARCHITECTU
 ## Local Development
 
 1. Start infrastructure services:
+
 ```powershell
 cd infra
 docker compose up redis agent-core
 ```
 
 2. Start backend:
+
 ```powershell
 cd backend
 pip install -r requirements.txt
@@ -58,6 +72,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 3. Start frontend:
+
 ```powershell
 cd frontend
 npm install
@@ -65,6 +80,7 @@ npm run dev
 ```
 
 Local URLs:
+
 - Frontend: `http://localhost:3000`
 - Backend: `http://localhost:8000`
 - Swagger: `http://localhost:8000/docs`
@@ -78,4 +94,3 @@ Local URLs:
 - [docs/DEPLOYMENT_ARCHITECTURE.md](docs/DEPLOYMENT_ARCHITECTURE.md)
 - [docs/MANUAL_STARTUP.md](docs/MANUAL_STARTUP.md)
 - [docs/GITHUB_CICD.md](docs/GITHUB_CICD.md)
-

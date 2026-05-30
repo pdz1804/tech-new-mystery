@@ -1,7 +1,7 @@
 """HDBSCAN-based clustering engine for article embeddings."""
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Tuple
 import numpy as np
 import hdbscan
 
@@ -28,17 +28,23 @@ class ClusteringEngine:
         Args:
             min_cluster_size: Minimum articles per cluster (default: 5)
             min_samples: Minimum core samples in neighborhood (default: 3)
-            metric: Distance metric - 'cosine' for embeddings (default)
+            metric: Distance metric. Use 'cosine' for embedding similarity.
         """
         self.min_cluster_size = min_cluster_size
         self.min_samples = min_samples
         self.metric = metric
-        self.clusterer = hdbscan.HDBSCAN(
-            min_cluster_size=min_cluster_size,
-            min_samples=min_samples,
-            metric=metric,
-            allow_single_cluster=False,
-        )
+        clusterer_kwargs: Dict[str, Any] = {
+            "min_cluster_size": min_cluster_size,
+            "min_samples": min_samples,
+            "metric": metric,
+            "cluster_selection_epsilon": 0.0,
+            "allow_single_cluster": False,
+        }
+        if metric == "cosine":
+            # HDBSCAN's tree-based algorithms do not support cosine distance.
+            clusterer_kwargs["algorithm"] = "generic"
+
+        self.clusterer = hdbscan.HDBSCAN(**clusterer_kwargs)
 
     def cluster_articles(
         self, embeddings: np.ndarray, article_ids: List[str]
@@ -68,6 +74,7 @@ class ClusteringEngine:
         - < 5 articles: Return each as noise cluster (-1)
         - All identical embeddings: Return all as noise (-1)
         - 5+ articles: Cluster normally with noise detection
+        - Uses cosine metric by default for embedding-space similarity
         """
         # Validate inputs
         if len(article_ids) != len(embeddings):
@@ -77,6 +84,18 @@ class ClusteringEngine:
             )
 
         num_articles = len(article_ids)
+
+        # Edge case: empty embeddings (check first!)
+        if embeddings.size == 0:
+            logger.warning("Empty embeddings array")
+            stats = {
+                "num_clusters": 0,
+                "num_noise": 0,
+                "noise_percent": 0.0,
+                "avg_cluster_size": 0.0,
+                "cluster_sizes": {},
+            }
+            return {}, stats
 
         # Edge case: less than minimum cluster size
         if num_articles < self.min_cluster_size:
@@ -89,19 +108,6 @@ class ClusteringEngine:
                 "num_clusters": 0,
                 "num_noise": num_articles,
                 "noise_percent": 100.0,
-                "avg_cluster_size": 0.0,
-                "cluster_sizes": {},
-            }
-            return result, stats
-
-        # Edge case: empty embeddings
-        if embeddings.size == 0:
-            logger.warning("Empty embeddings array")
-            result = {aid: -1 for aid in article_ids}
-            stats = {
-                "num_clusters": 0,
-                "num_noise": 0,
-                "noise_percent": 0.0,
                 "avg_cluster_size": 0.0,
                 "cluster_sizes": {},
             }

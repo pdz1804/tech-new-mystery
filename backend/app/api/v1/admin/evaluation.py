@@ -153,7 +153,7 @@ async def list_evaluations(
 
             item = EvaluationItem(
                 evaluation_id=eval_model.evaluation_id,
-                timestamp=eval_model.timestamp,
+                timestamp=eval_model.run_timestamp,
                 evaluation_type=eval_model.evaluation_type,
                 num_articles=eval_model.total_articles_evaluated,
                 num_clusters=eval_model.selected_k_value,
@@ -260,7 +260,7 @@ async def get_evaluation_detail(
 
         return EvaluationDetailResponse(
             evaluation_id=eval_model.evaluation_id,
-            timestamp=eval_model.timestamp,
+            timestamp=eval_model.run_timestamp,
             evaluation_type=eval_model.evaluation_type,
             total_articles_evaluated=eval_model.total_articles_evaluated,
             selected_k_value=eval_model.selected_k_value,
@@ -341,24 +341,87 @@ async def trigger_evaluation(
     """
     try:
         from app.workers.tasks.evaluation_tasks import evaluate_clustering_quality
+        from app.repositories.article_repository import ArticleRepository
+        from app.services.qdrant_service import QdrantService
 
         logger.warning(
-            f"[EVAL_TRIGGER] Admin manually triggering clustering evaluation. "
-            f"Reason: {request.trigger_reason}"
+            "[EVAL_TRIGGER] Admin manually triggering clustering evaluation. Reason: %s",
+            request.trigger_reason,
         )
 
-        # Queue the evaluation task
-        task = evaluate_clustering_quality.delay(trigger_reason=request.trigger_reason)
+        # Fetch published articles
+        article_repo = ArticleRepository()
+        articles, _ = await article_repo.list_all(limit=10000, published_only=True)
 
-        logger.info(f"[EVAL_TRIGGER] Evaluation task queued with ID: {task.id}")
+        if not articles:
+            raise HTTPException(status_code=400, detail="No published articles to evaluate")
 
-        return TriggerEvaluationResponse(
-            job_id=task.id,
-            status="queued",
+        article_ids = [a.article_id for a in articles]
+
+        # Pull existing embeddings from Qdrant — no OpenAI calls needed
+        qdrant_service = QdrantService()
+        qdrant_vecs = await qdrant_service.get_embeddings_by_article_ids(article_ids)
+
+        if not qdrant_vecs:
+            raise HTTPException(
+                status_code=400,
+                detail="No embeddings found in Qdrant. Trigger clustering first.",
+            )
+
+        found_ids = list(qdrant_vecs.keys())
+        embeddings = [qdrant_vecs[aid] for aid in found_ids]
+        if len(embeddings) < 3:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Only {len(embeddings)} embeddings found for {len(articles)} "
+                    "published articles. At least 3 embeddings are required."
+                ),
+            )
+
+        # Dispatch with correct signature
+        task = evaluate_clustering_quality.delay(
+            embeddings=embeddings,
+            article_ids=found_ids,
+            num_articles=len(found_ids),
+            evaluation_type="manual",
         )
+
+        logger.info(
+            "[EVAL_TRIGGER] Evaluation task queued: %s (%d/%d articles with embeddings)",
+            task.id,
+            len(found_ids),
+            len(articles),
+        )
+
+        return TriggerEvaluationResponse(job_id=task.id, status="queued")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("[EVAL_TRIGGER] Error triggering evaluation: %s", str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to trigger evaluation: {str(e)}")
+
+
+@router.post("/backfill-embeddings", response_model=dict)
+async def backfill_embeddings(
+    _: dict = Depends(require_admin),
+) -> dict:
+    """Backfill embeddings for all existing articles (admin only)."""
+    try:
+        from app.workers.tasks.embedding_tasks import backfill_embeddings_task
+
+        logger.warning("[BACKFILL] Admin triggered embeddings backfill for all articles")
+
+        # Queue backfill task
+        task = backfill_embeddings_task.delay()
+
+        return {
+            "task_id": task.id,
+            "status": "queued",
+            "message": "Backfill task queued. Check logs for progress.",
+        }
 
     except Exception as e:
-        logger.error(f"[EVAL_TRIGGER] Error triggering evaluation: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500, detail=f"Failed to trigger evaluation: {str(e)}"
-        )
+        logger.error("[BACKFILL] Error queuing backfill: %s", str(e), exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to queue backfill: {str(e)}")

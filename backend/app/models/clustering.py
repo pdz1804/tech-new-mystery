@@ -17,12 +17,24 @@ class ArticleIdIndex(GlobalSecondaryIndex):
     """Index for looking up cluster assignments by article_id."""
 
     class Meta:
-        index_name = "article-id-index"
+        index_name = "article_id-index"
         projection = AllProjection()
         read_capacity_units = 5
         write_capacity_units = 5
 
     article_id = UnicodeAttribute(hash_key=True)
+
+
+class RunTimestampIndex(GlobalSecondaryIndex):
+    """Index for querying clustering evaluations by run timestamp."""
+
+    class Meta:
+        index_name = "run_timestamp-index"
+        projection = AllProjection()
+        read_capacity_units = 5
+        write_capacity_units = 5
+
+    run_timestamp = NumberAttribute(hash_key=True)
 
 
 class ArticleClusterModel(Model):
@@ -147,3 +159,132 @@ class ArticleEmbeddingModel(Model):
     embedding_model = UnicodeAttribute()  # "text-embedding-3-small"
     generated_at = NumberAttribute()
     ttl = NumberAttribute()  # Unix timestamp for automatic cleanup
+
+
+class EvaluationResultItem(MapAttribute):
+    """Structure for a single k-value evaluation result."""
+
+    k_value = NumberAttribute()
+    silhouette_score = NumberAttribute()
+    davies_bouldin_index = NumberAttribute()
+    calinski_harabasz_index = NumberAttribute()
+    silhouette_rank = NumberAttribute()
+    davies_bouldin_rank = NumberAttribute()
+    calinski_harabasz_rank = NumberAttribute()
+    weighted_composite_score = NumberAttribute()
+    num_clusters_formed = NumberAttribute()
+    avg_cluster_size = NumberAttribute()
+    noise_percentage = NumberAttribute()
+    evaluation_time_ms = NumberAttribute()
+
+
+class MetricsSummaryItem(MapAttribute):
+    """Structure for metric summary statistics."""
+
+    min = NumberAttribute()
+    max = NumberAttribute()
+    mean = NumberAttribute()
+    std_dev = NumberAttribute()
+
+
+class MetricsSummary(MapAttribute):
+    """Structure for all metrics summaries."""
+
+    silhouette_score = MapAttribute(of=NumberAttribute)
+    davies_bouldin_index = MapAttribute(of=NumberAttribute)
+    calinski_harabasz_index = MapAttribute(of=NumberAttribute)
+    composite_score = MapAttribute(of=NumberAttribute)
+
+
+class ClusteringEvaluationModel(Model):
+    """
+    Stores clustering evaluation results with metric rankings and k-value selection.
+
+    Partition Key: evaluation_id (String, format: "eval-{YYYY-MM-DD}-{HH}-{MM}")
+    No Sort Key
+    GSI: timestamp for querying evaluation history
+    TTL: 30 days (longer retention for evaluation history)
+
+    Attributes:
+    - evaluation_id: Unique evaluation identifier
+    - run_timestamp: Unix seconds timestamp when evaluation started (for GSI)
+    - evaluation_type: "scheduled" or "manual"
+    - total_articles_evaluated: Count of articles used
+    - evaluation_results: List of EvaluationResultItem for each k value
+    - selected_k_value: k with highest weighted_composite_score
+    - best_composite_score: Highest composite score achieved
+    - admin_weights: Weights used {silhouette_weight, davies_bouldin_weight, calinski_harabasz_weight}
+    - quality_threshold_met: Boolean, best_composite_score >= threshold
+    - metrics_summary: Statistical summary of all metrics
+    - completed_at: Unix timestamp when evaluation completed
+    - ttl: Unix timestamp for automatic cleanup (30 days from creation)
+    """
+
+    class Meta:
+        table_name = f"{settings.dynamodb_table_prefix}clustering_evaluation"
+        region = settings.aws_region
+        host = settings.dynamodb_endpoint_url
+        read_capacity_units = 5
+        write_capacity_units = 5
+
+    # Keys
+    evaluation_id = UnicodeAttribute(hash_key=True)
+
+    # Indexes
+    run_timestamp_index = RunTimestampIndex()
+
+    # Attributes
+    run_timestamp = NumberAttribute()  # Unix seconds, used for GSI sorting (recent first)
+    evaluation_type = UnicodeAttribute()  # "scheduled" or "manual"
+    total_articles_evaluated = NumberAttribute()
+    evaluation_results = ListAttribute(of=EvaluationResultItem)
+    selected_k_value = NumberAttribute()
+    best_composite_score = NumberAttribute()
+    admin_weights = MapAttribute()  # {silhouette_weight, davies_bouldin_weight, calinski_harabasz_weight}
+    quality_threshold_met = BooleanAttribute()
+    metrics_summary = MapAttribute()  # Summary statistics for metrics
+    completed_at = NumberAttribute()
+    ttl = NumberAttribute()  # Unix timestamp for TTL automatic cleanup (30 days)
+
+
+class ClusteringParamsModel(Model):
+    """
+    Stores admin configuration for clustering evaluation parameters.
+
+    Partition Key: param_id (String, always "default" - single configuration)
+    No Sort Key
+    No TTL - admin configuration, not time-sensitive
+
+    Attributes:
+    - param_id: Always "default" - single admin configuration row
+    - silhouette_weight: Weight for silhouette score in composite calculation (0-1)
+    - davies_bouldin_weight: Weight for davies-bouldin index (0-1)
+    - calinski_harabasz_weight: Weight for calinski-harabasz index (0-1)
+    - min_cluster_size: Minimum articles required for a valid cluster (default: 5)
+    - min_samples: Minimum samples for HDBSCAN core point detection (default: 3)
+    - quality_threshold: Minimum composite score for quality evaluation (0-1, default: 0.6)
+    - last_updated: Unix timestamp of last configuration change
+    """
+
+    class Meta:
+        table_name = f"{settings.dynamodb_table_prefix}clustering_params"
+        region = settings.aws_region
+        host = settings.dynamodb_endpoint_url
+        read_capacity_units = 5
+        write_capacity_units = 5
+
+    # Keys
+    param_id = UnicodeAttribute(hash_key=True)
+
+    # Attributes - Metric Weights (should sum to ~1.0)
+    silhouette_weight = NumberAttribute()
+    davies_bouldin_weight = NumberAttribute()
+    calinski_harabasz_weight = NumberAttribute()
+
+    # Attributes - Clustering Parameters
+    min_cluster_size = NumberAttribute()
+    min_samples = NumberAttribute()
+    quality_threshold = NumberAttribute()
+
+    # Metadata
+    last_updated = NumberAttribute()

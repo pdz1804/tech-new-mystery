@@ -355,7 +355,7 @@ resource "aws_dynamodb_table" "article_clusters" {
   }
 
   global_secondary_index {
-    name            = "article-id-index"
+    name            = "article_id-index"
     hash_key        = "article_id"
     projection_type = "ALL"
   }
@@ -405,6 +405,67 @@ resource "aws_dynamodb_table" "article_embeddings" {
   ttl {
     attribute_name = "ttl"
     enabled        = true
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+}
+
+# Clustering Evaluation Results Table
+# Stores quality metrics (silhouette, davies-bouldin, calinski-harabasz) for k-value evaluation
+# PK: evaluation_id (UUID format "eval-YYYY-MM-DD-HH-MM")
+# GSI: run_timestamp for querying evaluation history (recent evaluations first)
+# TTL: 30 days on ttl attribute for automatic cleanup of old evaluation results
+resource "aws_dynamodb_table" "clustering_evaluation" {
+  count        = var.create_dynamodb_tables ? 1 : 0
+  name         = "${var.dynamodb_table_prefix}clustering_evaluation"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "evaluation_id"
+
+  attribute {
+    name = "evaluation_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "run_timestamp"
+    type = "N"
+  }
+
+  # GSI for querying evaluations by run_timestamp (most recent first)
+  # Enables efficient retrieval of latest evaluation results
+  global_secondary_index {
+    name            = "run_timestamp-index"
+    hash_key        = "run_timestamp"
+    projection_type = "ALL"
+  }
+
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+}
+
+# Clustering Parameters Table
+# Admin configuration for clustering evaluation weights and thresholds
+# PK: param_id (string: "default" - single-row configuration)
+# No TTL - this is admin configuration, not time-sensitive data
+# Stores: metric weights (silhouette, davies-bouldin, calinski-harabasz),
+#         quality thresholds, min cluster size, min samples, last_updated timestamp
+resource "aws_dynamodb_table" "clustering_params" {
+  count        = var.create_dynamodb_tables ? 1 : 0
+  name         = "${var.dynamodb_table_prefix}clustering_params"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "param_id"
+
+  attribute {
+    name = "param_id"
+    type = "S"
   }
 
   point_in_time_recovery {

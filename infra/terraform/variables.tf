@@ -125,39 +125,9 @@ variable "beat_desired_count" {
 }
 
 variable "agent_core_image_tag" {
-  description = "Agent Core runtime image tag deployed by ECS."
+  description = "Agent Core runtime image tag (ECR) for the aws_bedrockagentcore_agent_runtime container."
   type        = string
   default     = "latest"
-}
-
-variable "agent_core_desired_count" {
-  description = "Desired Agent Core task count."
-  type        = number
-  default     = 2
-}
-
-variable "agent_core_min_count" {
-  description = "Minimum Agent Core task count for auto-scaling."
-  type        = number
-  default     = 2
-}
-
-variable "agent_core_max_count" {
-  description = "Maximum Agent Core task count for auto-scaling."
-  type        = number
-  default     = 10
-}
-
-variable "agent_core_cpu" {
-  description = "Fargate CPU units for Agent Core tasks."
-  type        = number
-  default     = 2048
-}
-
-variable "agent_core_memory" {
-  description = "Fargate memory in MiB for Agent Core tasks."
-  type        = number
-  default     = 4096
 }
 
 variable "agent_core_model" {
@@ -166,16 +136,21 @@ variable "agent_core_model" {
   default     = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 }
 
-variable "agent_core_memory_type" {
-  description = "Memory system type for Agent Core (short_term, long_term, or hybrid)."
-  type        = string
-  default     = "hybrid"
-}
-
 variable "agent_core_tool_timeout" {
   description = "Tool execution timeout in seconds for Agent Core."
   type        = number
   default     = 30
+}
+
+variable "agent_core_memory_event_expiry_days" {
+  description = "Number of days to retain AgentCore Memory events."
+  type        = number
+  default     = 90
+
+  validation {
+    condition     = var.agent_core_memory_event_expiry_days >= 7 && var.agent_core_memory_event_expiry_days <= 365
+    error_message = "agent_core_memory_event_expiry_days must be between 7 and 365."
+  }
 }
 
 variable "qdrant_collection_name" {
@@ -227,30 +202,28 @@ variable "secrets_manager_arn" {
 }
 
 variable "secret_json_keys" {
-  description = "JSON keys expected inside the app secret."
+  description = "JSON keys inside the app Secrets Manager secret."
   type = object({
-    secret_key           = string
-    jwt_secret_key       = string
-    openai_api_key       = string
-    tavily_api_key       = string
-    newsapi_key          = string
-    qdrant_url           = string
-    qdrant_api_key       = string
-    gemini_api_key       = string
-    anthropic_api_key    = string
-    agent_core_memory_id = string
+    secret_key        = string
+    jwt_secret_key    = string
+    openai_api_key    = string
+    tavily_api_key    = string
+    newsapi_key       = string
+    qdrant_url        = string
+    qdrant_api_key    = string
+    gemini_api_key    = string
+    anthropic_api_key = string
   })
   default = {
-    secret_key           = "SECRET_KEY"
-    jwt_secret_key       = "JWT_SECRET_KEY"
-    openai_api_key       = "OPENAI_API_KEY"
-    tavily_api_key       = "TAVILY_API_KEY"
-    newsapi_key          = "NEWSAPI_KEY"
-    qdrant_url           = "QDRANT_URL"
-    qdrant_api_key       = "QDRANT_API_KEY"
-    gemini_api_key       = "GEMINI_API_KEY"
-    anthropic_api_key    = "ANTHROPIC_API_KEY"
-    agent_core_memory_id = "AGENT_CORE_MEMORY_ID"
+    secret_key        = "SECRET_KEY"
+    jwt_secret_key    = "JWT_SECRET_KEY"
+    openai_api_key    = "OPENAI_API_KEY"
+    tavily_api_key    = "TAVILY_API_KEY"
+    newsapi_key       = "NEWSAPI_KEY"
+    qdrant_url        = "QDRANT_URL"
+    qdrant_api_key    = "QDRANT_API_KEY"
+    gemini_api_key    = "GEMINI_API_KEY"
+    anthropic_api_key = "ANTHROPIC_API_KEY"
   }
 }
 
@@ -279,13 +252,13 @@ variable "clustering_max_count" {
 variable "clustering_task_cpu" {
   description = "Fargate CPU units for clustering tasks. Higher CPU needed for embeddings and HDBSCAN."
   type        = number
-  default     = 2048  # 2 vCPU
+  default     = 2048 # 2 vCPU
 }
 
 variable "clustering_task_memory" {
   description = "Fargate memory in MiB for clustering tasks. Higher memory for embeddings processing."
   type        = number
-  default     = 4096  # 4 GB
+  default     = 4096 # 4 GB
 }
 
 variable "clustering_cpu_target" {

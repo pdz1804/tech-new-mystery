@@ -20,6 +20,7 @@ from app.services.user_service import UserService
 from app.services.trending_service import TrendingService
 from app.integrations.agent_core_memory import (
     AgentCoreMemory,
+    RequestAgentMemory,
     get_agent_memory as create_agent_memory,
 )
 
@@ -139,3 +140,30 @@ async def get_agent_memory() -> AgentCoreMemory:
         AgentCoreMemory: Fresh instance for this request only
     """
     return create_agent_memory()
+
+
+async def get_request_agent_memory() -> RequestAgentMemory:
+    """Dependency for per-request Agent Memory with cleanup.
+
+    Creates a fresh RequestAgentMemory instance for each request,
+    providing request-scoped isolation and automatic cleanup.
+
+    The memory is initialized on demand (lazy initialization) and
+    cleaned up automatically after the request completes.
+
+    Usage in route handlers:
+        @router.post("/chat")
+        async def chat_endpoint(
+            req_memory: RequestAgentMemory = Depends(get_request_agent_memory)
+        ):
+            # req_memory is unique to this request
+            await req_memory.initialize(session_id, user_id)
+            await req_memory.log_message(session_id, "user", content)
+            # Cleanup happens automatically
+
+    Returns:
+        RequestAgentMemory: Fresh instance with request scope
+    """
+    memory = create_agent_memory()
+    request_memory = RequestAgentMemory(memory)
+    return request_memory
