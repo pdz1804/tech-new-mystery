@@ -43,10 +43,10 @@ jobs:
         working-directory: infra/terraform
         run: |
           terraform init \
-            -backend-config="bucket=tech-news-mystery-prod-terraform-state" \
+            -backend-config="bucket=tech-news-mystery-tfstate-381492273521" \
             -backend-config="key=terraform.tfstate" \
             -backend-config="region=us-west-2" \
-            -backend-config="dynamodb_table=tech-news-mystery-prod-terraform-locks"
+            -backend-config="dynamodb_table=tech-news-mystery-terraform-locks"
 
       - name: Terraform Format Check
         working-directory: infra/terraform
@@ -99,10 +99,10 @@ jobs:
         working-directory: infra/terraform
         run: |
           terraform init \
-            -backend-config="bucket=tech-news-mystery-prod-terraform-state" \
+            -backend-config="bucket=tech-news-mystery-tfstate-381492273521" \
             -backend-config="key=terraform.tfstate" \
             -backend-config="region=us-west-2" \
-            -backend-config="dynamodb_table=tech-news-mystery-prod-terraform-locks"
+            -backend-config="dynamodb_table=tech-news-mystery-terraform-locks"
 
       - name: Terraform Plan (for verification)
         working-directory: infra/terraform
