@@ -161,6 +161,7 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
           "acm:*",
           "route53:*",
           "sns:*",
+          "application-autoscaling:*",
           "bedrock-agentcore:*",
           "codebuild:*"
         ]
