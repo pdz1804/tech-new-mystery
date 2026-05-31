@@ -30,7 +30,6 @@ env:
   BACKEND_IMAGE_TAG: ${{ vars.BACKEND_IMAGE_TAG || 'latest' }}
   FRONTEND_IMAGE_TAG: ${{ vars.FRONTEND_IMAGE_TAG || 'latest' }}
   AGENT_CORE_IMAGE_TAG: ${{ vars.AGENT_CORE_IMAGE_TAG || 'latest' }}
-  GITHUB_ACTIONS_ROLE_NAME: ${{ vars.GITHUB_ACTIONS_ROLE_NAME || 'github-actions-tech-news-mystery' }}
 
 jobs:
   terraform-plan:
@@ -49,31 +48,6 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
-
-      - name: Bootstrap Terraform Autoscaling Permissions
-        run: |
-          cat > /tmp/github-actions-autoscaling-policy.json <<'JSON'
-          {
-            "Version": "2012-10-17",
-            "Statement": [
-              {
-                "Sid": "ApplicationAutoscalingBootstrap",
-                "Effect": "Allow",
-                "Action": [
-                  "application-autoscaling:*"
-                ],
-                "Resource": "*"
-              }
-            ]
-          }
-          JSON
-
-          aws iam put-role-policy \
-            --role-name "$GITHUB_ACTIONS_ROLE_NAME" \
-            --policy-name "tech-news-mystery-prod-github-autoscaling-bootstrap" \
-            --policy-document file:///tmp/github-actions-autoscaling-policy.json
-
-          sleep 30
 
       - name: Clear Terraform Working Directory
         working-directory: infra/terraform
