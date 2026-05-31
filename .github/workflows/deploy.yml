@@ -19,11 +19,16 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: write
   contents: read
   id-token: write
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
+  TF_VERSION: 1.6.1
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || 'tech-news-mystery-tfstate-381492273521' }}
+  TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'terraform.tfstate' }}
+  TF_STATE_LOCK_TABLE: ${{ vars.TF_STATE_LOCK_TABLE || 'tech-news-mystery-terraform-locks' }}
   ECS_CLUSTER: ${{ vars.ECS_CLUSTER || 'tech-news-mystery-prod' }}
   BACKEND_ECR_REPOSITORY: ${{ vars.BACKEND_ECR_REPOSITORY || 'tech-news-mystery-prod-backend' }}
   FRONTEND_ECR_REPOSITORY: ${{ vars.FRONTEND_ECR_REPOSITORY || 'tech-news-mystery-prod-frontend' }}
@@ -74,7 +79,7 @@ jobs:
         run: npm run type-check
 
       - name: Test frontend
-        run: npm test -- --runInBand
+        run: npm test
 
       - name: Build frontend
         run: npm run build
@@ -114,6 +119,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
@@ -143,13 +152,15 @@ jobs:
           docker push "$ECR_REGISTRY/$FRONTEND_ECR_REPOSITORY:latest"
 
       - name: Build and push agent-core image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
         run: |
           git archive --format=zip --output source.zip HEAD
           aws s3 cp source.zip "s3://$AGENT_CORE_CODEBUILD_SOURCE_BUCKET/agent-core/source.zip"
 
           BUILD_ID=$(aws codebuild start-build \
             --project-name "$AGENT_CORE_CODEBUILD_PROJECT" \
-            --environment-variables-override name=IMAGE_TAG,value=${{ github.sha }},type=PLAINTEXT \
+            --environment-variables-override name=IMAGE_TAG,value="$IMAGE_TAG",type=PLAINTEXT \
             --query 'build.id' \
             --output text)
 
@@ -166,13 +177,45 @@ jobs:
             esac
           done
 
+      - name: Terraform Init
+        working-directory: infra/terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=$TF_STATE_KEY" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="dynamodb_table=$TF_STATE_LOCK_TABLE" \
+            -backend-config="encrypt=true"
+
+      - name: Deploy image tags with Terraform
+        working-directory: infra/terraform
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          terraform apply \
+            -lock-timeout=5m \
+            -auto-approve \
+            -var="backend_image_tag=$IMAGE_TAG" \
+            -var="frontend_image_tag=$IMAGE_TAG" \
+            -var="agent_core_image_tag=$IMAGE_TAG"
+
+      - name: Record deployed image tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          gh variable set BACKEND_IMAGE_TAG --body "$IMAGE_TAG"
+          gh variable set FRONTEND_IMAGE_TAG --body "$IMAGE_TAG"
+          gh variable set AGENT_CORE_IMAGE_TAG --body "$IMAGE_TAG"
+
       - name: Force ECS rollout
         run: |
           aws ecs update-service --cluster "$ECS_CLUSTER" --service api --force-new-deployment
           aws ecs update-service --cluster "$ECS_CLUSTER" --service frontend --force-new-deployment
           aws ecs update-service --cluster "$ECS_CLUSTER" --service worker --force-new-deployment
           aws ecs update-service --cluster "$ECS_CLUSTER" --service beat --force-new-deployment
+          aws ecs update-service --cluster "$ECS_CLUSTER" --service clustering --force-new-deployment
 
       - name: Wait for ECS services
         run: |
-          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services api frontend worker beat
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services api frontend worker beat clustering

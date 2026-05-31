@@ -69,7 +69,6 @@ screenshots/
 *.tfstate.*
 *.tfvars
 !*.tfvars.example
-.terraform.lock.hcl
 
 # Logs
 *.log

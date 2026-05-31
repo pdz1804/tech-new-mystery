@@ -18,8 +18,14 @@ permissions:
   pull-requests: write
 
 env:
-  AWS_REGION: us-west-2
-  TF_VERSION: 1.6.0
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
+  TF_VERSION: 1.6.1
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET || 'tech-news-mystery-tfstate-381492273521' }}
+  TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'terraform.tfstate' }}
+  TF_STATE_LOCK_TABLE: ${{ vars.TF_STATE_LOCK_TABLE || 'tech-news-mystery-terraform-locks' }}
+  BACKEND_IMAGE_TAG: ${{ vars.BACKEND_IMAGE_TAG || 'latest' }}
+  FRONTEND_IMAGE_TAG: ${{ vars.FRONTEND_IMAGE_TAG || 'latest' }}
+  AGENT_CORE_IMAGE_TAG: ${{ vars.AGENT_CORE_IMAGE_TAG || 'latest' }}
 
 jobs:
   terraform-plan:
@@ -39,32 +45,19 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Clear Terraform Cache
+      - name: Clear Terraform Working Directory
         working-directory: infra/terraform
-        run: rm -rf .terraform .terraform.lock.hcl ~/.terraform.d/plugin-cache
+        run: rm -rf .terraform
 
-      - name: Terraform Init (Hashicorp key workaround)
+      - name: Terraform Init
         working-directory: infra/terraform
-        env:
-          TF_SKIP_PROVIDER_VERIFICATION: "true"
-          TF_PLUGIN_CACHE_DIR: "/tmp/terraform-provider-cache"
         run: |
-          # Workaround for expired Hashicorp signing key
-          # See: https://github.com/hashicorp/terraform/issues/35164
-          mkdir -p /tmp/terraform-provider-cache
-
           terraform init \
-            -upgrade \
-            -backend-config="bucket=tech-news-mystery-tfstate-381492273521" \
-            -backend-config="key=terraform.tfstate" \
-            -backend-config="region=us-west-2" \
-            -backend-config="dynamodb_table=tech-news-mystery-terraform-locks" || \
-          {
-            echo "⚠️  Terraform init failed due to Hashicorp's expired GPG key"
-            echo "This is a known issue: https://github.com/hashicorp/terraform/issues/35164"
-            echo "Workaround: Using locally cached providers"
-            exit 1
-          }
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=$TF_STATE_KEY" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="dynamodb_table=$TF_STATE_LOCK_TABLE" \
+            -backend-config="encrypt=true"
 
       - name: Terraform Format Check
         working-directory: infra/terraform
@@ -78,7 +71,14 @@ jobs:
         name: Terraform Plan
         working-directory: infra/terraform
         run: |
-          terraform plan -no-color -out=tfplan 2>&1 | tee plan.txt
+          set -o pipefail
+          terraform plan \
+            -lock-timeout=5m \
+            -var="backend_image_tag=$BACKEND_IMAGE_TAG" \
+            -var="frontend_image_tag=$FRONTEND_IMAGE_TAG" \
+            -var="agent_core_image_tag=$AGENT_CORE_IMAGE_TAG" \
+            -no-color \
+            -out=tfplan 2>&1 | tee plan.txt
           echo "Plan generated"
 
       - name: Comment PR with Plan
@@ -113,40 +113,33 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Clear Terraform Cache
+      - name: Clear Terraform Working Directory
         working-directory: infra/terraform
-        run: rm -rf .terraform .terraform.lock.hcl ~/.terraform.d/plugin-cache
+        run: rm -rf .terraform
 
-      - name: Terraform Init (Hashicorp key workaround)
+      - name: Terraform Init
         working-directory: infra/terraform
-        env:
-          TF_SKIP_PROVIDER_VERIFICATION: "true"
-          TF_PLUGIN_CACHE_DIR: "/tmp/terraform-provider-cache"
         run: |
-          # Workaround for expired Hashicorp signing key
-          # See: https://github.com/hashicorp/terraform/issues/35164
-          mkdir -p /tmp/terraform-provider-cache
-
           terraform init \
-            -upgrade \
-            -backend-config="bucket=tech-news-mystery-tfstate-381492273521" \
-            -backend-config="key=terraform.tfstate" \
-            -backend-config="region=us-west-2" \
-            -backend-config="dynamodb_table=tech-news-mystery-terraform-locks" || \
-          {
-            echo "⚠️  Terraform init failed due to Hashicorp's expired GPG key"
-            echo "This is a known issue: https://github.com/hashicorp/terraform/issues/35164"
-            echo "Workaround: Using locally cached providers"
-            exit 1
-          }
+            -backend-config="bucket=$TF_STATE_BUCKET" \
+            -backend-config="key=$TF_STATE_KEY" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="dynamodb_table=$TF_STATE_LOCK_TABLE" \
+            -backend-config="encrypt=true"
 
       - name: Terraform Plan (for verification)
         working-directory: infra/terraform
-        run: terraform plan -out=tfplan
+        run: |
+          terraform plan \
+            -lock-timeout=5m \
+            -var="backend_image_tag=$BACKEND_IMAGE_TAG" \
+            -var="frontend_image_tag=$FRONTEND_IMAGE_TAG" \
+            -var="agent_core_image_tag=$AGENT_CORE_IMAGE_TAG" \
+            -out=tfplan
 
       - name: Terraform Apply
         working-directory: infra/terraform
-        run: terraform apply -auto-approve tfplan
+        run: terraform apply -lock-timeout=5m -auto-approve tfplan
 
       - name: Export Outputs
         working-directory: infra/terraform

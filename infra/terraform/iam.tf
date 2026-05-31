@@ -117,11 +117,18 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
         ]
       },
       {
-        Sid    = "ECRAccess"
+        Sid    = "ECRImageAccess"
         Effect = "Allow"
         Action = [
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:CompleteLayerUpload",
+          "ecr:DescribeRepositories",
+          "ecr:GetAuthorizationToken",
           "ecr:GetDownloadUrlForLayer",
-          "ecr:BatchGetImage"
+          "ecr:BatchGetImage",
+          "ecr:InitiateLayerUpload",
+          "ecr:PutImage",
+          "ecr:UploadLayerPart"
         ]
         Resource = "*"
       },
