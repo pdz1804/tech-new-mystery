@@ -254,7 +254,7 @@ resource "aws_iam_role_policy" "backend_invoke_agentcore" {
       Sid      = "InvokeAgentRuntime"
       Effect   = "Allow"
       Action   = ["bedrock-agentcore:InvokeAgentRuntime"]
-      Resource = aws_bedrockagentcore_agent_runtime.agent_core.agent_runtime_arn
+      Resource = "${aws_bedrockagentcore_agent_runtime.agent_core.agent_runtime_arn}/*"
     }]
   })
 }
