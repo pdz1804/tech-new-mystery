@@ -40,6 +40,13 @@ in_state() {
   terraform state show "$1" >/dev/null 2>&1
 }
 
+state_id() {
+  terraform state show -no-color "$1" 2>/dev/null \
+    | sed -n 's/^[[:space:]]*id[[:space:]]*=[[:space:]]*//p' \
+    | head -n1 \
+    | tr -d '"'
+}
+
 import_if_needed() {
   local resource="$1"
   local id="$2"
@@ -50,6 +57,31 @@ import_if_needed() {
     echo "Importing existing resource: $resource ($id)"
     terraform import -lock-timeout=5m "$resource" "$id"
   fi
+}
+
+adopt_if_needed() {
+  local resource="$1"
+  local id="$2"
+  local current_id
+
+  if [[ -z "$id" || "$id" == "None" ]]; then
+    echo "Resource ID not found, Terraform will manage/create: $resource"
+    return
+  fi
+
+  if in_state "$resource"; then
+    current_id="$(state_id "$resource")"
+    if [[ "$current_id" == "$id" ]]; then
+      echo "Already in Terraform state: $resource"
+      return
+    fi
+
+    echo "Terraform state for $resource points at $current_id; adopting existing resource $id"
+    terraform state rm "$resource"
+  fi
+
+  echo "Importing existing resource: $resource ($id)"
+  terraform import -lock-timeout=5m "$resource" "$id"
 }
 
 for item in "${tables[@]}"; do
@@ -76,6 +108,43 @@ if [[ -n "$APP_SECRET_ARN" && "$APP_SECRET_ARN" != "None" ]]; then
   import_if_needed "aws_secretsmanager_secret.app[0]" "$APP_SECRET_ARN"
 else
   echo "Secrets Manager secret not found, Terraform will create: $APP_SECRET_NAME"
+fi
+
+LB_NAME="$(printf "%.32s" "${NAME_PREFIX}-alb")"
+LB_ARN="$(aws elbv2 describe-load-balancers --region "$REGION" --names "$LB_NAME" --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null || true)"
+LB_VPC_ID="$(aws elbv2 describe-load-balancers --region "$REGION" --names "$LB_NAME" --query 'LoadBalancers[0].VpcId' --output text 2>/dev/null || true)"
+if [[ -n "$LB_VPC_ID" && "$LB_VPC_ID" != "None" ]]; then
+  adopt_if_needed "aws_vpc.this[0]" "$LB_VPC_ID"
+
+  PUBLIC_SUBNET_1="$(aws ec2 describe-subnets --region "$REGION" --filters Name=vpc-id,Values="$LB_VPC_ID" Name=tag:Name,Values="${NAME_PREFIX}-public-1" --query 'Subnets[0].SubnetId' --output text 2>/dev/null || true)"
+  PUBLIC_SUBNET_2="$(aws ec2 describe-subnets --region "$REGION" --filters Name=vpc-id,Values="$LB_VPC_ID" Name=tag:Name,Values="${NAME_PREFIX}-public-2" --query 'Subnets[0].SubnetId' --output text 2>/dev/null || true)"
+  PRIVATE_SUBNET_1="$(aws ec2 describe-subnets --region "$REGION" --filters Name=vpc-id,Values="$LB_VPC_ID" Name=tag:Name,Values="${NAME_PREFIX}-private-1" --query 'Subnets[0].SubnetId' --output text 2>/dev/null || true)"
+  PRIVATE_SUBNET_2="$(aws ec2 describe-subnets --region "$REGION" --filters Name=vpc-id,Values="$LB_VPC_ID" Name=tag:Name,Values="${NAME_PREFIX}-private-2" --query 'Subnets[0].SubnetId' --output text 2>/dev/null || true)"
+
+  adopt_if_needed "aws_subnet.public[0]" "$PUBLIC_SUBNET_1"
+  adopt_if_needed "aws_subnet.public[1]" "$PUBLIC_SUBNET_2"
+  adopt_if_needed "aws_subnet.private[0]" "$PRIVATE_SUBNET_1"
+  adopt_if_needed "aws_subnet.private[1]" "$PRIVATE_SUBNET_2"
+
+  IGW_ID="$(aws ec2 describe-internet-gateways --region "$REGION" --filters Name=attachment.vpc-id,Values="$LB_VPC_ID" --query 'InternetGateways[0].InternetGatewayId' --output text 2>/dev/null || true)"
+  ROUTE_TABLE_ID="$(aws ec2 describe-route-tables --region "$REGION" --filters Name=vpc-id,Values="$LB_VPC_ID" Name=tag:Name,Values="${NAME_PREFIX}-public-rt" --query 'RouteTables[0].RouteTableId' --output text 2>/dev/null || true)"
+  ROUTE_ASSOC_1="$(aws ec2 describe-route-tables --region "$REGION" --route-table-ids "$ROUTE_TABLE_ID" --query "RouteTables[0].Associations[?SubnetId==\`${PUBLIC_SUBNET_1}\`].RouteTableAssociationId | [0]" --output text 2>/dev/null || true)"
+  ROUTE_ASSOC_2="$(aws ec2 describe-route-tables --region "$REGION" --route-table-ids "$ROUTE_TABLE_ID" --query "RouteTables[0].Associations[?SubnetId==\`${PUBLIC_SUBNET_2}\`].RouteTableAssociationId | [0]" --output text 2>/dev/null || true)"
+
+  adopt_if_needed "aws_internet_gateway.this[0]" "$IGW_ID"
+  adopt_if_needed "aws_route_table.public[0]" "$ROUTE_TABLE_ID"
+  adopt_if_needed "aws_route_table_association.public[0]" "$ROUTE_ASSOC_1"
+  adopt_if_needed "aws_route_table_association.public[1]" "$ROUTE_ASSOC_2"
+
+  ALB_SG_ID="$(aws ec2 describe-security-groups --region "$REGION" --filters Name=vpc-id,Values="$LB_VPC_ID" Name=group-name,Values="${NAME_PREFIX}-alb-*" --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || true)"
+  ECS_SG_ID="$(aws ec2 describe-security-groups --region "$REGION" --filters Name=vpc-id,Values="$LB_VPC_ID" Name=group-name,Values="${NAME_PREFIX}-ecs-*" --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || true)"
+  REDIS_SG_ID="$(aws ec2 describe-security-groups --region "$REGION" --filters Name=vpc-id,Values="$LB_VPC_ID" Name=group-name,Values="${NAME_PREFIX}-redis-*" --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || true)"
+
+  adopt_if_needed "aws_security_group.alb" "$ALB_SG_ID"
+  adopt_if_needed "aws_security_group.ecs" "$ECS_SG_ID"
+  adopt_if_needed "aws_security_group.redis" "$REDIS_SG_ID"
+else
+  echo "Existing ALB VPC not found, Terraform will create network resources"
 fi
 
 if aws elasticache describe-cache-subnet-groups --region "$REGION" --cache-subnet-group-name "$REDIS_SUBNET_GROUP" >/dev/null 2>&1; then
@@ -230,8 +299,6 @@ else
   echo "AgentCore runtime not found, Terraform will create: $AGENTCORE_RUNTIME_NAME"
 fi
 
-LB_NAME="$(printf "%.32s" "${NAME_PREFIX}-alb")"
-LB_ARN="$(aws elbv2 describe-load-balancers --region "$REGION" --names "$LB_NAME" --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null || true)"
 if [[ -n "$LB_ARN" && "$LB_ARN" != "None" ]]; then
   import_if_needed "aws_lb.app" "$LB_ARN"
 

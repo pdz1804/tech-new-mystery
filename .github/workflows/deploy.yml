@@ -237,14 +237,6 @@ jobs:
             -var="frontend_image_tag=$IMAGE_TAG" \
             -var="agent_core_image_tag=$IMAGE_TAG"
 
-      - name: Force ECS rollout
-        run: |
-          aws ecs update-service --cluster "$ECS_CLUSTER" --service api --force-new-deployment
-          aws ecs update-service --cluster "$ECS_CLUSTER" --service frontend --force-new-deployment
-          aws ecs update-service --cluster "$ECS_CLUSTER" --service worker --force-new-deployment
-          aws ecs update-service --cluster "$ECS_CLUSTER" --service beat --force-new-deployment
-          aws ecs update-service --cluster "$ECS_CLUSTER" --service clustering --force-new-deployment
-
       - name: Wait for ECS services
         run: |
           aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services api frontend worker beat clustering

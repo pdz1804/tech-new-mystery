@@ -4,18 +4,18 @@ resource "aws_vpc" "this" {
   enable_dns_hostnames = true
   enable_dns_support   = true
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-vpc"
-  }
+  })
 }
 
 resource "aws_internet_gateway" "this" {
   count  = var.create_vpc ? 1 : 0
   vpc_id = aws_vpc.this[0].id
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-igw"
-  }
+  })
 }
 
 resource "aws_subnet" "public" {
@@ -25,10 +25,10 @@ resource "aws_subnet" "public" {
   availability_zone       = data.aws_availability_zones.available.names[count.index]
   map_public_ip_on_launch = true
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-public-${count.index + 1}"
     Tier = "public"
-  }
+  })
 }
 
 resource "aws_subnet" "private" {
@@ -37,10 +37,10 @@ resource "aws_subnet" "private" {
   cidr_block        = var.private_subnet_cidrs[count.index]
   availability_zone = data.aws_availability_zones.available.names[count.index]
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-private-${count.index + 1}"
     Tier = "private"
-  }
+  })
 }
 
 resource "aws_route_table" "public" {
@@ -52,9 +52,9 @@ resource "aws_route_table" "public" {
     gateway_id = aws_internet_gateway.this[0].id
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${local.name_prefix}-public-rt"
-  }
+  })
 }
 
 resource "aws_route_table_association" "public" {
@@ -67,6 +67,7 @@ resource "aws_security_group" "alb" {
   name_prefix = "${local.name_prefix}-alb-"
   description = "Public ALB access"
   vpc_id      = local.vpc_id
+  tags        = local.common_tags
 
   ingress {
     description = "HTTP"
@@ -96,6 +97,7 @@ resource "aws_security_group" "ecs" {
   name_prefix = "${local.name_prefix}-ecs-"
   description = "ECS tasks"
   vpc_id      = local.vpc_id
+  tags        = local.common_tags
 
   ingress {
     description     = "API from ALB"
@@ -125,6 +127,7 @@ resource "aws_security_group" "redis" {
   name_prefix = "${local.name_prefix}-redis-"
   description = "Redis access from ECS"
   vpc_id      = local.vpc_id
+  tags        = local.common_tags
 
   ingress {
     description     = "Redis from ECS"
