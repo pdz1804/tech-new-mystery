@@ -8,6 +8,12 @@ NAME_PREFIX="${NAME_PREFIX:-tech-news-mystery-prod}"
 APP_SECRET_NAME="${APP_SECRET_NAME:-${NAME_PREFIX}/app}"
 REDIS_SUBNET_GROUP="${REDIS_SUBNET_GROUP:-${NAME_PREFIX}-redis}"
 CODEBUILD_SOURCE_BUCKET="${CODEBUILD_SOURCE_BUCKET:-${NAME_PREFIX}-codebuild-sources-${AWS_ACCOUNT_ID:-}}"
+AGENTCORE_NAME_PREFIX="${AGENTCORE_NAME_PREFIX:-${NAME_PREFIX//-/_}}"
+AGENTCORE_RUNTIME_NAME="${AGENTCORE_RUNTIME_NAME:-${AGENTCORE_NAME_PREFIX}_agent}"
+AGENTCORE_MEMORY_NAME="${AGENTCORE_MEMORY_NAME:-${AGENTCORE_NAME_PREFIX}_memory}"
+AGENTCORE_BROWSER_NAME="${AGENTCORE_BROWSER_NAME:-${AGENTCORE_NAME_PREFIX}_browser}"
+AGENTCORE_CODE_INTERPRETER_NAME="${AGENTCORE_CODE_INTERPRETER_NAME:-${AGENTCORE_NAME_PREFIX}_code_interpreter}"
+AGENT_CORE_CODEBUILD_PROJECT="${AGENT_CORE_CODEBUILD_PROJECT:-${NAME_PREFIX}-agent-core-arm64-image}"
 
 tables=(
   "users:aws_dynamodb_table.users[0]"
@@ -146,6 +152,56 @@ if [[ -n "$CODEBUILD_SOURCE_BUCKET" ]]; then
   else
     echo "CodeBuild source bucket not found, Terraform will create: $CODEBUILD_SOURCE_BUCKET"
   fi
+fi
+
+if aws codebuild batch-get-projects --region "$REGION" --names "$AGENT_CORE_CODEBUILD_PROJECT" --query 'projects[0].name' --output text 2>/dev/null | grep -Fxq "$AGENT_CORE_CODEBUILD_PROJECT"; then
+  import_if_needed "aws_codebuild_project.agent_core_image" "$AGENT_CORE_CODEBUILD_PROJECT"
+else
+  echo "CodeBuild project not found, Terraform will create: $AGENT_CORE_CODEBUILD_PROJECT"
+fi
+
+ecs_services=(api frontend worker beat clustering)
+for service in "${ecs_services[@]}"; do
+  if aws ecs describe-services --region "$REGION" --cluster "$NAME_PREFIX" --services "$service" --query 'services[?status==`ACTIVE`].serviceName' --output text 2>/dev/null | tr '\t' '\n' | grep -Fxq "$service"; then
+    import_if_needed "aws_ecs_service.${service}" "${NAME_PREFIX}/${service}"
+  else
+    echo "ECS service not found, Terraform will create: $service"
+  fi
+done
+
+MEMORY_ID=""
+for memory_id in $(aws bedrock-agentcore-control list-memories --region "$REGION" --query 'memories[].id' --output text 2>/dev/null | tr '\t' '\n' || true); do
+  memory_name="$(aws bedrock-agentcore-control get-memory --region "$REGION" --memory-id "$memory_id" --query 'memory.name' --output text 2>/dev/null || true)"
+  if [[ "$memory_name" == "$AGENTCORE_MEMORY_NAME" ]]; then
+    MEMORY_ID="$memory_id"
+    break
+  fi
+done
+if [[ -n "$MEMORY_ID" ]]; then
+  import_if_needed "aws_bedrockagentcore_memory.agent_core" "$MEMORY_ID"
+else
+  echo "AgentCore memory not found, Terraform will create: $AGENTCORE_MEMORY_NAME"
+fi
+
+BROWSER_ID="$(aws bedrock-agentcore-control list-browsers --region "$REGION" --query "browserSummaries[?name==\`${AGENTCORE_BROWSER_NAME}\`].browserId | [0]" --output text 2>/dev/null || true)"
+if [[ -n "$BROWSER_ID" && "$BROWSER_ID" != "None" ]]; then
+  import_if_needed "aws_bedrockagentcore_browser.agent_core" "$BROWSER_ID"
+else
+  echo "AgentCore browser not found, Terraform will create: $AGENTCORE_BROWSER_NAME"
+fi
+
+CODE_INTERPRETER_ID="$(aws bedrock-agentcore-control list-code-interpreters --region "$REGION" --query "codeInterpreterSummaries[?name==\`${AGENTCORE_CODE_INTERPRETER_NAME}\`].codeInterpreterId | [0]" --output text 2>/dev/null || true)"
+if [[ -n "$CODE_INTERPRETER_ID" && "$CODE_INTERPRETER_ID" != "None" ]]; then
+  import_if_needed "aws_bedrockagentcore_code_interpreter.agent_core" "$CODE_INTERPRETER_ID"
+else
+  echo "AgentCore code interpreter not found, Terraform will create: $AGENTCORE_CODE_INTERPRETER_NAME"
+fi
+
+AGENT_RUNTIME_ID="$(aws bedrock-agentcore-control list-agent-runtimes --region "$REGION" --query "agentRuntimes[?agentRuntimeName==\`${AGENTCORE_RUNTIME_NAME}\`].agentRuntimeId | [0]" --output text 2>/dev/null || true)"
+if [[ -n "$AGENT_RUNTIME_ID" && "$AGENT_RUNTIME_ID" != "None" ]]; then
+  import_if_needed "aws_bedrockagentcore_agent_runtime.agent_core" "$AGENT_RUNTIME_ID"
+else
+  echo "AgentCore runtime not found, Terraform will create: $AGENTCORE_RUNTIME_NAME"
 fi
 
 LB_NAME="$(printf "%.32s" "${NAME_PREFIX}-alb")"
