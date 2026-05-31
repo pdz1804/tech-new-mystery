@@ -154,8 +154,9 @@ if [[ -n "$CODEBUILD_SOURCE_BUCKET" ]]; then
   fi
 fi
 
-if aws codebuild batch-get-projects --region "$REGION" --names "$AGENT_CORE_CODEBUILD_PROJECT" --query 'projects[0].name' --output text 2>/dev/null | grep -Fxq "$AGENT_CORE_CODEBUILD_PROJECT"; then
-  import_if_needed "aws_codebuild_project.agent_core_image" "$AGENT_CORE_CODEBUILD_PROJECT"
+CODEBUILD_PROJECT_ARN="$(aws codebuild batch-get-projects --region "$REGION" --names "$AGENT_CORE_CODEBUILD_PROJECT" --query 'projects[0].arn' --output text 2>/dev/null || true)"
+if [[ -n "$CODEBUILD_PROJECT_ARN" && "$CODEBUILD_PROJECT_ARN" != "None" ]]; then
+  import_if_needed "aws_codebuild_project.agent_core_image" "$CODEBUILD_PROJECT_ARN"
 else
   echo "CodeBuild project not found, Terraform will create: $AGENT_CORE_CODEBUILD_PROJECT"
 fi
