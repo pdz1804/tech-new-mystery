@@ -62,6 +62,12 @@ async def list_clusters(
             limit=10000,
             sort_by=sort_by,
         )
+
+        # Filter to only latest evaluation (if multiple evaluations exist)
+        if all_clusters:
+            latest_eval = max(c.evaluation_id for c in all_clusters if hasattr(c, 'evaluation_id'))
+            all_clusters = [c for c in all_clusters if hasattr(c, 'evaluation_id') and c.evaluation_id == latest_eval]
+
         total_count = len(all_clusters)
 
         # Calculate pagination

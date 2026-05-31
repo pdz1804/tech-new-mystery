@@ -215,6 +215,7 @@ async def _cluster_articles_async(embeddings=None, article_ids=None, k_value=Non
             article_ids_list,
             articles,
             article_repo,
+            evaluation_id=evaluation_id,
         )
 
         duration = timestamp() - start_time
@@ -344,6 +345,7 @@ async def _save_clustering_results(
     article_ids: List[str],
     articles: List,
     article_repo: ArticleRepository,
+    evaluation_id: Optional[str] = None,
 ) -> int:
     """
     Save clustering results to DynamoDB.
@@ -432,6 +434,7 @@ async def _save_clustering_results(
                 article_ids,
                 now,
                 ttl,
+                evaluation_id=evaluation_id,
             )
         except Exception as e:
             logger.error(f"Failed to generate metadata for {cluster_label}: {e}")
@@ -505,6 +508,7 @@ async def _generate_and_save_cluster_metadata(
     article_ids: List[str],
     now: int,
     ttl: int,
+    evaluation_id: Optional[str] = None,
 ) -> None:
     """
     Generate metadata for a cluster and save to DynamoDB.
@@ -517,6 +521,7 @@ async def _generate_and_save_cluster_metadata(
         article_ids: Ordered list of article IDs
         now: Current timestamp
         ttl: TTL timestamp
+        evaluation_id: ID of the clustering evaluation that created this cluster
     """
     article_ids_in_cluster = cluster_data["article_ids"]
 
@@ -569,6 +574,7 @@ async def _generate_and_save_cluster_metadata(
     # Save metadata
     metadata = ClusterMetadataModel(
         cluster_label,
+        evaluation_id=evaluation_id or "unknown",
         label=label,
         keywords=keywords,
         description=description,
