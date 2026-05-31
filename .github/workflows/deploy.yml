@@ -187,6 +187,16 @@ jobs:
             -backend-config="dynamodb_table=$TF_STATE_LOCK_TABLE" \
             -backend-config="encrypt=true"
 
+      - name: Import Existing Production Resources
+        working-directory: infra/terraform
+        env:
+          REGION: ${{ env.AWS_REGION }}
+          S3_BUCKET: ${{ vars.S3_BUCKET_NAME || 'tech-news-articles-381492273521' }}
+          TABLE_PREFIX: ${{ vars.DYNAMODB_TABLE_PREFIX || 'tech-news-' }}
+          NAME_PREFIX: ${{ vars.TF_NAME_PREFIX || 'tech-news-mystery-prod' }}
+          CODEBUILD_SOURCE_BUCKET: ${{ env.AGENT_CORE_CODEBUILD_SOURCE_BUCKET }}
+        run: bash scripts/import-existing.sh
+
       - name: Deploy image tags with Terraform
         working-directory: infra/terraform
         env:
