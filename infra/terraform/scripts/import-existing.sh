@@ -170,6 +170,31 @@ for service in "${ecs_services[@]}"; do
   fi
 done
 
+CLUSTERING_SCALING_RESOURCE_ID="service/${NAME_PREFIX}/clustering"
+CLUSTERING_SCALING_DIMENSION="ecs:service:DesiredCount"
+CLUSTERING_SCALING_TARGET_ID="ecs/${CLUSTERING_SCALING_RESOURCE_ID}/${CLUSTERING_SCALING_DIMENSION}"
+
+if aws application-autoscaling describe-scalable-targets --region "$REGION" --service-namespace ecs --resource-ids "$CLUSTERING_SCALING_RESOURCE_ID" --query 'ScalableTargets[0].ResourceId' --output text 2>/dev/null | grep -Fxq "$CLUSTERING_SCALING_RESOURCE_ID"; then
+  import_if_needed "aws_appautoscaling_target.clustering" "$CLUSTERING_SCALING_TARGET_ID"
+else
+  echo "Application Auto Scaling target not found, Terraform will create: $CLUSTERING_SCALING_RESOURCE_ID"
+fi
+
+clustering_scaling_policies=(
+  "${NAME_PREFIX}-clustering-cpu:aws_appautoscaling_policy.clustering_cpu"
+  "${NAME_PREFIX}-clustering-memory:aws_appautoscaling_policy.clustering_memory"
+)
+
+for item in "${clustering_scaling_policies[@]}"; do
+  name="${item%%:*}"
+  resource="${item#*:}"
+  if aws application-autoscaling describe-scaling-policies --region "$REGION" --service-namespace ecs --resource-id "$CLUSTERING_SCALING_RESOURCE_ID" --policy-names "$name" --query 'ScalingPolicies[0].PolicyName' --output text 2>/dev/null | grep -Fxq "$name"; then
+    import_if_needed "$resource" "${CLUSTERING_SCALING_TARGET_ID}/${name}"
+  else
+    echo "Application Auto Scaling policy not found, Terraform will create: $name"
+  fi
+done
+
 MEMORY_ID=""
 for memory_id in $(aws bedrock-agentcore-control list-memories --region "$REGION" --query 'memories[].id' --output text 2>/dev/null | tr '\t' '\n' || true); do
   memory_name="$(aws bedrock-agentcore-control get-memory --region "$REGION" --memory-id "$memory_id" --query 'memory.name' --output text 2>/dev/null || true)"

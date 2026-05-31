@@ -80,9 +80,9 @@ resource "aws_appautoscaling_target" "clustering" {
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 
-  tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-clustering-scaling"
-  })
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 # CPU-based Auto-Scaling Policy for Clustering
