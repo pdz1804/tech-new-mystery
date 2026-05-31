@@ -65,8 +65,9 @@ if [[ -n "$S3_BUCKET" ]]; then
   fi
 fi
 
-if aws secretsmanager describe-secret --region "$REGION" --secret-id "$APP_SECRET_NAME" >/dev/null 2>&1; then
-  import_if_needed "aws_secretsmanager_secret.app[0]" "$APP_SECRET_NAME"
+APP_SECRET_ARN="$(aws secretsmanager describe-secret --region "$REGION" --secret-id "$APP_SECRET_NAME" --query ARN --output text 2>/dev/null || true)"
+if [[ -n "$APP_SECRET_ARN" && "$APP_SECRET_ARN" != "None" ]]; then
+  import_if_needed "aws_secretsmanager_secret.app[0]" "$APP_SECRET_ARN"
 else
   echo "Secrets Manager secret not found, Terraform will create: $APP_SECRET_NAME"
 fi
