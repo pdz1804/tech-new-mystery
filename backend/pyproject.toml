@@ -16,7 +16,7 @@ uvicorn = {extras = ["standard"], version = "^0.32.0"}
 
 # Database
 pynamodb = "^6.0.0"
-boto3 = "^1.35.0"
+boto3 = "^1.43.12"
 
 # Caching & Task Queue
 redis = {extras = ["hiredis"], version = "^5.2.0"}
@@ -57,7 +57,7 @@ responses = "^0.25.0"
 black = "^24.4.0"
 ruff = "^0.8.0"
 mypy = "^1.13.0"
-boto3-stubs = {extras = ["dynamodb"], version = "^1.35.0"}
+boto3-stubs = {extras = ["dynamodb"], version = "^1.43.12"}
 types-redis = "^4.6.0"
 
 [tool.black]
