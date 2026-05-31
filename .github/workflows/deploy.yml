@@ -35,6 +35,7 @@ env:
   AGENT_CORE_ECR_REPOSITORY: ${{ vars.AGENT_CORE_ECR_REPOSITORY || 'tech-news-mystery-prod-agent-core' }}
   AGENT_CORE_CODEBUILD_PROJECT: ${{ vars.AGENT_CORE_CODEBUILD_PROJECT || 'tech-news-mystery-prod-agent-core-arm64-image' }}
   AGENT_CORE_CODEBUILD_SOURCE_BUCKET: ${{ vars.AGENT_CORE_CODEBUILD_SOURCE_BUCKET || 'tech-news-mystery-prod-codebuild-sources-381492273521' }}
+  GITHUB_ACTIONS_ROLE_NAME: ${{ vars.GITHUB_ACTIONS_ROLE_NAME || 'github-actions-tech-news-mystery' }}
   NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || '/v1' }}
 
 jobs:
@@ -127,6 +128,31 @@ jobs:
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
+
+      - name: Bootstrap Terraform Autoscaling Permissions
+        run: |
+          cat > /tmp/github-actions-autoscaling-policy.json <<'JSON'
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Sid": "ApplicationAutoscalingBootstrap",
+                "Effect": "Allow",
+                "Action": [
+                  "application-autoscaling:*"
+                ],
+                "Resource": "*"
+              }
+            ]
+          }
+          JSON
+
+          aws iam put-role-policy \
+            --role-name "$GITHUB_ACTIONS_ROLE_NAME" \
+            --policy-name "tech-news-mystery-prod-github-autoscaling-bootstrap" \
+            --policy-document file:///tmp/github-actions-autoscaling-policy.json
+
+          sleep 30
 
       - id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
