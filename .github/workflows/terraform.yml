@@ -17,6 +17,10 @@ permissions:
   id-token: write
   pull-requests: write
 
+concurrency:
+  group: terraform-state-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
   TF_VERSION: 1.6.1
@@ -137,19 +141,15 @@ jobs:
           CODEBUILD_SOURCE_BUCKET: ${{ vars.AGENT_CORE_CODEBUILD_SOURCE_BUCKET || 'tech-news-mystery-prod-codebuild-sources-381492273521' }}
         run: bash scripts/import-existing.sh
 
-      - name: Terraform Plan (for verification)
-        working-directory: infra/terraform
-        run: |
-          terraform plan \
-            -lock-timeout=5m \
-            -var="backend_image_tag=$BACKEND_IMAGE_TAG" \
-            -var="frontend_image_tag=$FRONTEND_IMAGE_TAG" \
-            -var="agent_core_image_tag=$AGENT_CORE_IMAGE_TAG" \
-            -out=tfplan
-
       - name: Terraform Apply
         working-directory: infra/terraform
-        run: terraform apply -lock-timeout=5m -auto-approve tfplan
+        run: |
+          terraform apply \
+            -lock-timeout=5m \
+            -auto-approve \
+            -var="backend_image_tag=$BACKEND_IMAGE_TAG" \
+            -var="frontend_image_tag=$FRONTEND_IMAGE_TAG" \
+            -var="agent_core_image_tag=$AGENT_CORE_IMAGE_TAG"
 
       - name: Export Outputs
         working-directory: infra/terraform

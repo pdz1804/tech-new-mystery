@@ -113,7 +113,7 @@ jobs:
       - agent-core-checks
     runs-on: ubuntu-latest
     concurrency:
-      group: deploy-${{ github.ref }}
+      group: terraform-state-${{ github.ref }}
       cancel-in-progress: false
 
     steps:
