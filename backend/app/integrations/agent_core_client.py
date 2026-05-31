@@ -1,6 +1,6 @@
 """AWS Bedrock AgentCore Runtime client.
 
-Production:  uses boto3 bedrock-agentcore.invoke_agent_runtime()
+Production:  uses boto3 bedrock-agent-runtime.invoke_agent_runtime()
              configured via AGENT_CORE_RUNTIME_ARN env var.
 
 Local dev:   falls back to direct HTTP POST to /invocations
@@ -116,7 +116,7 @@ class AgentCoreClient:
         if self._runtime_arn:
             import boto3
             self._boto3_client = boto3.client(
-                "bedrock-agentcore",
+                "bedrock-agent-runtime",
                 region_name=getattr(settings, "aws_region", "us-west-2"),
             )
             logger.debug("[AGENTCORE] Using boto3 invoke_agent_runtime: %s", self._runtime_arn)
