@@ -38,6 +38,10 @@ resource "aws_iam_role" "agentcore_runtime" {
       Action    = "sts:AssumeRole"
     }]
   })
+
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 resource "aws_iam_role_policy" "agentcore_runtime" {
@@ -140,6 +144,10 @@ resource "aws_iam_role" "agentcore_memory" {
       Action    = "sts:AssumeRole"
     }]
   })
+
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "agentcore_memory_bedrock" {

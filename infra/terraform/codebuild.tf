@@ -56,6 +56,10 @@ resource "aws_iam_role" "codebuild_agent_core" {
       Action    = "sts:AssumeRole"
     }]
   })
+
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 resource "aws_iam_role_policy" "codebuild_agent_core" {

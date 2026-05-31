@@ -21,4 +21,8 @@ resource "aws_elasticache_replication_group" "redis" {
   security_group_ids         = [aws_security_group.redis.id]
   at_rest_encryption_enabled = true
   transit_encryption_enabled = false
+
+  lifecycle {
+    ignore_changes = [security_group_ids, subnet_group_name]
+  }
 }

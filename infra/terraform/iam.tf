@@ -11,6 +11,10 @@ resource "aws_iam_role" "ecs_task_execution" {
       Action = "sts:AssumeRole"
     }]
   })
+
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
@@ -64,6 +68,10 @@ resource "aws_iam_role" "ecs_task" {
       Action = "sts:AssumeRole"
     }]
   })
+
+  lifecycle {
+    ignore_changes = [tags, tags_all]
+  }
 }
 
 data "aws_iam_role" "github_actions" {
