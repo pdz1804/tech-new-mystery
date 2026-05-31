@@ -112,14 +112,31 @@ class AgentCoreClient:
         self._api_key: str | None = getattr(settings, "agent_core_api_key", None)
         self._timeout: int = getattr(settings, "agent_core_timeout", 60)
         self._http_client: httpx.AsyncClient | None = None
+        self._agent_id: str | None = None
+        self._agent_alias_id: str | None = None
 
         if self._runtime_arn:
             import boto3
+            # Parse ARN: arn:aws:bedrock:region:account:agent-alias/agentId/aliasId
+            try:
+                arn_parts = self._runtime_arn.split(":")
+                if len(arn_parts) >= 6:
+                    resource_part = arn_parts[5]
+                    if resource_part.startswith("agent-alias/"):
+                        ids = resource_part.replace("agent-alias/", "").split("/")
+                        if len(ids) >= 2:
+                            self._agent_id = ids[0]
+                            self._agent_alias_id = ids[1]
+                            logger.debug("[AGENTCORE] Parsed ARN - agent_id=%s, alias_id=%s",
+                                       self._agent_id, self._agent_alias_id)
+            except Exception as e:
+                logger.warning("[AGENTCORE] Failed to parse ARN: %s", str(e))
+
             self._boto3_client = boto3.client(
                 "bedrock-agent-runtime",
                 region_name=getattr(settings, "aws_region", "us-west-2"),
             )
-            logger.debug("[AGENTCORE] Using boto3 invoke_agent_runtime: %s", self._runtime_arn)
+            logger.debug("[AGENTCORE] Using boto3 invoke_agent: %s", self._runtime_arn)
         elif self._base_url:
             # Per-request client for SSE streaming.
             # A shared pool with fixed max_connections silently queues the N+1th user;
@@ -188,9 +205,16 @@ class AgentCoreClient:
         }).encode()
 
         # boto3 call is synchronous — run in thread pool
+        if not self._agent_id or not self._agent_alias_id:
+            raise RuntimeError(
+                "[AGENTCORE] Agent ID or Alias ID not parsed from ARN. "
+                "Expected format: arn:aws:bedrock:region:account:agent-alias/agentId/aliasId"
+            )
+
         response = await asyncio.to_thread(
             self._boto3_client.invoke_agent,
-            agentId=self._runtime_arn,
+            agentId=self._agent_id,
+            agentAliasId=self._agent_alias_id,
             sessionId=session_id,
             inputText=user_message,
         )
