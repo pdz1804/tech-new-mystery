@@ -1,6 +1,6 @@
 """AWS Bedrock AgentCore Runtime client.
 
-Production:  uses boto3 bedrock-agent-runtime.invoke_agent_runtime()
+Production:  uses boto3 bedrock-agent-runtime.invoke_agent()
              configured via AGENT_CORE_RUNTIME_ARN env var.
 
 Local dev:   falls back to direct HTTP POST to /invocations
@@ -189,10 +189,10 @@ class AgentCoreClient:
 
         # boto3 call is synchronous — run in thread pool
         response = await asyncio.to_thread(
-            self._boto3_client.invoke_agent_runtime,
-            agentRuntimeArn=self._runtime_arn,
-            runtimeSessionId=session_id,
-            payload=payload,
+            self._boto3_client.invoke_agent,
+            agentId=self._runtime_arn,
+            sessionId=session_id,
+            inputText=user_message,
         )
 
         # Stream response body via a thread/queue bridge (iter_lines is synchronous)
@@ -200,7 +200,7 @@ class AgentCoreClient:
 
         def _stream_lines():
             try:
-                streaming_body = response.get("response")
+                streaming_body = response.get("completion")
                 if streaming_body:
                     for line in streaming_body.iter_lines(chunk_size=32):
                         line_queue.put(line)
