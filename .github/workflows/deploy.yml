@@ -154,6 +154,35 @@ jobs:
         env:
           IMAGE_TAG: ${{ github.sha }}
         run: |
+          set -euo pipefail
+
+          print_build_failure() {
+            local build_id="$1"
+            echo "::error::AgentCore CodeBuild failed: $build_id"
+            aws codebuild batch-get-builds \
+              --ids "$build_id" \
+              --query 'builds[0].phases[].{phase:phaseType,status:phaseStatus,contexts:contexts}' \
+              --output json
+
+            LOG_GROUP=$(aws codebuild batch-get-builds \
+              --ids "$build_id" \
+              --query 'builds[0].logs.groupName' \
+              --output text)
+            LOG_STREAM=$(aws codebuild batch-get-builds \
+              --ids "$build_id" \
+              --query 'builds[0].logs.streamName' \
+              --output text)
+
+            if [ "$LOG_GROUP" != "None" ] && [ "$LOG_STREAM" != "None" ]; then
+              aws logs get-log-events \
+                --log-group-name "$LOG_GROUP" \
+                --log-stream-name "$LOG_STREAM" \
+                --limit 120 \
+                --query 'events[].message' \
+                --output text
+            fi
+          }
+
           git archive --format=zip --output source.zip HEAD
           aws s3 cp source.zip "s3://$AGENT_CORE_CODEBUILD_SOURCE_BUCKET/agent-core/source.zip"
 
@@ -171,7 +200,7 @@ jobs:
 
             case "$STATUS" in
               SUCCEEDED) break ;;
-              FAILED|FAULT|STOPPED|TIMED_OUT) exit 1 ;;
+              FAILED|FAULT|STOPPED|TIMED_OUT) print_build_failure "$BUILD_ID"; exit 1 ;;
               *) sleep 15 ;;
             esac
           done
