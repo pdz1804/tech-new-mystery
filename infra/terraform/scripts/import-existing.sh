@@ -128,13 +128,12 @@ if [[ -n "$LB_VPC_ID" && "$LB_VPC_ID" != "None" ]]; then
 
   IGW_ID="$(aws ec2 describe-internet-gateways --region "$REGION" --filters Name=attachment.vpc-id,Values="$LB_VPC_ID" --query 'InternetGateways[0].InternetGatewayId' --output text 2>/dev/null || true)"
   ROUTE_TABLE_ID="$(aws ec2 describe-route-tables --region "$REGION" --filters Name=vpc-id,Values="$LB_VPC_ID" Name=tag:Name,Values="${NAME_PREFIX}-public-rt" --query 'RouteTables[0].RouteTableId' --output text 2>/dev/null || true)"
-  ROUTE_ASSOC_1="$(aws ec2 describe-route-tables --region "$REGION" --route-table-ids "$ROUTE_TABLE_ID" --query "RouteTables[0].Associations[?SubnetId==\`${PUBLIC_SUBNET_1}\`].RouteTableAssociationId | [0]" --output text 2>/dev/null || true)"
-  ROUTE_ASSOC_2="$(aws ec2 describe-route-tables --region "$REGION" --route-table-ids "$ROUTE_TABLE_ID" --query "RouteTables[0].Associations[?SubnetId==\`${PUBLIC_SUBNET_2}\`].RouteTableAssociationId | [0]" --output text 2>/dev/null || true)"
 
   adopt_if_needed "aws_internet_gateway.this[0]" "$IGW_ID"
   adopt_if_needed "aws_route_table.public[0]" "$ROUTE_TABLE_ID"
-  adopt_if_needed "aws_route_table_association.public[0]" "$ROUTE_ASSOC_1"
-  adopt_if_needed "aws_route_table_association.public[1]" "$ROUTE_ASSOC_2"
+  # Route table associations require format: subnet_id/route_table_id
+  adopt_if_needed "aws_route_table_association.public[0]" "${PUBLIC_SUBNET_1}/${ROUTE_TABLE_ID}"
+  adopt_if_needed "aws_route_table_association.public[1]" "${PUBLIC_SUBNET_2}/${ROUTE_TABLE_ID}"
 
   ALB_SG_ID="$(aws ec2 describe-security-groups --region "$REGION" --filters Name=vpc-id,Values="$LB_VPC_ID" Name=group-name,Values="${NAME_PREFIX}-alb-*" --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || true)"
   ECS_SG_ID="$(aws ec2 describe-security-groups --region "$REGION" --filters Name=vpc-id,Values="$LB_VPC_ID" Name=group-name,Values="${NAME_PREFIX}-ecs-*" --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || true)"
