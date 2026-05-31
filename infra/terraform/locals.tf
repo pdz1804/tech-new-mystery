@@ -31,5 +31,13 @@ locals {
     "pending-searches",
     "trending_articles",
     "submissions",
+    "conversation_sessions",
+    "conversation_messages",
+    "chat_user_preferences",
+    "article_clusters",
+    "cluster_metadata",
+    "article_embeddings",
+    "clustering_evaluation",
+    "clustering_params",
   ])
 }
