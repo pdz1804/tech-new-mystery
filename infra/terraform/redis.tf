@@ -1,6 +1,10 @@
 resource "aws_elasticache_subnet_group" "redis" {
   name       = "${local.name_prefix}-redis"
   subnet_ids = local.private_subnet_ids
+
+  lifecycle {
+    ignore_changes = [subnet_ids]
+  }
 }
 
 resource "aws_elasticache_replication_group" "redis" {

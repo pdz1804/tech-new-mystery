@@ -4,6 +4,10 @@ resource "aws_lb" "app" {
   subnets            = local.public_subnet_ids
   security_groups    = [aws_security_group.alb.id]
   idle_timeout       = 120
+
+  lifecycle {
+    ignore_changes = [subnets, security_groups]
+  }
 }
 
 resource "aws_lb_target_group" "api" {
@@ -13,6 +17,10 @@ resource "aws_lb_target_group" "api" {
   target_type          = "ip"
   vpc_id               = local.vpc_id
   deregistration_delay = 30
+
+  lifecycle {
+    ignore_changes = [vpc_id]
+  }
 
   health_check {
     path                = "/health"
@@ -30,6 +38,10 @@ resource "aws_lb_target_group" "frontend" {
   protocol    = "HTTP"
   target_type = "ip"
   vpc_id      = local.vpc_id
+
+  lifecycle {
+    ignore_changes = [vpc_id]
+  }
 
   health_check {
     path                = "/"

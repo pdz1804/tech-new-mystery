@@ -78,6 +78,31 @@ else
   echo "ElastiCache subnet group not found, Terraform will create: $REDIS_SUBNET_GROUP"
 fi
 
+REDIS_REPLICATION_GROUP="$(printf "%.40s" "${NAME_PREFIX}-redis")"
+if aws elasticache describe-replication-groups --region "$REGION" --replication-group-id "$REDIS_REPLICATION_GROUP" >/dev/null 2>&1; then
+  import_if_needed "aws_elasticache_replication_group.redis" "$REDIS_REPLICATION_GROUP"
+else
+  echo "ElastiCache replication group not found, Terraform will create: $REDIS_REPLICATION_GROUP"
+fi
+
+iam_roles=(
+  "${NAME_PREFIX}-ecs-execution:aws_iam_role.ecs_task_execution"
+  "${NAME_PREFIX}-ecs-task:aws_iam_role.ecs_task"
+  "${NAME_PREFIX}-agentcore-runtime:aws_iam_role.agentcore_runtime"
+  "${NAME_PREFIX}-agentcore-memory:aws_iam_role.agentcore_memory"
+  "${NAME_PREFIX}-agent-core-codebuild:aws_iam_role.codebuild_agent_core"
+)
+
+for item in "${iam_roles[@]}"; do
+  name="${item%%:*}"
+  resource="${item#*:}"
+  if aws iam get-role --role-name "$name" >/dev/null 2>&1; then
+    import_if_needed "$resource" "$name"
+  else
+    echo "IAM role not found, Terraform will create: $name"
+  fi
+done
+
 ecr_repositories=(
   "${NAME_PREFIX}-backend:aws_ecr_repository.backend"
   "${NAME_PREFIX}-frontend:aws_ecr_repository.frontend"
@@ -122,3 +147,41 @@ if [[ -n "$CODEBUILD_SOURCE_BUCKET" ]]; then
     echo "CodeBuild source bucket not found, Terraform will create: $CODEBUILD_SOURCE_BUCKET"
   fi
 fi
+
+LB_NAME="$(printf "%.32s" "${NAME_PREFIX}-alb")"
+LB_ARN="$(aws elbv2 describe-load-balancers --region "$REGION" --names "$LB_NAME" --query 'LoadBalancers[0].LoadBalancerArn' --output text 2>/dev/null || true)"
+if [[ -n "$LB_ARN" && "$LB_ARN" != "None" ]]; then
+  import_if_needed "aws_lb.app" "$LB_ARN"
+
+  HTTP_LISTENER_ARN="$(aws elbv2 describe-listeners --region "$REGION" --load-balancer-arn "$LB_ARN" --query 'Listeners[?Port==`80`].ListenerArn | [0]' --output text 2>/dev/null || true)"
+  if [[ -n "$HTTP_LISTENER_ARN" && "$HTTP_LISTENER_ARN" != "None" ]]; then
+    import_if_needed "aws_lb_listener.http" "$HTTP_LISTENER_ARN"
+
+    API_HTTP_RULE_ARN="$(aws elbv2 describe-rules --region "$REGION" --listener-arn "$HTTP_LISTENER_ARN" --query 'Rules[?Priority==`10`].RuleArn | [0]' --output text 2>/dev/null || true)"
+    if [[ -n "$API_HTTP_RULE_ARN" && "$API_HTTP_RULE_ARN" != "None" ]]; then
+      import_if_needed "aws_lb_listener_rule.api_http" "$API_HTTP_RULE_ARN"
+    else
+      echo "HTTP API listener rule not found, Terraform will create priority 10 rule"
+    fi
+  else
+    echo "HTTP listener not found, Terraform will create it"
+  fi
+else
+  echo "ALB not found, Terraform will create: $LB_NAME"
+fi
+
+target_groups=(
+  "$(printf "%.32s" "${NAME_PREFIX}-api"):aws_lb_target_group.api"
+  "$(printf "%.32s" "${NAME_PREFIX}-frontend"):aws_lb_target_group.frontend"
+)
+
+for item in "${target_groups[@]}"; do
+  name="${item%%:*}"
+  resource="${item#*:}"
+  tg_arn="$(aws elbv2 describe-target-groups --region "$REGION" --names "$name" --query 'TargetGroups[0].TargetGroupArn' --output text 2>/dev/null || true)"
+  if [[ -n "$tg_arn" && "$tg_arn" != "None" ]]; then
+    import_if_needed "$resource" "$tg_arn"
+  else
+    echo "Target group not found, Terraform will create: $name"
+  fi
+done
