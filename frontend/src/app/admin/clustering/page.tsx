@@ -161,7 +161,7 @@ export default function AdminClusteringPage() {
               </button>
               <button
                 type="button"
-                onClick={() => router.push('/admin')}
+                onClick={() => router.push('/admin/queue')}
                 className="inline-flex items-center gap-2 rounded-2xl border border-white/70 bg-white/62 px-4 py-2 text-sm font-bold text-slate-700 shadow-sm backdrop-blur-2xl transition-all hover:bg-white"
               >
                 <GitBranch size={15} aria-hidden="true" />
