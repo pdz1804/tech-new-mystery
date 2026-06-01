@@ -242,22 +242,61 @@ resource "aws_iam_role_policy" "ecs_task_app" {
   })
 }
 
-# Backend ECS tasks only need to call InvokeAgentRuntime.
-# All AgentCore tool/memory/browser permissions are on agentcore_runtime role (agentcore.tf).
+# Backend ECS tasks need to invoke agent runtime and access its memory/browser/tools
 resource "aws_iam_role_policy" "backend_invoke_agentcore" {
   name = "${local.name_prefix}-invoke-agentcore"
   role = aws_iam_role.ecs_task.id
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid      = "InvokeAgentRuntime"
-      Effect   = "Allow"
-      Action   = ["bedrock-agentcore:InvokeAgentRuntime"]
-      Resource = [
-        aws_bedrockagentcore_agent_runtime.agent_core.agent_runtime_arn,
-        "${aws_bedrockagentcore_agent_runtime.agent_core.agent_runtime_arn}/*"
-      ]
-    }]
+    Statement = [
+      {
+        Sid    = "InvokeAgentRuntime"
+        Effect = "Allow"
+        Action = ["bedrock-agentcore:InvokeAgentRuntime"]
+        Resource = [
+          aws_bedrockagentcore_agent_runtime.agent_core.agent_runtime_arn,
+          "${aws_bedrockagentcore_agent_runtime.agent_core.agent_runtime_arn}/*"
+        ]
+      },
+      {
+        Sid    = "AgentCoreMemory"
+        Effect = "Allow"
+        Action = [
+          "bedrock-agentcore:CreateEvent",
+          "bedrock-agentcore:DeleteEvent",
+          "bedrock-agentcore:GetEvent",
+          "bedrock-agentcore:GetMemory",
+          "bedrock-agentcore:ListEvents",
+          "bedrock-agentcore:ListMemories",
+          "bedrock-agentcore:RetrieveMemory"
+        ]
+        Resource = aws_bedrockagentcore_memory.agent_core.arn
+      },
+      {
+        Sid    = "AgentCoreBrowser"
+        Effect = "Allow"
+        Action = [
+          "bedrock-agentcore:GetBrowserSession",
+          "bedrock-agentcore:InvokeBrowser",
+          "bedrock-agentcore:InvokeOnBrowserSession",
+          "bedrock-agentcore:StartBrowserSession",
+          "bedrock-agentcore:StopBrowserSession"
+        ]
+        Resource = aws_bedrockagentcore_browser.agent_core.browser_arn
+      },
+      {
+        Sid    = "AgentCoreCodeInterpreter"
+        Effect = "Allow"
+        Action = [
+          "bedrock-agentcore:GetCodeInterpreterSession",
+          "bedrock-agentcore:InvokeCodeInterpreter",
+          "bedrock-agentcore:InvokeOnCodeInterpreterSession",
+          "bedrock-agentcore:StartCodeInterpreterSession",
+          "bedrock-agentcore:StopCodeInterpreterSession"
+        ]
+        Resource = aws_bedrockagentcore_code_interpreter.agent_core.code_interpreter_arn
+      }
+    ]
   })
 }
