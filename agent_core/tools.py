@@ -55,7 +55,7 @@ class _ReadableTextParser(HTMLParser):
 
 def _json_result(**payload) -> str:
     """Return compact JSON so tools, UI, and Langfuse can parse results."""
-    return json.dumps(payload, ensure_ascii=True)
+    return json.dumps(payload, ensure_ascii=False)
 
 
 def _safe_url(url: str) -> str:
@@ -208,13 +208,14 @@ def _make_search_tool(settings: Settings):
 
     @tool
     async def semantic_search(query: str, top_k: int = 5) -> str:
-        """Search the tech-news article database for articles relevant to the query.
+        """Search the internal tech-news article database using semantic similarity.
 
-        Use this tool whenever the user asks about news, articles, recent events,
-        trends, or any topic that may be covered in the article corpus.
+        Always call this first for questions about news, people, companies, events,
+        or trends. If the result is "No matching articles found", you MUST follow up
+        with browse_web to search the web — do not stop or say you couldn't find it.
 
         Args:
-            query: The natural-language search query.
+            query: The natural-language search query (e.g. "FPT AI strategy 2025").
             top_k: Maximum number of articles to return (default 5, max 10).
         """
         top_k = min(top_k, settings.max_search_results)
@@ -236,11 +237,16 @@ def _make_browser_tool(settings: Settings):
     def browse_web(url: str, task: str) -> str:
         """Navigate to a URL using an AWS-managed browser and extract content.
 
-        Use this tool to fetch live web pages, check current events, or verify
-        information from the internet.
+        Use this tool to:
+        - Fetch live web pages for real-time information.
+        - Search the web when semantic_search returns no results — use a Google
+          Search URL: https://www.google.com/search?q=<URL-encoded+query>
+        - Verify or expand on specific URLs provided by the user.
 
         Args:
-            url: The full URL to navigate to (must include https://).
+            url: The full URL to navigate to (must include https://). For web
+                 searches use DuckDuckGo HTML (NOT Google — it blocks bots):
+                 https://html.duckduckgo.com/html/?q=your+search+terms
             task: A description of what information to extract from the page.
         """
         browser_identifier = settings.browser_id or settings.browser_identifier
