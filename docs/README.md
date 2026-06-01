@@ -6,10 +6,10 @@ This folder contains the durable engineering references for Tech News Mystery. T
 
 | Document | What It Covers |
 | --- | --- |
-| [Architecture](ARCHITECTURE.md) | Service boundaries, data stores, and the main runtime flows. |
+| [Architecture](ARCHITECTURE.md) | Full system architecture — all services, data stores, request flows, and Mermaid diagrams for the chat pipeline, ingestion pipeline, and LLM fallback chain. |
+| [Deployment Architecture](DEPLOYMENT_ARCHITECTURE.md) | AWS infrastructure topology, VPC/network design, ECS service config, Secrets Manager, CI/CD pipeline, and local dev environment — all with Mermaid diagrams. |
 | [API Reference](API_REFERENCE.md) | Current HTTP endpoints and response behavior. |
 | [Manual Startup](MANUAL_STARTUP.md) | Local service startup, ports, and health checks. |
-| [Deployment Architecture](DEPLOYMENT_ARCHITECTURE.md) | Production infrastructure layout and runtime services. |
 | [CI/CD Configuration](CI_CD_CONFIGURATION.md) | GitHub Actions, ECS deployment variables, secrets, and troubleshooting. |
 
 ## Product Areas

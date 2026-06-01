@@ -110,17 +110,27 @@ For the full startup sequence, ports, and health checks, see [Manual Startup](do
 
 ## Documentation
 
-- [Documentation Index](docs/README.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [API Reference](docs/API_REFERENCE.md)
-- [Clustering Guide](docs/CLUSTERING_GUIDE.md)
-- [Clustering PCA Map](docs/CLUSTERING_PCA_MAP.md)
-- [Chatbot Guide](docs/CHATBOT_GUIDE.md)
-- [Agent Core](docs/AGENT_CORE.md)
-- [Crawl4AI Guide](docs/CRAWL4AI_GUIDE.md)
-- [Deployment Architecture](docs/DEPLOYMENT_ARCHITECTURE.md)
-- [CI/CD Configuration](docs/CI_CD_CONFIGURATION.md)
-- [Frontend Design System](docs/frontend/DESIGN_SYSTEM.md)
+For architecture, APIs, deployment, and operational details, start with the [documentation index](docs/README.md).
+
+### Architecture & Infrastructure
+
+| Document | Summary |
+| --- | --- |
+| [System Architecture](docs/ARCHITECTURE.md) | All services, data stores, and external integrations. Includes Mermaid diagrams for the high-level component map, chat streaming sequence, article ingestion pipeline, clustering pipeline, and LLM fallback chain. |
+| [Deployment Architecture](docs/DEPLOYMENT_ARCHITECTURE.md) | Full AWS infrastructure — VPC layout, ECS cluster, ALB, ElastiCache, DynamoDB, S3, Bedrock AgentCore, Secrets Manager, IAM roles, CI/CD pipeline, and local dev Docker Compose topology. All with Mermaid diagrams. |
+| [CI/CD Configuration](docs/CI_CD_CONFIGURATION.md) | GitHub Actions workflows, ECR push, ECS rollout, Terraform pipeline, and required secrets. |
+
+### Product Areas
+
+| Document | Summary |
+| --- | --- |
+| [Chatbot Guide](docs/CHATBOT_GUIDE.md) | Chat sessions, streaming, Agent Core integration, persistence, and troubleshooting. |
+| [Agent Core](docs/AGENT_CORE.md) | LangGraph agent runtime, tools, memory, prompts, streaming, and current scope. |
+| [Clustering Guide](docs/CLUSTERING_GUIDE.md) | Topic clustering, evaluations, worker flow, tables, and operations. |
+| [Clustering PCA Map](docs/CLUSTERING_PCA_MAP.md) | Worker-backed article embedding projection and visualization behavior. |
+| [API Reference](docs/API_REFERENCE.md) | HTTP endpoints and response schemas. |
+| [Crawl4AI Guide](docs/CRAWL4AI_GUIDE.md) | Article crawling and content extraction. |
+| [Frontend Design System](docs/frontend/DESIGN_SYSTEM.md) | Liquid Glass design language, tokens, and layout guidance. |
 
 ## Repository Layout
 
