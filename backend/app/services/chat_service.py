@@ -170,6 +170,7 @@ class ChatService:
         token_count: int | None = None,
         model_used: str | None = None,
         tool_calls_json: str | None = None,
+        segments_json: str | None = None,
     ) -> dict:
         """Add a message to a conversation session.
 
@@ -203,6 +204,7 @@ class ChatService:
             token_count=token_count,
             model_used=model_used,
             tool_calls_json=tool_calls_json,
+            segments_json=segments_json,
             expires_at=expires_at,
         )
 
@@ -224,6 +226,7 @@ class ChatService:
             "token_count": token_count,
             "model_used": model_used,
             "tool_calls_json": tool_calls_json,
+            "segments_json": segments_json,
         }
 
     async def get_messages(
@@ -281,6 +284,7 @@ class ChatService:
                     "token_count": m.token_count,
                     "model_used": m.model_used,
                     "tool_calls_json": getattr(m, "tool_calls_json", None),
+                    "segments_json": getattr(m, "segments_json", None),
                 }
                 for m in messages
             ],

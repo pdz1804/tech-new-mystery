@@ -580,6 +580,8 @@ async def stream_chat_message(
         message_id = f"msg-{uuid.uuid4().hex[:12]}"
         assistant_content = ""
         tool_calls_map: dict[str, dict] = {}  # tool_id -> tool_call dict for DynamoDB persistence
+        message_segments: list[dict] = []
+        current_text_segment_index: int | None = None
         agent_core: AgentCoreClient | None = None
         agent_stream = None
 
@@ -615,6 +617,13 @@ async def stream_chat_message(
                     if event_type == "token":
                         token_content = event.get("content", "")
                         assistant_content += token_content
+                        if token_content:
+                            if current_text_segment_index is None:
+                                current_text_segment_index = len(message_segments)
+                                message_segments.append({"type": "text", "content": token_content})
+                            else:
+                                segment = message_segments[current_text_segment_index]
+                                segment["content"] = f"{segment.get('content', '')}{token_content}"
                         logger.debug(f"[STREAM] Yielding token event, content_len={len(token_content)}")
                         async for frame in _yield_sse("token", event):
                             yield frame
@@ -631,6 +640,11 @@ async def stream_chat_message(
                             "status": "executing",
                             "args": event.get("tool_args"),
                         }
+                        current_text_segment_index = None
+                        message_segments.append({
+                            "type": "tool",
+                            "toolCall": tool_calls_map[tool_id],
+                        })
                         logger.info("[STREAM] Tool invocation: %s id=%s", event.get("tool_name"), tool_id)
                         async for frame in _yield_sse("tool_invocation", event):
                             yield frame
@@ -648,6 +662,7 @@ async def stream_chat_message(
                                 "result": event.get("result_summary", ""),
                                 "artifacts": event.get("result_artifacts", []),
                             })
+                            updated_tool_call = tool_calls_map[tool_id]
                         else:
                             tool_calls_map[tool_id] = {
                                 "tool_id": tool_id,
@@ -656,6 +671,14 @@ async def stream_chat_message(
                                 "result": event.get("result_summary", ""),
                                 "artifacts": event.get("result_artifacts", []),
                             }
+                            updated_tool_call = tool_calls_map[tool_id]
+                        for segment in message_segments:
+                            if (
+                                segment.get("type") == "tool"
+                                and segment.get("toolCall", {}).get("tool_id") == tool_id
+                            ):
+                                segment["toolCall"] = updated_tool_call
+                                break
                         logger.info("[STREAM] Tool result: %s id=%s status=%s", event.get("tool_name"), tool_id, status)
                         async for frame in _yield_sse("tool_result", event):
                             yield frame
@@ -688,6 +711,12 @@ async def stream_chat_message(
                         content = event.get("content")
                         if isinstance(content, str):
                             assistant_content += content
+                            if current_text_segment_index is None:
+                                current_text_segment_index = len(message_segments)
+                                message_segments.append({"type": "text", "content": content})
+                            else:
+                                segment = message_segments[current_text_segment_index]
+                                segment["content"] = f"{segment.get('content', '')}{content}"
                         async for frame in _yield_sse(event_type, event):
                             yield frame
                         if await request.is_disconnected():
@@ -738,6 +767,7 @@ async def stream_chat_message(
             try:
                 if assistant_content:
                     tool_calls_json = json.dumps(list(tool_calls_map.values())) if tool_calls_map else None
+                    segments_json = json.dumps(message_segments) if message_segments else None
                     await error_handler.retry_with_backoff(
                         service.add_message,
                         "save_assistant_message",
@@ -746,6 +776,7 @@ async def stream_chat_message(
                         role="assistant",
                         content=assistant_content,
                         tool_calls_json=tool_calls_json,
+                        segments_json=segments_json,
                     )
                     # Log to per-request memory
                     await req_memory.log_message(

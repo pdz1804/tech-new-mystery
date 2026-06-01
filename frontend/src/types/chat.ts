@@ -79,6 +79,7 @@ export interface ApiMessage {
   token_count?: number | null;
   model_used?: string | null;
   tool_calls_json?: string | null;
+  segments_json?: string | null;
 }
 
 export interface ApiListMeta {

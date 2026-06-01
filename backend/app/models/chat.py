@@ -104,6 +104,7 @@ class ConversationMessageModel(Model):
     token_count = NumberAttribute(null=True)  # LLM token count if from assistant
     model_used = UnicodeAttribute(null=True)  # Model that generated response
     tool_calls_json = UnicodeAttribute(null=True)  # JSON-serialized tool calls for assistant messages
+    segments_json = UnicodeAttribute(null=True)  # Ordered text/tool segments for history rendering
 
     # TTL: 90 days (7776000 seconds)
     expires_at = NumberAttribute(null=True)  # Unix timestamp for TTL expiration

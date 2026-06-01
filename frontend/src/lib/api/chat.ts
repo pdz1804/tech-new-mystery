@@ -60,6 +60,15 @@ function normalizeMessage(message: ApiMessage): ChatMessage {
     }
   }
 
+  let segments: import('@/types/chat').MessageSegment[] | undefined;
+  if (message.segments_json) {
+    try {
+      segments = JSON.parse(message.segments_json);
+    } catch {
+      // Malformed JSON from older persisted messages; ignore it.
+    }
+  }
+
   return {
     id: message.message_id,
     session_id: message.session_id,
@@ -69,6 +78,7 @@ function normalizeMessage(message: ApiMessage): ChatMessage {
     timestamp: toMillis(message.timestamp),
     tokens: message.token_count ?? undefined,
     tool_calls,
+    segments,
   };
 }
 
