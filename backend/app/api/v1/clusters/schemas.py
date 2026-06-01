@@ -57,6 +57,7 @@ class PCAArticlePoint(BaseModel):
     """Single article projected into 2D PCA space."""
 
     article_id: str
+    slug: str | None = None
     title: str
     cluster_id: str
     cluster_label: str

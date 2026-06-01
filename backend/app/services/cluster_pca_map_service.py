@@ -40,7 +40,7 @@ def pca_cache_key(cluster_ids: list[str] | None, limit: int) -> str:
     """Build a stable cache key for a requested PCA map."""
     cluster_part = ",".join(sorted(cluster_ids or ["latest"]))
     digest = hashlib.sha1(f"{cluster_part}:{limit}".encode("utf-8")).hexdigest()
-    return f"clusters:pca-map:{digest}"
+    return f"clusters:pca-map:v2:{digest}"
 
 
 def get_cached_pca_map(cache_key: str) -> ClusterPCAMapResponse | None:
@@ -144,6 +144,7 @@ async def build_cluster_pca_map(
         [assignment.article_id for assignment in usable_assignments]
     )
     article_titles = {article.article_id: article.title for article in articles}
+    article_slugs = {article.article_id: article.slug for article in articles}
 
     vectors = np.array(
         [embeddings_by_id[assignment.article_id] for assignment in usable_assignments],
@@ -163,6 +164,7 @@ async def build_cluster_pca_map(
     points = [
         PCAArticlePoint(
             article_id=assignment.article_id,
+            slug=article_slugs.get(assignment.article_id),
             title=article_titles.get(assignment.article_id, "Untitled article"),
             cluster_id=assignment.cluster_id,
             cluster_label=cluster_lookup.get(assignment.cluster_id, {}).get("label", "Cluster"),

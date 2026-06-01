@@ -7,7 +7,7 @@ Scenarios:
     - ChatUser:     SSE streaming, session CRUD (weight 70%)
     - ClusterUser:  Browse clusters, trending (weight 30%)
 
-Targets (per TASKS.md CHT-020):
+Targets:
     - p95 < 3s for chat at 100 concurrent users
     - error rate < 0.1%
     - auto-scaling verified under load

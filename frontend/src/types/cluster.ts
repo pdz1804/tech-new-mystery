@@ -36,6 +36,7 @@ export interface ClusterListResponse {
 
 export interface PCAArticlePoint {
   article_id: string;
+  slug?: string | null;
   title: string;
   cluster_id: string;
   cluster_label: string;

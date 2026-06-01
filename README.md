@@ -1,66 +1,63 @@
 # Tech News Mystery
 
-Tech News Mystery is a full-stack AI news intelligence platform. It ingests and curates technology articles, groups them into semantic topics, and provides an agentic chat interface for exploring the corpus.
+Tech News Mystery is an AI-powered technology news workspace. It collects articles, turns them into searchable knowledge, groups them into live topic clusters, and gives users a chat assistant for exploring what is happening across the tech landscape.
 
-The system is built around a clear separation of concerns: Next.js for the product UI, FastAPI for APIs, Celery for long-running jobs, Qdrant for vector retrieval, DynamoDB for application state, and a separate Agent Core runtime for tool-using chat.
+The README is intentionally product-first. For architecture, APIs, deployment, and operational details, start with the [documentation index](docs/README.md).
 
-## Highlights
+## What You Can Do
 
-- Semantic article clustering with OpenAI embeddings, Qdrant, HDBSCAN/K-means evaluation, and DynamoDB-backed topic metadata.
-- Neo4j-style article embedding map: worker-precomputed PCA projection, draggable article nodes, cluster coloring, hover labels, and click inspection.
-- Agentic chatbot with persisted sessions, streaming responses, semantic search tools, and Agent Core integration.
-- Production-minded infrastructure with Terraform, ECS services, Redis/Celery workers, scheduled jobs, and CI/CD workflows.
-- Apple Liquid Glass-inspired frontend with responsive topic browsing, chat UI, admin pages, and article discovery.
+- Discover recent technology articles in a clean, searchable interface.
+- Browse semantic topic clusters instead of scanning isolated article lists.
+- See clustered articles as an interactive embedding map, with article nodes colored by topic.
+- Drag, hover, and inspect article dots in a Neo4j-style topic view.
+- Sort topics by size, recency, or diversity to understand what is broad, fresh, or varied.
+- Retrigger clustering from the UI when new data should be regrouped.
+- Ask the chatbot questions about the article corpus and receive streamed responses.
+- Keep chat sessions so follow-up research does not disappear between page loads.
+- Use semantic search so related stories can be found even when keywords do not match exactly.
+- Run background crawling, embedding, clustering, evaluation, summaries, and map preparation jobs.
+- Operate the system locally or deploy it with the included cloud infrastructure.
+- Use admin and health endpoints to inspect system behavior during development and production checks.
 
-## Architecture
+## Main Experiences
 
-```text
-frontend (Next.js)
-   |
-   v
-api (FastAPI /v1)
-   |             \
-   |              -> agent-core (LangGraph + Bedrock tools)
-   v
-DynamoDB, Qdrant, Redis, S3
-   ^
-   |
-worker + beat (Celery)
-```
+### Article Discovery
 
-Core runtime services:
+The Discover experience is the main entry point for browsing technology news. Users can search articles, inspect details, and move from individual stories into broader topics.
 
-| Service | Purpose |
+### Topics And Clustering
+
+The Topics page groups articles by meaning, not by exact keyword. It shows the latest clustering set and provides a visual map where each dot represents an article. Dot color comes from the cluster assignment, and labels stay out of the way until the user hovers or selects a node.
+
+The heavy map preparation work runs in background workers, so the UI can stay responsive while embeddings are projected into two dimensions.
+
+Technical details: [Clustering Guide](docs/CLUSTERING_GUIDE.md) and [Clustering PCA Map](docs/CLUSTERING_PCA_MAP.md).
+
+### Chat Assistant
+
+The Chat experience lets users ask questions about the news corpus. Responses stream back into the UI, sessions are persisted, and the assistant can use semantic retrieval to ground answers in relevant articles.
+
+Technical details: [Chatbot Guide](docs/CHATBOT_GUIDE.md).
+
+### Apple-Inspired Interface
+
+The frontend uses a restrained Liquid Glass direction: translucent surfaces, soft borders, layered depth, compact controls, and responsive layouts that keep the product usable on desktop and smaller screens.
+
+Design details: [Design System](docs/frontend/DESIGN_SYSTEM.md).
+
+## Capabilities At A Glance
+
+| Area | Capabilities |
 | --- | --- |
-| `frontend` | Next.js app for articles, topics, chat, profile, and admin screens. |
-| `api` | FastAPI API for auth, articles, search, clustering, chat, and health checks. |
-| `worker` | Celery worker for crawl, embedding, clustering, evaluation, summaries, and PCA map jobs. |
-| `beat` | Celery Beat scheduler for recurring crawls, clustering, and trending recalculation. |
-| `agent-core` | Separate agent runtime for chat orchestration and tool execution. |
+| News ingestion | Crawl articles, extract readable content, store normalized article records. |
+| Search | Keyword search, semantic search, and retrieval for chat/tooling flows. |
+| Topics | Cluster articles, label topics, evaluate clustering quality, surface latest results. |
+| Visualization | Worker-prepared PCA map, cluster-colored article nodes, hover/click inspection. |
+| Chat | Streaming responses, persisted conversations, semantic article lookup, Agent Core integration. |
+| Background work | Celery jobs for crawling, embedding, clustering, summaries, evaluations, and PCA maps. |
+| Operations | Health checks, admin APIs, Terraform infrastructure, CI/CD configuration, local startup docs. |
 
-## Clustering And PCA Map Flow
-
-The topic graph intentionally avoids doing heavy PCA work inside request handlers.
-
-```text
-latest clusters
-  -> article assignments per cluster
-  -> article embeddings from Qdrant
-  -> PCA in Celery worker
-  -> Redis cached map payload
-  -> API serves cached result to frontend
-```
-
-When `/v1/clusters/pca-map` is requested:
-
-1. API checks Redis for the requested map.
-2. If cached, it returns `status: "ready"` with article nodes.
-3. If missing, it queues `tasks.generate_cluster_pca_map` and returns `status: "queued"`.
-4. The frontend shows a preparing state and polls until the cached map is ready.
-
-See [docs/CLUSTERING_PCA_MAP.md](docs/CLUSTERING_PCA_MAP.md) for implementation details.
-
-## Local Development
+## Quick Start
 
 ### Prerequisites
 
@@ -70,7 +67,7 @@ See [docs/CLUSTERING_PCA_MAP.md](docs/CLUSTERING_PCA_MAP.md) for implementation 
 - AWS credentials for cloud-backed development paths
 - OpenAI API key for embedding generation
 
-### Start Infrastructure
+### Start Local Services
 
 ```powershell
 cd infra
@@ -100,7 +97,7 @@ npm install
 npm run dev
 ```
 
-Local URLs:
+## Local URLs
 
 | Target | URL |
 | --- | --- |
@@ -109,24 +106,7 @@ Local URLs:
 | Swagger UI | `http://localhost:8000/docs` |
 | Agent Core health | `http://localhost:8080/health` |
 
-## Useful Commands
-
-```powershell
-# Frontend
-cd frontend
-npm run type-check
-npm run test
-
-# Backend
-cd backend
-pytest
-python -m py_compile app/api/v1/clusters/router.py app/services/cluster_pca_map_service.py
-
-# Terraform
-cd infra/terraform
-terraform fmt
-terraform validate
-```
+For the full startup sequence, ports, and health checks, see [Manual Startup](docs/MANUAL_STARTUP.md).
 
 ## Documentation
 
@@ -134,10 +114,12 @@ terraform validate
 - [Architecture](docs/ARCHITECTURE.md)
 - [API Reference](docs/API_REFERENCE.md)
 - [Clustering Guide](docs/CLUSTERING_GUIDE.md)
-- [PCA Map Architecture](docs/CLUSTERING_PCA_MAP.md)
+- [Clustering PCA Map](docs/CLUSTERING_PCA_MAP.md)
 - [Chatbot Guide](docs/CHATBOT_GUIDE.md)
-- [Manual Startup](docs/MANUAL_STARTUP.md)
+- [Crawl4AI Guide](docs/CRAWL4AI_GUIDE.md)
 - [Deployment Architecture](docs/DEPLOYMENT_ARCHITECTURE.md)
+- [CI/CD Configuration](docs/CI_CD_CONFIGURATION.md)
+- [Frontend Design System](docs/frontend/DESIGN_SYSTEM.md)
 
 ## Repository Layout
 
@@ -146,15 +128,15 @@ agent_core/        Agent runtime service for chat orchestration
 backend/           FastAPI app, workers, repositories, services, tests
 frontend/          Next.js app and UI components
 infra/             Docker Compose and Terraform infrastructure
-docs/              Architecture, operations, feature guides, and references
+docs/              Durable architecture, product, operations, and frontend guides
 scripts/           Operational helper scripts
 ```
 
-## Notes For Developers
+## Developer Notes
 
 - Browser warning `Extra attributes from the server: bis_skin_checked` is usually caused by a browser extension injecting attributes before React hydration. It is not generated by this codebase.
-- The PCA graph has no fake relationship edges. Dots are article nodes projected by PCA and colored by cluster assignment.
-- Heavy operations belong in Celery workers. API routes should serve cached state, enqueue work, or stream lightweight events.
+- The topic map does not invent relationship edges. It visualizes article embeddings as PCA-projected nodes colored by cluster.
+- Heavy operations belong in workers. API routes should serve cached state, enqueue work, or stream lightweight events.
 
 ## License
 

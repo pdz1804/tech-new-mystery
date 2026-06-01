@@ -3,7 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronLeft, ChevronRight, Search, Filter, X, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, Filter, X, RefreshCw, ExternalLink } from 'lucide-react';
 import { useAuthStore } from '@/lib/stores/authStore';
 import { apiClient } from '@/lib/api/client';
 import { ClusterCard } from '@/components/article/ClusterCard';
@@ -57,6 +57,7 @@ function truncateTitle(title: string, maxLength = 54) {
 }
 
 function ClusterMap({ data }: { data: ClusterPCAMapResponse | null }) {
+  const router = useRouter();
   const W = 1000;
   const H = 420;
   const padding = 56;
@@ -216,6 +217,16 @@ function ClusterMap({ data }: { data: ClusterPCAMapResponse | null }) {
               <p className="mt-2 text-xs text-slate-500">
                 Confidence {(selectedPoint.confidence_score * 100).toFixed(0)}%
               </p>
+              {selectedPoint.slug && (
+                <button
+                  type="button"
+                  onClick={() => router.push(`/articles/${selectedPoint.slug}`)}
+                  className="mt-3 inline-flex items-center gap-2 rounded-xl border border-white/70 bg-white/70 px-3 py-2 text-xs font-bold text-blue-700 shadow-sm transition-all hover:bg-white"
+                >
+                  View article
+                  <ExternalLink size={13} aria-hidden="true" />
+                </button>
+              )}
             </>
           ) : (
             <p className="text-xs font-medium leading-5 text-slate-500">
@@ -252,6 +263,10 @@ export default function TopicsPage() {
   const [showMobileFilters, setShowMobileFilters] = useState(false);
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [isTriggering, setIsTriggering] = useState(false);
+  const pcaClusterIds = useMemo(
+    () => state.clusters.map((cluster) => cluster.id).join('|'),
+    [state.clusters]
+  );
 
   // Handle initial load and URL params
   useEffect(() => {
@@ -337,22 +352,27 @@ export default function TopicsPage() {
   useEffect(() => {
     if (state.pcaMap?.status !== 'queued' || state.clusters.length === 0) return;
 
-    const timer = window.setTimeout(async () => {
+    const pollPcaMap = async () => {
       try {
         const pcaParams = new URLSearchParams();
         pcaParams.set('limit', '250');
-        state.clusters.forEach((cluster) => pcaParams.append('cluster_ids', cluster.id));
+        pcaClusterIds
+          .split('|')
+          .filter(Boolean)
+          .forEach((clusterId) => pcaParams.append('cluster_ids', clusterId));
         const response = await apiClient.get<ClusterPCAMapResponse>(
           `/clusters/pca-map?${pcaParams.toString()}`
         );
         setState((s) => ({ ...s, pcaMap: response.data }));
       } catch {
-        // Leave the queued state visible; the next page interaction will retry.
+        // Keep polling; transient worker/Redis timing should not require a page refresh.
       }
-    }, 2500);
+    };
 
-    return () => window.clearTimeout(timer);
-  }, [state.pcaMap?.status, state.clusters]);
+    const timer = window.setInterval(pollPcaMap, 2500);
+
+    return () => window.clearInterval(timer);
+  }, [state.pcaMap?.status, state.clusters.length, pcaClusterIds]);
 
   const triggerClustering = async () => {
     setIsTriggering(true);

@@ -245,7 +245,7 @@ export default function ArticleDetailPage({ params }: { params: { slug: string }
                         url: window.location.href,
                       });
                     } catch {
-                      console.log('Share cancelled');
+                      // User cancelled the native share sheet.
                     }
                   } else {
                     // Fallback: copy to clipboard

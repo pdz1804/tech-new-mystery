@@ -44,7 +44,7 @@ Response status values:
 - `queued`: worker generation has been queued; client should poll again.
 - `unavailable`: cache or worker dispatch failed; page should remain usable.
 
-The response contains article-level PCA points. Each point includes `article_id`, `title`, `cluster_id`, `cluster_label`, normalized `x/y` coordinates, and `confidence_score`.
+The response contains article-level PCA points. Each point includes `article_id`, `slug`, `title`, `cluster_id`, `cluster_label`, normalized `x/y` coordinates, and `confidence_score`.
 
 Admin evaluation/config endpoints are mounted under `/v1/admin`.
 

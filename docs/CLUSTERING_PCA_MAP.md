@@ -10,7 +10,7 @@ The map helps users inspect semantic neighborhoods in the article corpus:
 - node position comes from PCA over article embeddings;
 - node color comes from the article's cluster assignment;
 - hover shows the article title;
-- click opens article/cluster details;
+- click selects an article node and the detail panel links to the article by slug;
 - drag lets users reposition nodes locally while exploring.
 
 The visualization does not draw relationship edges because the system does not currently store graph relationships between articles.
@@ -67,6 +67,7 @@ Response:
   "points": [
     {
       "article_id": "article-id",
+      "slug": "article-title-slug",
       "title": "Article title",
       "cluster_id": "cluster-id",
       "cluster_label": "AI Infrastructure",
@@ -101,7 +102,7 @@ Status values:
 When the response is `queued`, the UI:
 
 1. shows a preparation state in the map panel;
-2. polls `/clusters/pca-map` after a short delay;
+2. polls `/clusters/pca-map` on an interval without requiring refresh;
 3. renders the Neo4j-style node map when the cached payload is ready.
 
 The map is intentionally node-only. Any future edge rendering should be backed by a real relationship source such as citation links, source co-occurrence, article similarity thresholds, or a graph database.

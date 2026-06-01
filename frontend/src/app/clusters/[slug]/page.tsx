@@ -285,7 +285,7 @@ export default function ClusterDetailPage({ params }: { params: { slug: string }
                         url: window.location.href,
                       });
                     } catch {
-                      console.log('Share cancelled');
+                      // User cancelled the native share sheet.
                     }
                   } else {
                     await navigator.clipboard.writeText(window.location.href);
