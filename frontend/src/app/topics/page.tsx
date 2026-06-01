@@ -47,11 +47,6 @@ interface TopicsPageState {
 
 // ─── PCA-style cluster map (deterministic hash-based positions) ───────────────
 
-const CLUSTER_COLORS = [
-  '#3B82F6', '#8B5CF6', '#10B981', '#F59E0B',
-  '#EF4444', '#06B6D4', '#84CC16', '#F97316',
-];
-
 function truncateTitle(title: string, maxLength = 54) {
   return title.length > maxLength ? `${title.slice(0, maxLength - 1)}...` : title;
 }
