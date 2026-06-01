@@ -21,8 +21,17 @@ export interface ToolCall {
   status: 'executing' | 'completed' | 'failed';
   args?: Record<string, unknown>;
   result?: unknown;
+  artifacts?: ToolArtifact[];
   results_count?: number;
   execution_time_ms?: number;
+}
+
+export interface ToolArtifact {
+  name: string;
+  path?: string;
+  mime_type?: string;
+  data_url?: string;
+  too_large?: boolean;
 }
 
 export type ToolResult = ToolCall;
@@ -104,6 +113,7 @@ export interface SSEEvent {
   code?: string;
   results_count?: number;
   result_summary?: string;
+  result_artifacts?: ToolArtifact[];
   recoverable?: boolean;
   _server_sent_at_ms?: number;
 }
@@ -161,4 +171,5 @@ export interface ToolIndicatorProps {
   status: 'executing' | 'completed' | 'failed';
   args?: Record<string, unknown>;
   result?: unknown;
+  artifacts?: ToolArtifact[];
 }

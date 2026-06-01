@@ -9,7 +9,7 @@ Local dev:   falls back to direct HTTP POST to /invocations
 Both paths emit the same yielded dict schema:
   {"type": "token",           "content": "..."}
   {"type": "tool_invocation", "tool_name": "...", "tool_id": "...", "tool_args": {...}}
-  {"type": "tool_result",     "tool_name": "...", "status": "completed|failed", "result_summary": "..."}
+  {"type": "tool_result",     "tool_name": "...", "status": "completed|failed", "result_summary": "...", "result_artifacts": [...]}
   {"type": "done"}
   {"type": "error",           "message": "...", "recoverable": True|False}
 """

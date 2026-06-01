@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 import os
+import json
 from typing import AsyncGenerator
 
 from bedrock_agentcore.runtime import BedrockAgentCoreApp
@@ -33,6 +34,7 @@ from bedrock_agentcore.runtime.context import RequestContext
 
 from agent_core.config import settings
 from agent_core.graph import AgentRuntime
+from agent_core.langfuse_observability import LangfuseObserver
 from agent_core.memory import AgentMemory
 
 logging.basicConfig(
@@ -97,7 +99,14 @@ def _load_secrets_from_aws() -> None:
         secret = json.loads(
             client.get_secret_value(SecretId=secret_arn)["SecretString"]
         )
-        for key in ("OPENAI_API_KEY", "QDRANT_URL", "QDRANT_API_KEY"):
+        for key in (
+            "OPENAI_API_KEY",
+            "QDRANT_URL",
+            "QDRANT_API_KEY",
+            "LANGFUSE_SECRET_KEY",
+            "LANGFUSE_PUBLIC_KEY",
+            "LANGFUSE_BASE_URL",
+        ):
             if key in secret and not os.environ.get(key):
                 os.environ[key] = secret[key]
         logger.info("[INIT] Secrets loaded from Secrets Manager")
@@ -113,6 +122,30 @@ _load_secrets_from_aws()
 
 memory = AgentMemory(settings)
 runtime = AgentRuntime(settings)
+langfuse_observer = LangfuseObserver(settings)
+
+
+def _extract_tool_payload(output) -> tuple[str, list[dict]]:
+    """Extract text and optional artifacts from a LangChain tool output."""
+    content = getattr(output, "content", output)
+    text = content if isinstance(content, str) else str(content or "")
+
+    try:
+        payload = json.loads(text)
+    except (TypeError, json.JSONDecodeError):
+        return text, []
+
+    if not isinstance(payload, dict):
+        return text, []
+
+    summary = payload.get("summary") or payload.get("output") or payload.get("stdout") or text
+    artifacts = payload.get("artifacts") if isinstance(payload.get("artifacts"), list) else []
+    safe_artifacts = [
+        artifact
+        for artifact in artifacts
+        if isinstance(artifact, dict) and isinstance(artifact.get("data_url"), str)
+    ]
+    return str(summary), safe_artifacts
 
 # ---------------------------------------------------------------------------
 # BedrockAgentCoreApp entrypoint
@@ -137,6 +170,15 @@ async def agent_invocation(
         return
 
     logger.info("[AGENT] session=%s user=%s len=%d", session_id, user_id, len(user_message))
+    trace_metadata = {
+        "session_id": session_id,
+        "user_id": user_id,
+        "has_recent_events": bool(ctx.get("recent_events")),
+        "recent_event_count": len(ctx.get("recent_events", [])),
+        "browser_id_configured": bool(settings.browser_id),
+        "code_interpreter_id_configured": bool(settings.code_interpreter_id),
+        "memory_enabled": memory.enabled,
+    }
 
     # 1. Load conversation history from AgentCore Memory
     history = await memory.get_last_k_turns(
@@ -164,113 +206,152 @@ async def agent_invocation(
     }
 
     try:
-        async for event in runtime.graph.astream_events(agent_input, version="v2"):
-            kind = event.get("event", "")
-            name = event.get("name", "")
+        with langfuse_observer.trace_context(
+            session_id=session_id,
+            user_id=user_id,
+            input_text=user_message,
+            metadata={**trace_metadata, "memory_history_count": len(history)},
+        ):
+            langgraph_config = langfuse_observer.langgraph_config(
+                session_id=session_id,
+                user_id=user_id,
+                metadata={**trace_metadata, "memory_history_count": len(history)},
+            )
 
-            if kind == "on_chat_model_stream":
-                # Real token-level streaming from Bedrock's ConverseStream API
-                stream_chunk_events += 1
-                chunk = event["data"].get("chunk")
-                if chunk:
-                    token = _extract_text(chunk.content)
-                    if token:
-                        stream_text_events += 1
-                        assistant_response += token
-                        logger.warning(f"[AGENT] Token event #{stream_text_events}: len={len(token)}")
-                        yield {"type": "token", "content": token}
+            async for event in runtime.graph.astream_events(
+                agent_input,
+                version="v2",
+                config=langgraph_config,
+            ):
+                kind = event.get("event", "")
+                name = event.get("name", "")
 
-            elif kind == "on_chat_model_end":
-                result = event["data"].get("output")
-                output_text = ""
-                has_tool_call = False
-                if result:
-                    has_tool_call = bool(getattr(result, "tool_calls", None))
-                    content = result.content if hasattr(result, "content") else str(result)
-                    if isinstance(content, str):
-                        output_text = content
-                    elif isinstance(content, list):
-                        output_text = "".join(
-                            item.get("text", "") if isinstance(item, dict) else str(item)
-                            for item in content
-                            if not (isinstance(item, dict) and item.get("type") == "tool_use")
-                        )
-                    else:
-                        output_text = str(content)
+                if kind == "on_chat_model_stream":
+                    # Real token-level streaming from Bedrock's ConverseStream API
+                    stream_chunk_events += 1
+                    chunk = event["data"].get("chunk")
+                    if chunk:
+                        token = _extract_text(chunk.content)
+                        if token:
+                            stream_text_events += 1
+                            assistant_response += token
+                            logger.warning("[AGENT] Token event #%d: len=%d", stream_text_events, len(token))
+                            yield {"type": "token", "content": token}
 
-                logger.warning(f"[AGENT] on_chat_model_end: has_tool_call={has_tool_call}, output_len={len(output_text)}, stream_text_events={stream_text_events}")
+                elif kind == "on_chat_model_end":
+                    result = event["data"].get("output")
+                    output_text = ""
+                    has_tool_call = False
+                    if result:
+                        has_tool_call = bool(getattr(result, "tool_calls", None))
+                        content = result.content if hasattr(result, "content") else str(result)
+                        if isinstance(content, str):
+                            output_text = content
+                        elif isinstance(content, list):
+                            output_text = "".join(
+                                item.get("text", "") if isinstance(item, dict) else str(item)
+                                for item in content
+                                if not (isinstance(item, dict) and item.get("type") == "tool_use")
+                            )
+                        else:
+                            output_text = str(content)
 
-                # Tool-only turns often end without visible text. The final
-                # answer should arrive in a later model call after tool_result.
-                if has_tool_call or not output_text.strip():
-                    logger.warning(f"[AGENT] Skipping on_chat_model_end: has_tool_call={has_tool_call}, empty_output={not output_text.strip()}")
-                    continue
-
-                # If LangGraph exposes a later model-end final answer after
-                # streamed pre-tool text, forward the missing suffix instead of
-                # dropping it. This is the post-tool answer path.
-                missing_text = output_text
-                if assistant_response and output_text.startswith(assistant_response):
-                    missing_text = output_text[len(assistant_response):]
-                elif assistant_response and output_text in assistant_response:
-                    missing_text = ""
-
-                if not missing_text.strip():
-                    continue
-
-                if settings.require_true_streaming and stream_text_events == 0:
-                    fallback_blocked = True
-                    logger.error(
-                        "[AGENT] Real streaming required but no on_chat_model_stream text chunks were emitted. "
-                        "stream_chunk_events=%d model=%s diagnostics=%s",
-                        stream_chunk_events,
-                        settings.agent_model,
-                        runtime.streaming_diagnostics,
-                    )
-                    yield {
-                        "type": "error",
-                        "error_code": "TRUE_STREAMING_REQUIRED",
-                        "message": (
-                            "Real Bedrock ConverseStream was required, but LangGraph "
-                            "finished with on_chat_model_end before emitting text chunks."
-                        ),
-                        "recoverable": False,
-                        "stream_chunk_events": stream_chunk_events,
-                        "stream_text_events": stream_text_events,
-                        "diagnostics": runtime.streaming_diagnostics,
-                    }
-                    error_occurred = True
-                    continue
-
-                if stream_text_events > 0:
                     logger.warning(
-                        "[AGENT] Forwarding post-tool model-end text because LangGraph did not emit "
-                        "stream chunks for this final answer turn. chars=%d",
-                        len(missing_text),
+                        "[AGENT] on_chat_model_end: has_tool_call=%s, output_len=%d, stream_text_events=%d",
+                        has_tool_call,
+                        len(output_text),
+                        stream_text_events,
                     )
 
-                async for token_event in _emit_text_chunks(missing_text):
-                    assistant_response += token_event["content"]
-                    yield token_event
+                    # Tool-only turns often end without visible text. The final
+                    # answer should arrive in a later model call after tool_result.
+                    if has_tool_call or not output_text.strip():
+                        logger.warning(
+                            "[AGENT] Skipping on_chat_model_end: has_tool_call=%s, empty_output=%s",
+                            has_tool_call,
+                            not output_text.strip(),
+                        )
+                        continue
 
-            elif kind == "on_tool_start":
-                tool_input = event["data"].get("input", {})
-                yield {
-                    "type": "tool_invocation",
-                    "tool_name": name,
-                    "tool_id": event.get("run_id", ""),
-                    "tool_args": tool_input if isinstance(tool_input, dict) else {"input": str(tool_input)},
-                }
+                    # If LangGraph exposes a later model-end final answer after
+                    # streamed pre-tool text, forward the missing suffix instead of
+                    # dropping it. This is the post-tool answer path.
+                    missing_text = output_text
+                    if assistant_response and output_text.startswith(assistant_response):
+                        missing_text = output_text[len(assistant_response):]
+                    elif assistant_response and output_text in assistant_response:
+                        missing_text = ""
 
-            elif kind == "on_tool_end":
-                output = event["data"].get("output", "")
-                yield {
-                    "type": "tool_result",
-                    "tool_name": name,
-                    "tool_id": event.get("run_id", ""),
-                    "status": "completed",
-                    "result_summary": str(output)[:200] if output else "",
-                }
+                    if not missing_text.strip():
+                        continue
+
+                    if settings.require_true_streaming and stream_text_events == 0:
+                        fallback_blocked = True
+                        logger.error(
+                            "[AGENT] Real streaming required but no on_chat_model_stream text chunks were emitted. "
+                            "stream_chunk_events=%d model=%s diagnostics=%s",
+                            stream_chunk_events,
+                            settings.agent_model,
+                            runtime.streaming_diagnostics,
+                        )
+                        yield {
+                            "type": "error",
+                            "error_code": "TRUE_STREAMING_REQUIRED",
+                            "message": (
+                                "Real Bedrock ConverseStream was required, but LangGraph "
+                                "finished with on_chat_model_end before emitting text chunks."
+                            ),
+                            "recoverable": False,
+                            "stream_chunk_events": stream_chunk_events,
+                            "stream_text_events": stream_text_events,
+                            "diagnostics": runtime.streaming_diagnostics,
+                        }
+                        error_occurred = True
+                        continue
+
+                    if stream_text_events > 0:
+                        logger.warning(
+                            "[AGENT] Forwarding post-tool model-end text because LangGraph did not emit "
+                            "stream chunks for this final answer turn. chars=%d",
+                            len(missing_text),
+                        )
+
+                    async for token_event in _emit_text_chunks(missing_text):
+                        assistant_response += token_event["content"]
+                        yield token_event
+
+                elif kind == "on_tool_start":
+                    tool_input = event["data"].get("input", {})
+                    yield {
+                        "type": "tool_invocation",
+                        "tool_name": name,
+                        "tool_id": event.get("run_id", ""),
+                        "tool_args": tool_input if isinstance(tool_input, dict) else {"input": str(tool_input)},
+                    }
+
+                elif kind == "on_tool_end":
+                    output = event["data"].get("output", "")
+                    summary, artifacts = _extract_tool_payload(output)
+                    yield {
+                        "type": "tool_result",
+                        "tool_name": name,
+                        "tool_id": event.get("run_id", ""),
+                        "status": "completed",
+                        "result_summary": summary[:1200] if summary else "",
+                        "result_artifacts": artifacts,
+                    }
+
+            langfuse_observer.update_trace(
+                output=assistant_response if assistant_response else None,
+                metadata={
+                    **trace_metadata,
+                    "error_occurred": error_occurred,
+                    "fallback_blocked": fallback_blocked,
+                    "stream_chunk_events": stream_chunk_events,
+                    "stream_text_events": stream_text_events,
+                    "assistant_chars": len(assistant_response),
+                },
+            )
 
     except Exception as exc:
         logger.error("[AGENT] Streaming error: %s", exc, exc_info=True)
@@ -305,6 +386,8 @@ async def agent_invocation(
             user_message=user_message,
             assistant_message=assistant_response,
         )
+
+    langfuse_observer.flush()
 
     yield {
         "type": "stream_diagnostic",

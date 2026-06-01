@@ -19,6 +19,11 @@ locals {
     CODE_INTERPRETER_ID    = aws_bedrockagentcore_code_interpreter.agent_core.code_interpreter_id
     APP_SECRET_ARN         = local.app_secret_arn
     REQUIRE_TRUE_STREAMING = "true"
+    LANGFUSE_ENABLED       = "true"
+    LANGFUSE_BASE_URL      = "https://cloud.langfuse.com"
+    LANGFUSE_ENVIRONMENT   = var.environment
+    LANGFUSE_RELEASE       = var.agent_core_image_tag
+    LANGFUSE_TRACE_CONTENT = "true"
     QDRANT_MODE            = "cloud"
     QDRANT_COLLECTION_NAME = var.qdrant_collection_name
     OPENAI_EMBEDDING_MODEL = var.openai_embedding_model
@@ -81,8 +86,10 @@ resource "aws_iam_role_policy" "agentcore_runtime" {
           "bedrock-agentcore:GetBrowserSession",
           "bedrock-agentcore:InvokeBrowser",
           "bedrock-agentcore:InvokeOnBrowserSession",
+          "bedrock-agentcore:ConnectBrowserAutomationStream",
           "bedrock-agentcore:StartBrowserSession",
-          "bedrock-agentcore:StopBrowserSession"
+          "bedrock-agentcore:StopBrowserSession",
+          "bedrock-agentcore:UpdateBrowserStream"
         ]
         Resource = aws_bedrockagentcore_browser.agent_core.browser_arn
       },

@@ -4,6 +4,7 @@ from functools import lru_cache
 import json
 import logging
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
@@ -13,7 +14,7 @@ class Settings(BaseSettings):
     """Settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "../.env", "backend/.env", "../backend/.env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -41,6 +42,15 @@ class Settings(BaseSettings):
     # AWS AgentCore Code Interpreter — set by Terraform
     code_interpreter_id: str | None = None
 
+    # Langfuse observability
+    langfuse_enabled: bool = True
+    langfuse_secret_key: str | None = None
+    langfuse_public_key: str | None = None
+    langfuse_base_url: str = "https://cloud.langfuse.com"
+    langfuse_environment: str | None = None
+    langfuse_release: str | None = None
+    langfuse_trace_content: bool = True
+
     # OpenAI Embeddings
     openai_api_key: str | None = None
     openai_embedding_model: str = "text-embedding-3-small"
@@ -58,6 +68,14 @@ class Settings(BaseSettings):
     browser_timeout: int = 60
     code_interpreter_timeout: int = 60
     max_search_results: int = 8
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def parse_debug(cls, value):
+        """Treat deployment labels as non-debug when DEBUG is overloaded."""
+        if isinstance(value, str) and value.lower() in {"release", "prod", "production"}:
+            return False
+        return value
 
     # Browser / Code Interpreter (AWS managed — requires AWS credentials)
     browser_identifier: str = "aws.browser.v1"
@@ -81,6 +99,9 @@ class Settings(BaseSettings):
             "openai_api_key": "OPENAI_API_KEY",
             "qdrant_url": "QDRANT_URL",
             "qdrant_api_key": "QDRANT_API_KEY",
+            "langfuse_secret_key": "LANGFUSE_SECRET_KEY",
+            "langfuse_public_key": "LANGFUSE_PUBLIC_KEY",
+            "langfuse_base_url": "LANGFUSE_BASE_URL",
         }.items():
             if getattr(self, field_name) in (None, "") and secret.get(secret_key):
                 setattr(self, field_name, secret[secret_key])

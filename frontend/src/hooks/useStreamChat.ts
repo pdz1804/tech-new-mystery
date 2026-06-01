@@ -234,6 +234,7 @@ export function useStreamChat(sessionId?: string, onError?: (error: string) => v
               ...current,
               status: event.status === 'failed' ? 'failed' : 'completed',
               result: event.result_summary,
+              artifacts: event.result_artifacts,
               results_count: event.results_count,
             });
             updateAssistantMessage({ tool_calls: Array.from(toolCalls.values()) });
@@ -246,7 +247,7 @@ export function useStreamChat(sessionId?: string, onError?: (error: string) => v
           }
 
           if (event.type === 'stream_diagnostic') {
-            console.info('[chat-stream]', event);
+            logRenderedStreamEvent('stream_diagnostic', event);
           }
 
           if (event.type === 'error') {

@@ -280,8 +280,10 @@ resource "aws_iam_role_policy" "backend_invoke_agentcore" {
           "bedrock-agentcore:GetBrowserSession",
           "bedrock-agentcore:InvokeBrowser",
           "bedrock-agentcore:InvokeOnBrowserSession",
+          "bedrock-agentcore:ConnectBrowserAutomationStream",
           "bedrock-agentcore:StartBrowserSession",
-          "bedrock-agentcore:StopBrowserSession"
+          "bedrock-agentcore:StopBrowserSession",
+          "bedrock-agentcore:UpdateBrowserStream"
         ]
         Resource = aws_bedrockagentcore_browser.agent_core.browser_arn
       },

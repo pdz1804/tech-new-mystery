@@ -12,14 +12,16 @@ import {
   Search,
   Settings,
 } from 'lucide-react';
-import { ToolIndicatorProps } from '@/types/chat';
+import { ToolArtifact, ToolIndicatorProps } from '@/types/chat';
 
 function getToolIcon(toolName: string) {
   switch (toolName.toLowerCase()) {
     case 'web_search':
     case 'browser':
+    case 'browse_web':
       return <Search className="h-4 w-4" aria-hidden="true" />;
     case 'code_interpreter':
+    case 'execute_code':
       return <Code2 className="h-4 w-4" aria-hidden="true" />;
     case 'semantic_search':
       return <BookOpen className="h-4 w-4" aria-hidden="true" />;
@@ -84,6 +86,7 @@ export const ToolIndicator = memo(function ToolIndicator({
   status,
   args,
   result,
+  artifacts,
 }: ToolIndicatorProps) {
   const [expanded, setExpanded] = useState(false);
   const argsDisplay = formatToolArgs(args);
@@ -152,6 +155,17 @@ export const ToolIndicator = memo(function ToolIndicator({
               <p className="rounded bg-white px-2 py-1 text-slate-700">{resultDisplay}</p>
             </div>
           )}
+
+          {artifacts && artifacts.length > 0 && (
+            <div>
+              <p className="mb-2 font-medium text-slate-500">Artifacts</p>
+              <div className="grid gap-2">
+                {artifacts.map((artifact) => (
+                  <ToolArtifactPreview key={`${artifact.name}-${artifact.path ?? ''}`} artifact={artifact} />
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -159,3 +173,37 @@ export const ToolIndicator = memo(function ToolIndicator({
 });
 
 ToolIndicator.displayName = 'ToolIndicator';
+
+function ToolArtifactPreview({ artifact }: { artifact: ToolArtifact }) {
+  const isImage = artifact.mime_type?.startsWith('image/') && artifact.data_url;
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-white/70 bg-white/70">
+      {isImage && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={artifact.data_url}
+          alt={artifact.name}
+          className="max-h-72 w-full object-contain bg-slate-50"
+        />
+      )}
+      <div className="flex items-center justify-between gap-3 px-3 py-2">
+        <div className="min-w-0">
+          <p className="truncate font-semibold text-slate-700">{artifact.name}</p>
+          {artifact.too_large && (
+            <p className="text-[11px] text-slate-500">File generated but too large to inline.</p>
+          )}
+        </div>
+        {artifact.data_url && (
+          <a
+            href={artifact.data_url}
+            download={artifact.name}
+            className="flex-shrink-0 rounded-lg bg-blue-600 px-2.5 py-1.5 text-[11px] font-bold text-white"
+          >
+            Download
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -116,6 +116,7 @@ For the full startup sequence, ports, and health checks, see [Manual Startup](do
 - [Clustering Guide](docs/CLUSTERING_GUIDE.md)
 - [Clustering PCA Map](docs/CLUSTERING_PCA_MAP.md)
 - [Chatbot Guide](docs/CHATBOT_GUIDE.md)
+- [Agent Core](docs/AGENT_CORE.md)
 - [Crawl4AI Guide](docs/CRAWL4AI_GUIDE.md)
 - [Deployment Architecture](docs/DEPLOYMENT_ARCHITECTURE.md)
 - [CI/CD Configuration](docs/CI_CD_CONFIGURATION.md)
