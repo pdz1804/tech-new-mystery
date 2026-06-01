@@ -20,7 +20,14 @@ import type {
 
 function yieldToBrowser(): Promise<void> {
   return new Promise((resolve) => {
-    window.setTimeout(resolve, 0);
+    if (typeof window === 'undefined') {
+      resolve();
+      return;
+    }
+
+    window.requestAnimationFrame(() => {
+      resolve();
+    });
   });
 }
 
@@ -44,6 +51,15 @@ function normalizeMessage(message: ApiMessage): ChatMessage {
     ? (message.role as ChatMessage['role'])
     : 'assistant';
 
+  let tool_calls: import('@/types/chat').ToolCall[] | undefined;
+  if (message.tool_calls_json) {
+    try {
+      tool_calls = JSON.parse(message.tool_calls_json);
+    } catch {
+      // Malformed JSON from older persisted messages; ignore it.
+    }
+  }
+
   return {
     id: message.message_id,
     session_id: message.session_id,
@@ -52,6 +68,7 @@ function normalizeMessage(message: ApiMessage): ChatMessage {
     content: message.content,
     timestamp: toMillis(message.timestamp),
     tokens: message.token_count ?? undefined,
+    tool_calls,
   };
 }
 
@@ -196,6 +213,144 @@ export async function readChatMessageStream(
   onEvent: (event: SSEEvent) => void,
   signal?: AbortSignal
 ): Promise<void> {
+  if (typeof window !== 'undefined' && typeof XMLHttpRequest !== 'undefined') {
+    return readChatMessageStreamWithXHR(request, onEvent, signal);
+  }
+
+  return readChatMessageStreamWithFetch(request, onEvent, signal);
+}
+
+function makeAbortError(): Error {
+  const error = new Error('Aborted');
+  error.name = 'AbortError';
+  return error;
+}
+
+function logStreamRead(readCount: number, decoded: string, bytes?: number) {
+  if (process.env.NODE_ENV !== 'development') return;
+  console.debug('[chat-read]', {
+    readCount,
+    bytes,
+    chars: decoded.length,
+    at: Math.round(performance.now()),
+    wallTime: new Date().toISOString(),
+    preview: decoded.slice(0, 80),
+  });
+}
+
+function logStreamEvent(event: SSEEvent) {
+  if (process.env.NODE_ENV !== 'development') return;
+  console.debug('[chat-event]', {
+    type: event.type,
+    at: Math.round(performance.now()),
+    wallTime: new Date().toISOString(),
+    serverSentAt: event._server_sent_at_ms,
+    browserLagMs: event._server_sent_at_ms
+      ? Date.now() - event._server_sent_at_ms
+      : undefined,
+  });
+}
+
+function readChatMessageStreamWithXHR(
+  request: ChatMessageRequest,
+  onEvent: (event: SSEEvent) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    let seenChars = 0;
+    let buffer = '';
+    let readCount = 0;
+    let settled = false;
+
+    const settle = (callback: () => void) => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener('abort', abort);
+      callback();
+    };
+
+    const processChunk = (decoded: string) => {
+      if (!decoded) return;
+
+      readCount += 1;
+      logStreamRead(readCount, decoded);
+
+      buffer += decoded;
+      const eventTexts = buffer.split('\n\n');
+      buffer = eventTexts.pop() ?? '';
+
+      for (const eventText of eventTexts) {
+        const event = parseSSEEvent(eventText);
+        if (!event) continue;
+        logStreamEvent(event);
+        onEvent(event);
+      }
+    };
+
+    const abort = () => {
+      xhr.abort();
+      settle(() => reject(makeAbortError()));
+    };
+
+    if (signal?.aborted) {
+      reject(makeAbortError());
+      return;
+    }
+
+    signal?.addEventListener('abort', abort, { once: true });
+
+    xhr.open(
+      'POST',
+      `${getApiBaseUrl()}/chat/sessions/${encodeURIComponent(request.session_id)}/stream`,
+      true
+    );
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    const authHeader = getAuthHeader();
+    for (const [key, value] of Object.entries(authHeader)) {
+      xhr.setRequestHeader(key, value);
+    }
+
+    xhr.onprogress = () => {
+      const decoded = xhr.responseText.slice(seenChars);
+      seenChars = xhr.responseText.length;
+      processChunk(decoded);
+    };
+
+    xhr.onerror = () => {
+      settle(() => reject(new Error('Chat stream network error')));
+    };
+
+    xhr.onload = () => {
+      const decoded = xhr.responseText.slice(seenChars);
+      seenChars = xhr.responseText.length;
+      processChunk(decoded);
+
+      if (buffer.trim()) {
+        const event = parseSSEEvent(buffer);
+        if (event) {
+          logStreamEvent(event);
+          onEvent(event);
+        }
+      }
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        settle(resolve);
+        return;
+      }
+
+      settle(() => reject(new Error(xhr.responseText || `HTTP ${xhr.status}: ${xhr.statusText}`)));
+    };
+
+    xhr.send(JSON.stringify({ content: request.user_message }));
+  });
+}
+
+async function readChatMessageStreamWithFetch(
+  request: ChatMessageRequest,
+  onEvent: (event: SSEEvent) => void,
+  signal?: AbortSignal
+): Promise<void> {
   const response = await fetch(
     `${getApiBaseUrl()}/chat/sessions/${encodeURIComponent(request.session_id)}/stream`,
     {
@@ -231,16 +386,7 @@ export async function readChatMessageStream(
 
       readCount += 1;
       const decoded = decoder.decode(value, { stream: true });
-      if (process.env.NODE_ENV === 'development') {
-        console.debug('[chat-read]', {
-          readCount,
-          bytes: value.byteLength,
-          chars: decoded.length,
-          at: Math.round(performance.now()),
-          wallTime: new Date().toISOString(),
-          preview: decoded.slice(0, 80),
-        });
-      }
+      logStreamRead(readCount, decoded, value.byteLength);
 
       buffer += decoded;
       const eventTexts = buffer.split('\n\n');
@@ -250,24 +396,14 @@ export async function readChatMessageStream(
         const event = parseSSEEvent(eventText);
         if (!event) continue;
 
-        if (process.env.NODE_ENV === 'development') {
-          console.debug('[chat-event]', {
-            type: event.type,
-            at: Math.round(performance.now()),
-            wallTime: new Date().toISOString(),
-            serverSentAt: event._server_sent_at_ms,
-            browserLagMs: event._server_sent_at_ms
-              ? Date.now() - event._server_sent_at_ms
-              : undefined,
-          });
-        }
+        logStreamEvent(event);
 
         eventCount += 1;
         onEvent(event);
-        // Skip yield for first event to eliminate startup buffering delay
-        if (eventCount > 1) {
-          await yieldToBrowser();
-        }
+        // Give React one animation frame to commit this event before draining
+        // more buffered chunks from fetch. A timer-only yield can keep
+        // processing queued chunks without giving the browser a paint.
+        await yieldToBrowser();
       }
     }
 
@@ -276,10 +412,7 @@ export async function readChatMessageStream(
       if (event) {
         eventCount += 1;
         onEvent(event);
-        // Skip yield for first event to eliminate startup buffering delay
-        if (eventCount > 1) {
-          await yieldToBrowser();
-        }
+        await yieldToBrowser();
       }
     }
   } finally {

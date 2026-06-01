@@ -2,44 +2,11 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { getSessionMessages, readChatMessageStream } from '@/lib/api/chat';
-import type { ChatMessage, SSEEvent, ToolCall } from '@/types/chat';
-
-async function yieldToPaint(): Promise<void> {
-  if (typeof window === 'undefined') {
-    return;
-  }
-
-  await new Promise<void>((resolve) => {
-    window.requestAnimationFrame(() => resolve());
-  });
-}
-
-function yieldToBrowser(): Promise<void> {
-  if (typeof window === 'undefined') {
-    return Promise.resolve();
-  }
-
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, 0);
-  });
-}
-
-async function paceStreamEvent(queuedEvents: number): Promise<void> {
-  if (queuedEvents > 0) {
-    await yieldToBrowser();
-    return;
-  }
-
-  await yieldToPaint();
-}
+import type { ChatMessage, MessageSegment, SSEEvent, ToolCall } from '@/types/chat';
 
 function logRenderedStreamEvent(type: string, detail?: unknown) {
   if (process.env.NODE_ENV !== 'development') return;
-  console.debug('[chat-render]', type, {
-    at: Math.round(performance.now()),
-    wallTime: new Date().toISOString(),
-    detail,
-  });
+  console.debug('[chat-render]', type, detail);
 }
 
 export interface UseStreamChatReturn {
@@ -61,6 +28,7 @@ export function useStreamChat(sessionId?: string, onError?: (error: string) => v
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const streamingSessionRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,7 +44,7 @@ export function useStreamChat(sessionId?: string, onError?: (error: string) => v
 
       try {
         const response = await getSessionMessages(sessionId);
-        if (!cancelled) {
+        if (!cancelled && streamingSessionRef.current !== sessionId) {
           setMessages(response.messages);
         }
       } catch (err) {
@@ -109,29 +77,32 @@ export function useStreamChat(sessionId?: string, onError?: (error: string) => v
 
       setIsLoading(true);
       setError(null);
+      streamingSessionRef.current = activeSessionId;
 
       const now = Date.now();
-      const userMsg: ChatMessage = {
-        id: `local-user-${Date.now()}`,
-        session_id: activeSessionId,
-        user_id: '',
-        role: 'user',
-        content: userMessage,
-        timestamp: now,
-      };
+      const assistantMessageId = `local-assistant-${now}`;
 
-      const assistantMessageId = `local-assistant-${Date.now()}`;
-      const assistantMsg: ChatMessage = {
-        id: assistantMessageId,
-        session_id: activeSessionId,
-        user_id: '',
-        role: 'assistant',
-        content: '',
-        timestamp: now,
-        tool_calls: [],
-      };
-
-      setMessages((prev) => [...prev, userMsg, assistantMsg]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `local-user-${now}`,
+          session_id: activeSessionId,
+          user_id: '',
+          role: 'user',
+          content: userMessage,
+          timestamp: now,
+        },
+        {
+          id: assistantMessageId,
+          session_id: activeSessionId,
+          user_id: '',
+          role: 'assistant',
+          content: '',
+          timestamp: now,
+          tool_calls: [],
+          segments: [],
+        },
+      ]);
 
       abortControllerRef.current?.abort();
       const abortController = new AbortController();
@@ -139,166 +110,145 @@ export function useStreamChat(sessionId?: string, onError?: (error: string) => v
 
       let assistantContent = '';
       const toolCalls = new Map<string, ToolCall>();
+      const segments: MessageSegment[] = [];
+      let currentTextSegIdx = -1;
+      let streamError: Error | null = null;
 
-      const updateAssistantMessage = (patch: Partial<ChatMessage>) => {
-        setMessages((prev) =>
-          prev.map((message) =>
-            message.id === assistantMessageId
-              ? { ...message, ...patch }
-              : message
-          )
-        );
-      };
+      const flush = (patch: Partial<ChatMessage>) => {
+        setMessages((prev) => {
+          let found = false;
+          const next = prev.map((message) => {
+            if (message.id !== assistantMessageId) return message;
+            found = true;
+            return { ...message, ...patch };
+          });
 
-      const eventQueue: SSEEvent[] = [];
-      let producerDone = false;
-      let producerError: unknown = null;
-      let wakeConsumer: (() => void) | null = null;
-      let waitPromise: Promise<void> | null = null;
+          if (found) return next;
 
-      const wake = () => {
-        wakeConsumer?.();
-        wakeConsumer = null;
-        waitPromise = null;
-      };
-
-      const waitForQueuedEvent = () => {
-        // Reuse promise if already created to avoid allocating new ones per cycle
-        if (waitPromise) return waitPromise;
-        waitPromise = new Promise<void>((resolve) => {
-          wakeConsumer = resolve;
-        });
-        return waitPromise;
-      };
-
-      const producer = (async () => {
-        try {
-          await readChatMessageStream(
-            {
-              session_id: activeSessionId,
-              user_message: userMessage,
-            },
-            (event) => {
-              eventQueue.push(event);
-              wake();
-            },
-            abortController.signal
-          );
-        } catch (err) {
-          producerError = err;
-        } finally {
-          producerDone = true;
-          wake();
-        }
-      })();
-
-      const processEvent = async (event: SSEEvent) => {
-          if (abortController.signal.aborted) return;
-
-          if (event.type === 'token') {
-            assistantContent += event.content ?? '';
-            updateAssistantMessage({ content: assistantContent });
-            logRenderedStreamEvent('token', {
-              chunk: event.content,
-              totalChars: assistantContent.length,
-            });
-            await paceStreamEvent(eventQueue.length);
+          let lastAssistantIndex = -1;
+          for (let index = next.length - 1; index >= 0; index -= 1) {
+            const message = next[index];
+            if (message.role === 'assistant' && message.session_id === activeSessionId) {
+              lastAssistantIndex = index;
+              break;
+            }
           }
-
-          if (event.type === 'tool_invocation') {
-            const toolId = event.tool_id ?? `${event.tool_name ?? 'tool'}-${toolCalls.size}`;
-            toolCalls.set(toolId, {
-              tool_id: toolId,
-              tool_name: event.tool_name ?? 'tool',
-              status: 'executing',
-              args: event.tool_args,
-            });
-            updateAssistantMessage({ tool_calls: Array.from(toolCalls.values()) });
-            logRenderedStreamEvent('tool_invocation', {
-              tool: event.tool_name,
-              toolId,
-            });
-            await paceStreamEvent(eventQueue.length);
-          }
-
-          if (event.type === 'tool_result') {
-            const toolIds = Array.from(toolCalls.keys());
-            const toolId = event.tool_id ?? toolIds[toolIds.length - 1] ?? 'tool';
-            const current = toolCalls.get(toolId) ?? {
-              tool_id: toolId,
-              tool_name: event.tool_name ?? 'tool',
-              status: 'executing' as const,
+          if (lastAssistantIndex >= 0) {
+            const repaired = [...next];
+            repaired[lastAssistantIndex] = {
+              ...repaired[lastAssistantIndex],
+              id: assistantMessageId,
+              ...patch,
             };
-
-            toolCalls.set(toolId, {
-              ...current,
-              status: event.status === 'failed' ? 'failed' : 'completed',
-              result: event.result_summary,
-              artifacts: event.result_artifacts,
-              results_count: event.results_count,
-            });
-            updateAssistantMessage({ tool_calls: Array.from(toolCalls.values()) });
-            logRenderedStreamEvent('tool_result', {
-              tool: event.tool_name,
-              toolId,
-              status: event.status,
-            });
-            await paceStreamEvent(eventQueue.length);
+            return repaired;
           }
 
-          if (event.type === 'stream_diagnostic') {
-            logRenderedStreamEvent('stream_diagnostic', event);
-          }
-
-          if (event.type === 'error') {
-            const message = event.error ?? event.message ?? 'The chat stream failed';
-            throw new Error(message);
-          }
-
-          if (event.type === 'done') {
-            updateAssistantMessage({
-              content: assistantContent,
-              tokens: event.tokens,
-              tool_calls: Array.from(toolCalls.values()),
-            });
-          }
+          return [
+            ...next,
+            {
+              id: assistantMessageId,
+              session_id: activeSessionId,
+              user_id: '',
+              role: 'assistant',
+              content: '',
+              timestamp: now,
+              tool_calls: [],
+              segments: [],
+              ...patch,
+            },
+          ];
+        });
       };
 
       try {
-        while (!producerDone || eventQueue.length > 0) {
-          if (abortController.signal.aborted) break;
+        await readChatMessageStream(
+          { session_id: activeSessionId, user_message: userMessage },
+          (event) => {
+            if (abortController.signal.aborted || streamError) return;
 
-          const event = eventQueue.shift();
-          if (!event) {
-            await waitForQueuedEvent();
-            continue;
-          }
-
-          await processEvent(event);
-        }
-
-        await producer;
-        if (producerError) throw producerError;
-      } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') return;
-
-        const message = err instanceof Error ? err.message : 'Chat error occurred';
-        setError(message);
-        onError?.(message);
-        setMessages((prev) =>
-          prev.map((chatMessage) =>
-            chatMessage.id === assistantMessageId
-              ? {
-                  ...chatMessage,
-                  role: 'error',
-                  content: message,
-                }
-              : chatMessage
-          )
+            if (event.type === 'token') {
+              const chunk = event.content ?? '';
+              assistantContent += chunk;
+              if (currentTextSegIdx >= 0) {
+                segments[currentTextSegIdx] = {
+                  type: 'text',
+                  content: (segments[currentTextSegIdx].content ?? '') + chunk,
+                };
+              } else {
+                currentTextSegIdx = segments.length;
+                segments.push({ type: 'text', content: chunk });
+              }
+              flush({ content: assistantContent, segments: [...segments] });
+              logRenderedStreamEvent('token', { chunk, totalChars: assistantContent.length });
+            } else if (event.type === 'tool_invocation') {
+              const toolId = event.tool_id ?? `${event.tool_name ?? 'tool'}-${toolCalls.size}`;
+              const toolCall: ToolCall = {
+                tool_id: toolId,
+                tool_name: event.tool_name ?? 'tool',
+                status: 'executing',
+                args: event.tool_args,
+              };
+              toolCalls.set(toolId, toolCall);
+              currentTextSegIdx = -1;
+              segments.push({ type: 'tool', toolCall });
+              flush({ tool_calls: Array.from(toolCalls.values()), segments: [...segments] });
+              logRenderedStreamEvent('tool_invocation', { tool: event.tool_name, toolId });
+            } else if (event.type === 'tool_result') {
+              const toolIds = Array.from(toolCalls.keys());
+              const toolId = event.tool_id ?? toolIds[toolIds.length - 1] ?? 'tool';
+              const current = toolCalls.get(toolId) ?? {
+                tool_id: toolId,
+                tool_name: event.tool_name ?? 'tool',
+                status: 'executing' as const,
+              };
+              const updated: ToolCall = {
+                ...current,
+                status: event.status === 'failed' ? 'failed' : 'completed',
+                result: event.result_summary,
+                artifacts: event.result_artifacts,
+                results_count: event.results_count,
+              };
+              toolCalls.set(toolId, updated);
+              const segIdx = segments.findIndex(
+                (s) => s.type === 'tool' && s.toolCall?.tool_id === toolId
+              );
+              if (segIdx >= 0) segments[segIdx] = { type: 'tool', toolCall: updated };
+              flush({ tool_calls: Array.from(toolCalls.values()), segments: [...segments] });
+              logRenderedStreamEvent('tool_result', { tool: event.tool_name, toolId, status: event.status });
+            } else if (event.type === 'done') {
+              flush({
+                content: assistantContent,
+                tokens: event.tokens,
+                tool_calls: Array.from(toolCalls.values()),
+                segments: [...segments],
+              });
+            } else if (event.type === 'error') {
+              streamError = new Error(event.error ?? event.message ?? 'Stream error');
+            }
+          },
+          abortController.signal
         );
+      } catch (err) {
+        if (!(err instanceof Error && err.name === 'AbortError')) {
+          streamError = err instanceof Error ? err : new Error('Chat error occurred');
+        }
       } finally {
         setIsLoading(false);
+        if (streamingSessionRef.current === activeSessionId) {
+          streamingSessionRef.current = null;
+        }
         abortControllerRef.current = null;
+      }
+
+      if (streamError && streamError.name !== 'AbortError') {
+        const msg = streamError.message;
+        setError(msg);
+        onError?.(msg);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMessageId ? { ...m, role: 'error', content: msg } : m
+          )
+        );
       }
     },
     [sessionId, onError]

@@ -355,7 +355,12 @@ async def agent_invocation(
 
     except Exception as exc:
         logger.error("[AGENT] Streaming error: %s", exc, exc_info=True)
-        yield {"type": "error", "message": "Agent error processing request", "recoverable": True}
+        yield {
+            "type": "error",
+            "message": f"Agent error ({type(exc).__name__}): {str(exc)[:400]}",
+            "error_type": type(exc).__name__,
+            "recoverable": True,
+        }
         error_occurred = True
 
     if settings.require_true_streaming and not assistant_response and not error_occurred:

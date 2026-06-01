@@ -49,6 +49,7 @@ class MessageResponse(BaseModel):
     timestamp: float
     token_count: Optional[int] = None
     model_used: Optional[str] = None
+    tool_calls_json: Optional[str] = None  # JSON-serialized tool calls for history restore
 
 
 class SessionListResponse(BaseModel):

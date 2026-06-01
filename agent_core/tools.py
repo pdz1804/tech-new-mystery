@@ -84,95 +84,119 @@ def _fallback_fetch_url(url: str, timeout: int) -> str:
     return parser.text[:6000]
 
 
-def _browser_session_summary(client) -> dict:
-    """Return sanitized AgentCore Browser session metadata."""
+# ---------------------------------------------------------------------------
+# Code Interpreter helpers
+# ---------------------------------------------------------------------------
+
+def _drain_code_stream(response: dict) -> dict:
+    """Drain the botocore EventStream and return the last result dict."""
+    result: dict = {}
+    stream = response.get("stream")
+    if stream is None:
+        logger.warning("[CODE] No 'stream' key in invoke response: %s", list(response.keys()))
+        return result
     try:
-        session = client.get_session()
+        for event in stream:
+            if isinstance(event, dict) and "result" in event:
+                result = event["result"]
     except Exception as exc:
-        return {"session_error": f"{type(exc).__name__}: {exc}"}
-
-    streams = session.get("streams") or {}
-    automation = streams.get("automationStream") or {}
-    live_view = streams.get("liveViewStream") or {}
-    return {
-        "session_id": session.get("sessionId"),
-        "browser_identifier": session.get("browserIdentifier"),
-        "status": session.get("status"),
-        "automation_stream_status": automation.get("streamStatus"),
-        "has_automation_endpoint": bool(automation.get("streamEndpoint")),
-        "has_live_view_endpoint": bool(live_view.get("streamEndpoint")),
-    }
+        logger.error("[CODE] Error draining code interpreter stream: %s", exc, exc_info=True)
+    return result
 
 
-def _wait_for_browser_ready(client, timeout_seconds: int = 30) -> dict:
-    """Poll AgentCore Browser until the session reports READY."""
-    deadline = time.monotonic() + timeout_seconds
-    last_summary = _browser_session_summary(client)
+def _parse_code_result(result: dict) -> tuple[str, bool, int]:
+    """Return (output_text, is_error, exit_code) from a code interpreter result dict."""
+    if not result:
+        return "(no output)", False, 0
 
-    while time.monotonic() < deadline:
-        last_summary = _browser_session_summary(client)
-        if last_summary.get("status") == "READY":
-            return last_summary
-        if last_summary.get("status") == "TERMINATED":
-            raise RuntimeError(f"Browser session terminated before use: {last_summary}")
-        time.sleep(1)
+    is_error = result.get("isError", False)
+    structured = result.get("structuredContent") or {}
+    stdout = structured.get("stdout", "")
+    stderr = structured.get("stderr", "")
+    exit_code = structured.get("exitCode", 0)
 
-    raise TimeoutError(f"Browser session did not become READY: {last_summary}")
+    # Fall back to content array if structuredContent absent
+    if not stdout:
+        content_list = result.get("content") or []
+        stdout = " ".join(
+            item.get("text", "")
+            for item in content_list
+            if isinstance(item, dict) and item.get("type") == "text"
+        )
 
+    output = stdout or ""
+    if stderr:
+        output += f"\nStderr:\n{stderr}"
+    if is_error and not output.strip():
+        output = f"Execution failed (exit {exit_code})"
 
-def _summarize_code_result(result: dict) -> tuple[str, list[str]]:
-    """Extract readable code output and candidate artifact paths."""
-    output_parts = []
-    artifact_paths: list[str] = []
-
-    def visit(value):
-        if isinstance(value, dict):
-            for key, item in value.items():
-                lowered = str(key).lower()
-                if lowered in {"output", "stdout", "stderr", "error", "text"} and item:
-                    output_parts.append(f"{key}: {item}")
-                if lowered in {"path", "file", "filename"} and isinstance(item, str):
-                    artifact_paths.append(item)
-                visit(item)
-        elif isinstance(value, list):
-            for item in value:
-                visit(item)
-        elif isinstance(value, str):
-            for match in re.findall(r"(?:(?:/tmp|output|outputs|mnt/data)[/\w.-]+|[\w.-]+\.(?:png|jpg|jpeg|gif|webp|svg|csv|json|txt|html))", value):
-                artifact_paths.append(match)
-
-    visit(result)
-    summary = "\n".join(str(part) for part in output_parts if str(part).strip())
-    return summary.strip() or str(result)[:4000], list(dict.fromkeys(artifact_paths))
+    return output.strip() or "(no output)", is_error, exit_code
 
 
-def _artifact_to_data_url(interpreter, path: str) -> dict | None:
-    """Download a small generated file and convert it to a chat-viewable artifact."""
+def _read_artifact(interp, path: str) -> dict | None:
+    """Download a generated file from the code interpreter sandbox."""
     try:
-        content = interpreter.download_file(path)
+        response = interp.invoke("readFiles", {"paths": [path]})
+        result = _drain_code_stream(response)
+        files = result.get("files") or result.get("content") or []
+        if not files:
+            # Some SDK versions return the file list at top level
+            files = result if isinstance(result, list) else []
+        for file_item in files:
+            if not isinstance(file_item, dict):
+                continue
+            raw_bytes = file_item.get("bytes")
+            raw_text = file_item.get("text")
+            if raw_bytes is None and raw_text is None:
+                continue
+            if isinstance(raw_bytes, (bytes, bytearray)):
+                data = bytes(raw_bytes)
+            elif isinstance(raw_text, str):
+                data = raw_text.encode("utf-8")
+            else:
+                continue
+            mime = mimetypes.guess_type(path)[0] or "application/octet-stream"
+            name = path.rsplit("/", 1)[-1]
+            if len(data) > 200_000:
+                return {"name": name, "path": path, "mime_type": mime, "too_large": True}
+            return {
+                "name": name,
+                "path": path,
+                "mime_type": mime,
+                "data_url": f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}",
+            }
     except Exception as exc:
-        logger.debug("[CODE] Could not download artifact %s: %s", path, exc)
-        return None
+        logger.debug("[CODE] Could not read artifact %s: %s", path, exc)
+    return None
 
-    mime_type = mimetypes.guess_type(path)[0] or "application/octet-stream"
-    if isinstance(content, str):
-        raw = content.encode("utf-8")
-    else:
-        raw = content
-    if len(raw) > 200_000:
-        return {
-            "name": path.rsplit("/", 1)[-1],
-            "path": path,
-            "mime_type": mime_type,
-            "too_large": True,
-        }
 
-    return {
-        "name": path.rsplit("/", 1)[-1],
-        "path": path,
-        "mime_type": mime_type,
-        "data_url": f"data:{mime_type};base64,{base64.b64encode(raw).decode('ascii')}",
-    }
+_ARTIFACT_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg",
+                         ".csv", ".json", ".txt", ".html", ".pdf"}
+
+
+def _list_artifacts(interp) -> list[str]:
+    """List files in the sandbox and return paths that look like artifacts."""
+    try:
+        response = interp.invoke("listFiles", {"directoryPath": ""})
+        result = _drain_code_stream(response)
+        # Different SDK versions use different keys
+        entries = result.get("files") or result.get("content") or []
+        if not entries and isinstance(result, list):
+            entries = result
+        paths: list[str] = []
+        for entry in entries:
+            if isinstance(entry, dict):
+                p = entry.get("path") or entry.get("name") or ""
+            elif isinstance(entry, str):
+                p = entry
+            else:
+                continue
+            if any(p.lower().endswith(ext) for ext in _ARTIFACT_EXTENSIONS):
+                paths.append(p)
+        return paths
+    except Exception as exc:
+        logger.debug("[CODE] listFiles failed: %s", exc)
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -221,8 +245,9 @@ def _make_browser_tool(settings: Settings):
         """
         browser_identifier = settings.browser_id or settings.browser_identifier
         safe_url = _safe_url(url)
+
         try:
-            from bedrock_agentcore.tools.browser_client import BrowserClient
+            from bedrock_agentcore.tools.browser_client import browser_session
             from playwright.sync_api import sync_playwright
 
             logger.info(
@@ -231,83 +256,47 @@ def _make_browser_tool(settings: Settings):
                 browser_identifier,
                 safe_url,
             )
-            browser_client = BrowserClient(settings.aws_region)
-            try:
-                browser_client.start(
-                    identifier=browser_identifier,
-                    name="tech-news-agent-browser",
-                    viewport={"width": 1365, "height": 900},
-                    session_timeout_seconds=900,
-                )
-                session_summary = _wait_for_browser_ready(browser_client)
 
-                try:
-                    browser_client.update_stream("ENABLED")
-                except Exception as exc:
-                    logger.warning("[BROWSER] Could not force automation stream enabled: %s", exc)
+            # Use browser_session context manager — handles start/stop/readiness
+            with browser_session(settings.aws_region, identifier=browser_identifier) as client:
+                ws_url, headers = client.generate_ws_headers()
+                logger.info("[BROWSER] Got WebSocket URL, connecting via CDP")
 
-                chrome = None
-                last_connect_error: Exception | None = None
                 with sync_playwright() as pw:
-                    for attempt in range(1, 4):
-                        ws_url, headers = browser_client.generate_ws_headers()
-                        logger.debug(
-                            "[BROWSER] Connecting CDP attempt=%d host=%s session=%s",
-                            attempt,
-                            urlparse(ws_url).netloc,
-                            session_summary.get("session_id"),
-                        )
-                        try:
-                            chrome = pw.chromium.connect_over_cdp(
-                                ws_url,
-                                headers=headers,
-                                timeout=settings.browser_timeout * 1000,
-                            )
-                            break
-                        except Exception as exc:
-                            last_connect_error = exc
-                            session_summary = _browser_session_summary(browser_client)
-                            logger.warning(
-                                "[BROWSER] CDP connect attempt=%d failed session=%s status=%s stream=%s error=%s",
-                                attempt,
-                                session_summary.get("session_id"),
-                                session_summary.get("status"),
-                                session_summary.get("automation_stream_status"),
-                                exc,
-                            )
-                            time.sleep(1.5 * attempt)
-
-                    if chrome is None:
-                        raise RuntimeError(f"CDP connection failed after retries: {last_connect_error}")
-
+                    browser = pw.chromium.connect_over_cdp(
+                        ws_url,
+                        headers=headers,
+                        timeout=settings.browser_timeout * 1000,
+                    )
                     try:
-                        context = chrome.contexts[0] if chrome.contexts else chrome.new_context()
+                        context = browser.contexts[0] if browser.contexts else browser.new_context()
                         page = context.pages[0] if context.pages else context.new_page()
+
                         page.goto(url, timeout=settings.browser_timeout * 1000, wait_until="domcontentloaded")
+
+                        # Allow JS-heavy pages extra time to render content
+                        try:
+                            page.wait_for_load_state("networkidle", timeout=8000)
+                        except Exception:
+                            pass
+
                         title = page.title()
-                        # Extract readable text (strip scripts/styles).
                         body_text = page.evaluate("""() => {
                             const clone = document.body.cloneNode(true);
                             clone.querySelectorAll('script,style,nav,footer,header,aside').forEach(e => e.remove());
                             return clone.innerText;
                         }""")
                     finally:
-                        chrome.close()
-            finally:
-                try:
-                    browser_client.stop()
-                except Exception as exc:
-                    logger.warning("[BROWSER] Could not stop AgentCore browser session: %s", exc)
+                        browser.close()
 
-            # Trim to reasonable length
             content = body_text.strip()[:6000]
+            logger.info("[BROWSER] Extracted %d chars from %s title=%r", len(content), safe_url, title)
             return _json_result(
                 status="completed",
                 mode="agentcore_browser",
                 url=safe_url,
                 task=task,
                 title=title,
-                session=session_summary,
                 summary=f"Title: {title}\n\nContent:\n{content}",
             )
 
@@ -316,16 +305,14 @@ def _make_browser_tool(settings: Settings):
                 status="failed",
                 mode="agentcore_browser",
                 url=safe_url,
-                error="Browser tool unavailable: playwright not installed",
+                error="Browser tool unavailable: playwright or bedrock-agentcore not installed",
             )
+        except TypeError as exc:
+            # browser_session may not accept identifier kwarg in older SDK versions
+            logger.warning("[BROWSER] browser_session TypeError (%s) — falling back to BrowserClient", exc)
+            return _browse_via_browser_client(settings, url, safe_url, task, browser_identifier)
         except Exception as exc:
-            logger.error(
-                "[BROWSER] CDP browsing failed region=%s identifier=%s url=%s error=%s",
-                settings.aws_region,
-                browser_identifier,
-                safe_url,
-                exc,
-            )
+            logger.error("[BROWSER] CDP browsing failed url=%s error=%s", safe_url, exc, exc_info=True)
             try:
                 content = _fallback_fetch_url(url, timeout=min(settings.browser_timeout, 20))
                 return _json_result(
@@ -333,10 +320,7 @@ def _make_browser_tool(settings: Settings):
                     mode="http_fallback",
                     url=safe_url,
                     task=task,
-                    warning=(
-                        "Managed AgentCore Browser CDP connection failed; "
-                        "used direct HTTP fallback without JavaScript rendering."
-                    ),
+                    warning="AgentCore Browser failed; used HTTP fallback without JavaScript rendering.",
                     browser_error=type(exc).__name__,
                     summary=content,
                 )
@@ -346,14 +330,99 @@ def _make_browser_tool(settings: Settings):
                     mode="agentcore_browser",
                     url=safe_url,
                     task=task,
-                    region=settings.aws_region,
-                    browser_identifier=browser_identifier,
                     error_type=type(exc).__name__,
-                    error=str(exc).split("wss://", 1)[0].strip(),
-                    fallback_error=str(fallback_exc),
+                    error=str(exc)[:500],
+                    fallback_error=str(fallback_exc)[:200],
                 )
 
     return browse_web
+
+
+def _browse_via_browser_client(settings: Settings, url: str, safe_url: str, task: str, browser_identifier: str) -> str:
+    """Fallback using BrowserClient directly when browser_session doesn't accept identifier."""
+    try:
+        from bedrock_agentcore.tools.browser_client import BrowserClient
+        from playwright.sync_api import sync_playwright
+
+        browser_client = BrowserClient(settings.aws_region)
+        browser_client.start(
+            identifier=browser_identifier,
+            name="tech-news-agent-browser",
+            viewport={"width": 1365, "height": 900},
+            session_timeout_seconds=900,
+        )
+        try:
+            # Wait for READY (up to 30s)
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                try:
+                    session = browser_client.get_session()
+                    if session.get("status") == "READY":
+                        break
+                except Exception:
+                    pass
+                time.sleep(1)
+
+            ws_url, headers = browser_client.generate_ws_headers()
+            with sync_playwright() as pw:
+                browser = pw.chromium.connect_over_cdp(
+                    ws_url,
+                    headers=headers,
+                    timeout=settings.browser_timeout * 1000,
+                )
+                try:
+                    context = browser.contexts[0] if browser.contexts else browser.new_context()
+                    page = context.pages[0] if context.pages else context.new_page()
+                    page.goto(url, timeout=settings.browser_timeout * 1000, wait_until="domcontentloaded")
+                    try:
+                        page.wait_for_load_state("networkidle", timeout=8000)
+                    except Exception:
+                        pass
+                    title = page.title()
+                    body_text = page.evaluate("""() => {
+                        const clone = document.body.cloneNode(true);
+                        clone.querySelectorAll('script,style,nav,footer,header,aside').forEach(e => e.remove());
+                        return clone.innerText;
+                    }""")
+                finally:
+                    browser.close()
+        finally:
+            try:
+                browser_client.stop()
+            except Exception:
+                pass
+
+        content = body_text.strip()[:6000]
+        return _json_result(
+            status="completed",
+            mode="agentcore_browser_client",
+            url=safe_url,
+            task=task,
+            title=title,
+            summary=f"Title: {title}\n\nContent:\n{content}",
+        )
+    except Exception as exc:
+        logger.error("[BROWSER] BrowserClient fallback failed: %s", exc, exc_info=True)
+        try:
+            content = _fallback_fetch_url(url, timeout=20)
+            return _json_result(
+                status="completed",
+                mode="http_fallback",
+                url=safe_url,
+                task=task,
+                warning="All browser methods failed; used HTTP fallback.",
+                error_type=type(exc).__name__,
+                summary=content,
+            )
+        except Exception as fallback_exc:
+            return _json_result(
+                status="failed",
+                url=safe_url,
+                task=task,
+                error_type=type(exc).__name__,
+                error=str(exc)[:500],
+                fallback_error=str(fallback_exc)[:200],
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -367,54 +436,60 @@ def _make_code_interpreter_tool(settings: Settings):
 
         Use this tool for calculations, data analysis, processing results,
         generating charts, or any computation that requires code execution.
-        For charts/images, save files to /tmp with a clear extension and print
-        the file path so the UI can render downloadable/viewable artifacts.
+        Save charts and outputs to files (e.g. plt.savefig('/tmp/chart.png'))
+        so the UI can render downloadable/viewable artifacts.
 
         Args:
             code: The code to execute.
             language: Programming language — 'python' (default) or 'javascript'.
         """
+        identifier = settings.code_interpreter_id or settings.code_interpreter_identifier
+        logger.info("[CODE] Executing %s code (%d chars) identifier=%s", language, len(code), identifier)
+
         try:
             from bedrock_agentcore.tools.code_interpreter_client import code_session
 
-            logger.info("[CODE] Executing %s code (%d chars)", language, len(code))
-            with code_session(
-                region=settings.aws_region,
-                identifier=settings.code_interpreter_id or settings.code_interpreter_identifier,
-            ) as interp:
-                result = interp.execute_code(
-                    code=code,
-                    language=language,
-                    clear_context=False,
+            with code_session(region=settings.aws_region, identifier=identifier) as interp:
+                # Execute the code
+                exec_response = interp.invoke("executeCode", {
+                    "code": code,
+                    "language": language,
+                    "clearContext": False,
+                })
+                exec_result = _drain_code_stream(exec_response)
+                output_text, is_error, exit_code = _parse_code_result(exec_result)
+
+                logger.info(
+                    "[CODE] Execution done: is_error=%s exit_code=%d output_len=%d",
+                    is_error, exit_code, len(output_text),
                 )
 
-                try:
-                    files_result = interp.invoke("listFiles", {})
-                    result["files"] = files_result
-                except Exception as exc:
-                    logger.debug("[CODE] listFiles failed: %s", exc)
+                # List files and download image/data artifacts
+                artifact_paths = _list_artifacts(interp)
+                logger.info("[CODE] Found %d artifact(s): %s", len(artifact_paths), artifact_paths)
 
-                summary, artifact_paths = _summarize_code_result(result)
-                artifacts = []
+                artifacts: list[dict] = []
                 for path in artifact_paths[:5]:
-                    artifact = _artifact_to_data_url(interp, path)
+                    artifact = _read_artifact(interp, path)
                     if artifact:
                         artifacts.append(artifact)
+                        logger.info("[CODE] Collected artifact: %s (%s)", artifact["name"], artifact.get("mime_type"))
 
             return _json_result(
-                status="completed",
+                status="failed" if is_error else "completed",
                 language=language,
-                summary=summary or "(no output)",
+                exit_code=exit_code,
+                summary=output_text,
                 artifacts=artifacts,
             )
 
         except Exception as exc:
-            logger.error("[CODE] Execution error: %s", exc)
+            logger.error("[CODE] Execution error: %s", exc, exc_info=True)
             return _json_result(
                 status="failed",
                 language=language,
                 error_type=type(exc).__name__,
-                summary=f"Code execution error: {exc}",
+                summary=f"Code execution failed ({type(exc).__name__}): {exc}",
             )
 
     return execute_code

@@ -34,7 +34,11 @@ from app.integrations.agent_core_memory import RequestAgentMemory
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
-SSE_FLUSH_PAUSE_SECONDS = 0.005
+# 20ms between SSE frames — large enough for the OS to emit each event
+# as a separate TCP segment so the browser receives them individually.
+# 5ms was too short: multiple events could land in one network packet,
+# causing the browser to see them all at once via a single reader.read().
+SSE_FLUSH_PAUSE_SECONDS = 0.020
 
 
 def _sse(event_type: str, data: dict) -> str:
@@ -575,6 +579,7 @@ async def stream_chat_message(
         """
         message_id = f"msg-{uuid.uuid4().hex[:12]}"
         assistant_content = ""
+        tool_calls_map: dict[str, dict] = {}  # tool_id -> tool_call dict for DynamoDB persistence
         agent_core: AgentCoreClient | None = None
         agent_stream = None
 
@@ -619,6 +624,14 @@ async def stream_chat_message(
 
                     # Handle tool invocation events
                     elif event_type == "tool_invocation":
+                        tool_id = event.get("tool_id", "")
+                        tool_calls_map[tool_id] = {
+                            "tool_id": tool_id,
+                            "tool_name": event.get("tool_name", ""),
+                            "status": "executing",
+                            "args": event.get("tool_args"),
+                        }
+                        logger.info("[STREAM] Tool invocation: %s id=%s", event.get("tool_name"), tool_id)
                         async for frame in _yield_sse("tool_invocation", event):
                             yield frame
                         if await request.is_disconnected():
@@ -627,6 +640,23 @@ async def stream_chat_message(
 
                     # Handle tool result events
                     elif event_type == "tool_result":
+                        tool_id = event.get("tool_id", "")
+                        status = event.get("status", "completed")
+                        if tool_id in tool_calls_map:
+                            tool_calls_map[tool_id].update({
+                                "status": status,
+                                "result": event.get("result_summary", ""),
+                                "artifacts": event.get("result_artifacts", []),
+                            })
+                        else:
+                            tool_calls_map[tool_id] = {
+                                "tool_id": tool_id,
+                                "tool_name": event.get("tool_name", ""),
+                                "status": status,
+                                "result": event.get("result_summary", ""),
+                                "artifacts": event.get("result_artifacts", []),
+                            }
+                        logger.info("[STREAM] Tool result: %s id=%s status=%s", event.get("tool_name"), tool_id, status)
                         async for frame in _yield_sse("tool_result", event):
                             yield frame
                         if await request.is_disconnected():
@@ -707,6 +737,7 @@ async def stream_chat_message(
             # Save assistant message after streaming completes
             try:
                 if assistant_content:
+                    tool_calls_json = json.dumps(list(tool_calls_map.values())) if tool_calls_map else None
                     await error_handler.retry_with_backoff(
                         service.add_message,
                         "save_assistant_message",
@@ -714,6 +745,7 @@ async def stream_chat_message(
                         user_id=user_id,
                         role="assistant",
                         content=assistant_content,
+                        tool_calls_json=tool_calls_json,
                     )
                     # Log to per-request memory
                     await req_memory.log_message(

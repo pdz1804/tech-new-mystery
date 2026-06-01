@@ -169,6 +169,7 @@ class ChatService:
         content: str,
         token_count: int | None = None,
         model_used: str | None = None,
+        tool_calls_json: str | None = None,
     ) -> dict:
         """Add a message to a conversation session.
 
@@ -201,6 +202,7 @@ class ChatService:
             timestamp=now,
             token_count=token_count,
             model_used=model_used,
+            tool_calls_json=tool_calls_json,
             expires_at=expires_at,
         )
 
@@ -221,6 +223,7 @@ class ChatService:
             "timestamp": now,
             "token_count": token_count,
             "model_used": model_used,
+            "tool_calls_json": tool_calls_json,
         }
 
     async def get_messages(
@@ -277,6 +280,7 @@ class ChatService:
                     "timestamp": m.timestamp,
                     "token_count": m.token_count,
                     "model_used": m.model_used,
+                    "tool_calls_json": getattr(m, "tool_calls_json", None),
                 }
                 for m in messages
             ],

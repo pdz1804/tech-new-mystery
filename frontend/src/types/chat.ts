@@ -4,6 +4,13 @@
 
 export type ChatRole = 'user' | 'assistant' | 'tool' | 'error';
 
+/** One item in the ordered stream: either a text block or a tool invocation. */
+export interface MessageSegment {
+  type: 'text' | 'tool';
+  content?: string;
+  toolCall?: ToolCall;
+}
+
 export interface ChatMessage {
   id: string;
   session_id: string;
@@ -12,6 +19,8 @@ export interface ChatMessage {
   content: string;
   timestamp: number;
   tool_calls?: ToolCall[];
+  /** Ordered segments preserving the interleaved token/tool sequence during streaming. */
+  segments?: MessageSegment[];
   tokens?: number;
 }
 
@@ -69,6 +78,7 @@ export interface ApiMessage {
   timestamp: number;
   token_count?: number | null;
   model_used?: string | null;
+  tool_calls_json?: string | null;
 }
 
 export interface ApiListMeta {

@@ -209,7 +209,10 @@ class AgentCoreClient:
             try:
                 streaming_body = response.get("response")
                 if streaming_body:
-                    for line in streaming_body.iter_lines(chunk_size=32):
+                    # Keep this tiny so boto3 releases SSE lines as soon as the
+                    # AgentCore runtime writes them. Larger chunks can delay the
+                    # backend even when the runtime is producing real tokens.
+                    for line in streaming_body.iter_lines(chunk_size=1):
                         line_queue.put(line)
             except Exception as exc:
                 line_queue.put(exc)
@@ -239,6 +242,9 @@ class AgentCoreClient:
                     sse_event_name = None
                     sse_data_lines = []
                     if event:
+                        # Yield to the event loop so the router can flush this event
+                        # to the browser before processing the next one
+                        await asyncio.sleep(0)
                         yield event
                 continue
 
@@ -256,6 +262,7 @@ class AgentCoreClient:
             # NDJSON fallback
             event = self._parse_json_event(line)
             if event:
+                await asyncio.sleep(0)
                 yield event
 
         if sse_data_lines:
@@ -413,53 +420,59 @@ class AgentCoreClient:
                 await asyncio.sleep(FALLBACK_STREAM_DELAY_SECONDS)
 
     async def _iter_sse_lines(self, response: httpx.Response) -> AsyncGenerator[Dict[str, Any], None]:
-        """Parse SSE or JSON from response.
+        """Parse SSE stream from the AgentCore container response.
 
-        Agent Core claims text/event-stream but may return plain JSON.
-        This method handles both by detecting JSON and falling back to tokenization.
+        BedrockAgentCoreApp sends events as:
+            data: {JSON}\n\n
+        (no 'event:' prefix line — just a single 'data:' line per event)
+
+        The asyncio.sleep(0) before each yield is critical: it surrenders the
+        event loop so the ASGI server can flush the SSE frame to the browser
+        socket before the next network read begins. Without it, all events in
+        the httpx receive buffer are drained synchronously and forwarded before
+        the browser ever receives anything — causing the all-at-once display.
         """
         sse_event_name: str | None = None
         sse_data_lines: list[str] = []
         line_count = 0
         first_line = True
-        all_lines = []  # Debug: capture all lines
-
-        # Buffer to detect if this is JSON instead of SSE
-        json_buffer = ""
 
         async for raw_line in response.aiter_lines():
             line = raw_line.rstrip("\r")
             line_count += 1
-            all_lines.append(line)  # Debug
 
-            # Detect if first line looks like JSON (starts with {)
+            # First non-comment line: detect bare NDJSON vs proper SSE
             if first_line and line.strip().startswith("{"):
-                logger.info("[AGENTCORE] Detected JSON response instead of SSE, switching to tokenization")
-                # This is JSON, not SSE. Read the whole body and tokenize it.
-                json_buffer = line
-                # Continue reading remaining lines
-                async for remaining_line in response.aiter_lines():
-                    json_buffer += remaining_line
-                # Parse and tokenize the complete JSON
-                try:
-                    json_data = json.loads(json_buffer)
-                    async for event in self._tokenize_response(json_data):
-                        yield event
-                except json.JSONDecodeError as e:
-                    logger.error(f"[AGENTCORE] Failed to parse JSON fallback: {e}")
-                    yield {"type": "error", "message": str(e), "recoverable": True}
+                # NDJSON format: each line is a standalone JSON event.
+                # Yield this line immediately, then yield each subsequent line.
+                logger.info("[AGENTCORE] Detected NDJSON format, streaming line by line")
+                event = self._parse_json_event(line)
+                if event:
+                    await asyncio.sleep(0)
+                    yield event
+                async for ndjson_line in response.aiter_lines():
+                    ndjson_line = ndjson_line.rstrip("\r")
+                    if ndjson_line.strip():
+                        event = self._parse_json_event(ndjson_line)
+                        if event:
+                            await asyncio.sleep(0)
+                            yield event
                 return
 
-            first_line = False
+            # Mark first-real-line detection done after any non-empty, non-comment line
+            if line and not line.startswith(":"):
+                first_line = False
 
             if not line:
+                # Empty line = SSE event separator
                 if sse_data_lines:
-                    logger.debug(f"[AGENTCORE] SSE event complete: type={sse_event_name}, lines={len(sse_data_lines)}")
                     event = self._parse_sse_event(sse_event_name, sse_data_lines)
                     sse_event_name = None
                     sse_data_lines = []
                     if event:
-                        logger.debug(f"[AGENTCORE] Yielding parsed event: {event.get('type')}")
+                        # Yield control so the ASGI server flushes this frame
+                        # to the network before we read the next event
+                        await asyncio.sleep(0)
                         yield event
                 continue
 
@@ -467,24 +480,20 @@ class AgentCoreClient:
                 continue
             if line.startswith("event:"):
                 sse_event_name = line.removeprefix("event:").strip()
-                logger.debug(f"[AGENTCORE] SSE event type detected: {sse_event_name}")
                 continue
             if line.startswith("data:"):
-                data_content = line.removeprefix("data:").lstrip()
-                sse_data_lines.append(data_content)
-                logger.debug(f"[AGENTCORE] SSE data line {len(sse_data_lines)}: {data_content[:100]}")
+                sse_data_lines.append(line.removeprefix("data:").lstrip())
                 continue
             if line.startswith(("id:", "retry:")):
                 continue
 
-            logger.debug(f"[AGENTCORE] Attempting JSON parse on line: {line[:100]}")
+            # Bare JSON line (NDJSON mixed with SSE markers)
             event = self._parse_json_event(line)
             if event:
-                logger.debug(f"[AGENTCORE] Yielding JSON event: {event.get('type')}")
+                await asyncio.sleep(0)
                 yield event
 
-        logger.info(f"[AGENTCORE] SSE stream ended after {line_count} lines")
-        logger.debug(f"[AGENTCORE] All lines received: {all_lines}")  # Debug
+        logger.debug("[AGENTCORE] SSE stream ended after %d lines", line_count)
         if sse_data_lines:
             event = self._parse_sse_event(sse_event_name, sse_data_lines)
             if event:
