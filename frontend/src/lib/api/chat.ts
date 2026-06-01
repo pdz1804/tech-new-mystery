@@ -387,7 +387,6 @@ async function readChatMessageStreamWithFetch(
   const decoder = new TextDecoder();
   let buffer = '';
   let readCount = 0;
-  let eventCount = 0;
 
   try {
     while (true) {
@@ -408,7 +407,6 @@ async function readChatMessageStreamWithFetch(
 
         logStreamEvent(event);
 
-        eventCount += 1;
         onEvent(event);
         // Give React one animation frame to commit this event before draining
         // more buffered chunks from fetch. A timer-only yield can keep
@@ -420,7 +418,6 @@ async function readChatMessageStreamWithFetch(
     if (buffer.trim()) {
       const event = parseSSEEvent(buffer);
       if (event) {
-        eventCount += 1;
         onEvent(event);
         await yieldToBrowser();
       }

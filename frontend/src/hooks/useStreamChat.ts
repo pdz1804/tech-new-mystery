@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { getSessionMessages, readChatMessageStream } from '@/lib/api/chat';
-import type { ChatMessage, MessageSegment, SSEEvent, ToolCall } from '@/types/chat';
+import type { ChatMessage, MessageSegment, ToolCall } from '@/types/chat';
 
 function logRenderedStreamEvent(type: string, detail?: unknown) {
   if (process.env.NODE_ENV !== 'development') return;
