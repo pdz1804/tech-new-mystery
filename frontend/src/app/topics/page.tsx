@@ -9,7 +9,13 @@ import { apiClient } from '@/lib/api/client';
 import { ClusterCard } from '@/components/article/ClusterCard';
 import { ArticleCardSkeleton } from '@/components/ui/Skeleton';
 import { AppLoadingState } from '@/components/ui/AppLoadingState';
-import type { Cluster, ClusterListResponse, ClusterListParams } from '@/types/cluster';
+import type {
+  Cluster,
+  ClusterListResponse,
+  ClusterListParams,
+  ClusterPCAMapResponse,
+  PCAArticlePoint,
+} from '@/types/cluster';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -36,6 +42,7 @@ interface TopicsPageState {
   totalCount: number;
   sortBy: SortOption;
   searchQuery: string;
+  pcaMap: ClusterPCAMapResponse | null;
 }
 
 // ─── PCA-style cluster map (deterministic hash-based positions) ───────────────
@@ -45,69 +52,178 @@ const CLUSTER_COLORS = [
   '#EF4444', '#06B6D4', '#84CC16', '#F97316',
 ];
 
-function hashToPosition(str: string, seed: number): number {
-  let h = seed;
-  for (let i = 0; i < str.length; i++) {
-    h = (h * 31 + str.charCodeAt(i)) & 0xffffffff;
-  }
-  return (Math.abs(h) % 80) + 10; // 10–90% of container
+function truncateTitle(title: string, maxLength = 54) {
+  return title.length > maxLength ? `${title.slice(0, maxLength - 1)}...` : title;
 }
 
-function ClusterMap({ clusters }: { clusters: Cluster[] }) {
-  if (clusters.length === 0) return null;
-
-  // SVG viewBox is 1000×260; positions are in those units
+function ClusterMap({ data }: { data: ClusterPCAMapResponse | null }) {
   const W = 1000;
-  const H = 320;
-  const displayedClusters = clusters.slice(0, 24);
+  const H = 420;
+  const padding = 56;
+  const [selectedPoint, setSelectedPoint] = useState<PCAArticlePoint | null>(null);
+  const [draggedPointId, setDraggedPointId] = useState<string | null>(null);
+  const [nodePositions, setNodePositions] = useState<Record<string, { x: number; y: number }>>({});
+  const clusterById = new Map((data?.clusters ?? []).map((cluster) => [cluster.cluster_id, cluster]));
+  const xFor = (point: PCAArticlePoint) => nodePositions[point.article_id]?.x ?? padding + ((point.x + 1) / 2) * (W - padding * 2);
+  const yFor = (point: PCAArticlePoint) => nodePositions[point.article_id]?.y ?? padding + ((1 - (point.y + 1) / 2)) * (H - padding * 2);
+
+  const updateDraggedNode = (event: React.PointerEvent<SVGSVGElement>) => {
+    if (!draggedPointId) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const x = ((event.clientX - bounds.left) / bounds.width) * W;
+    const y = ((event.clientY - bounds.top) / bounds.height) * H;
+    setNodePositions((positions) => ({
+      ...positions,
+      [draggedPointId]: {
+        x: Math.max(padding / 2, Math.min(W - padding / 2, x)),
+        y: Math.max(padding / 2, Math.min(H - padding / 2, y)),
+      },
+    }));
+  };
+
+  const isPreparing = data?.status === 'queued' || !data;
 
   return (
-    <div className="relative mb-8 w-full overflow-hidden rounded-2xl border border-slate-200/70 bg-white/85 shadow-[0_20px_45px_-28px_rgba(15,23,42,0.35)] backdrop-blur-xl">
-      <div className="flex items-center justify-between border-b border-slate-200/70 px-5 py-4">
+    <div className="relative mb-8 w-full overflow-hidden rounded-[28px] border border-white/55 border-t-white/90 bg-white/52 shadow-[0_26px_70px_-42px_rgba(15,23,42,0.55),inset_0_1px_0_rgba(255,255,255,0.9)] backdrop-blur-3xl">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_8%,rgba(255,255,255,0.92),transparent_34%),radial-gradient(circle_at_86%_18%,rgba(59,130,246,0.12),transparent_30%)]" />
+      <div className="relative flex items-center justify-between border-b border-white/55 px-5 py-4">
         <div>
-          <p className="text-sm font-semibold text-slate-800">Article Topic Map</p>
-          <p className="text-xs text-slate-500">Bubble size reflects cluster volume</p>
+          <p className="text-sm font-bold text-slate-900">Article Embedding Map</p>
+          <p className="text-xs font-medium text-slate-500">PCA projection of article embeddings, colored by cluster</p>
         </div>
-        <p className="text-xs font-medium text-slate-500">{displayedClusters.length} visible</p>
+        <p className="rounded-full border border-white/60 bg-white/55 px-3 py-1 text-xs font-semibold text-slate-600 backdrop-blur-xl">
+          {isPreparing ? 'Preparing...' : `${data.total_articles} articles`}
+        </p>
       </div>
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        className="h-[320px] w-full"
-        aria-label="Article topic map"
+        className="h-[420px] w-full"
+        aria-label="Article embedding PCA map"
         role="img"
+        onPointerMove={updateDraggedNode}
+        onPointerUp={() => setDraggedPointId(null)}
+        onPointerLeave={() => setDraggedPointId(null)}
       >
         <defs>
-          <pattern id="topic-grid" width="40" height="40" patternUnits="userSpaceOnUse">
-            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e2e8f0" strokeWidth="1" opacity="0.55" />
-          </pattern>
+          <radialGradient id="topic-map-wash" cx="50%" cy="42%" r="72%">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.88" />
+            <stop offset="68%" stopColor="#eff7ff" stopOpacity="0.62" />
+            <stop offset="100%" stopColor="#dbeafe" stopOpacity="0.28" />
+          </radialGradient>
+          <filter id="topic-blur" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="8" />
+          </filter>
         </defs>
-        <rect width={W} height={H} fill="url(#topic-grid)" />
-        {displayedClusters.map((cluster, i) => {
-          const cx = (hashToPosition(cluster.id, 1) / 100) * W;
-          const cy = (hashToPosition(cluster.id, 7) / 100) * H;
-          const r = Math.max(22, Math.min(56, Math.sqrt(cluster.article_count) * 9 + 12));
-          const color = CLUSTER_COLORS[i % CLUSTER_COLORS.length];
-          const labelSize = Math.max(12, r * 0.42);
+        <rect width={W} height={H} fill="url(#topic-map-wash)" />
+
+        {isPreparing && (
+          <g>
+            <circle cx={W / 2} cy={H / 2} r="44" fill="#3B82F6" opacity="0.12" />
+            <circle cx={W / 2} cy={H / 2} r="18" fill="#3B82F6" opacity="0.62" />
+            <text x={W / 2} y={H / 2 + 54} textAnchor="middle" fontSize="13" fill="#475569" fontWeight="700">
+              Worker is preparing PCA map
+            </text>
+          </g>
+        )}
+
+        {(data?.points ?? []).map((point) => {
+          const cluster = clusterById.get(point.cluster_id);
+          const color = cluster?.color ?? '#64748B';
+          const cx = xFor(point);
+          const cy = yFor(point);
+          const isSelected = selectedPoint?.article_id === point.article_id;
+
           return (
-            <g key={cluster.id} className="cursor-pointer">
-              <title>{`${cluster.label}: ${cluster.article_count} articles`}</title>
-              <circle cx={cx} cy={cy} r={r + 8} fill={color} opacity={0.12} />
-              <circle cx={cx} cy={cy} r={r} fill={color} opacity={0.86} />
-              <text
-                x={cx}
-                y={cy}
-                textAnchor="middle"
-                dominantBaseline="central"
-                fontSize={labelSize}
-                fill="white"
-                fontWeight="bold"
-              >
-                {cluster.article_count}
-              </text>
+            <g
+              key={point.article_id}
+              className="group cursor-grab active:cursor-grabbing"
+              onPointerDown={(event) => {
+                event.preventDefault();
+                setDraggedPointId(point.article_id);
+                setSelectedPoint(point);
+              }}
+              onClick={() => setSelectedPoint(point)}
+            >
+              <title>{`${point.title} - ${point.cluster_label}`}</title>
+              <circle cx={cx} cy={cy} r={isSelected ? 19 : 13} fill={color} opacity="0.16" filter="url(#topic-blur)" />
+              <circle
+                cx={cx}
+                cy={cy}
+                r={isSelected ? 10 : 6 + point.confidence_score * 2.5}
+                fill={color}
+                opacity="0.9"
+                stroke="rgba(255,255,255,0.9)"
+                strokeWidth="1.5"
+              />
+              <circle cx={cx - 2} cy={cy - 2} r="2" fill="white" opacity="0.45" />
+              <g className="opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                <rect
+                  x={Math.min(cx + 12, W - 250)}
+                  y={Math.max(cy - 28, 10)}
+                  width="238"
+                  height="42"
+                  rx="14"
+                  fill="rgba(255,255,255,0.9)"
+                  stroke="rgba(255,255,255,0.95)"
+                />
+                <text
+                  x={Math.min(cx + 24, W - 238)}
+                  y={Math.max(cy - 3, 35)}
+                  fontSize="12"
+                  fill="#0f172a"
+                  fontWeight="700"
+                >
+                  {truncateTitle(point.title)}
+                </text>
+                <text
+                  x={Math.min(cx + 24, W - 238)}
+                  y={Math.max(cy + 13, 51)}
+                  fontSize="10"
+                  fill="#64748b"
+                  fontWeight="600"
+                >
+                  {truncateTitle(point.cluster_label, 34)}
+                </text>
+              </g>
             </g>
           );
         })}
       </svg>
+
+      <div className="relative grid gap-3 border-t border-white/55 px-5 py-3 lg:grid-cols-[1fr_320px]">
+        <div className="flex flex-wrap gap-2">
+          {(data?.clusters ?? []).slice(0, 8).map((cluster) => (
+            <span
+              key={cluster.cluster_id}
+              className="inline-flex items-center gap-2 rounded-full border border-white/60 bg-white/52 px-3 py-1 text-xs font-semibold text-slate-600 backdrop-blur-xl"
+            >
+              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: cluster.color }} />
+              {truncateTitle(cluster.label, 22)}
+            </span>
+          ))}
+          {(data?.clusters.length ?? 0) > 8 && (
+            <span className="inline-flex items-center rounded-full border border-white/60 bg-white/52 px-3 py-1 text-xs font-semibold text-slate-500 backdrop-blur-xl">
+              +{(data?.clusters.length ?? 0) - 8} clusters
+            </span>
+          )}
+        </div>
+
+        <div className="rounded-2xl border border-white/60 bg-white/52 p-3 text-sm shadow-sm backdrop-blur-2xl">
+          {selectedPoint ? (
+            <>
+              <p className="font-bold leading-5 text-slate-950">{selectedPoint.title}</p>
+              <p className="mt-2 text-xs font-semibold text-slate-500">{selectedPoint.cluster_label}</p>
+              <p className="mt-2 text-xs text-slate-500">
+                Confidence {(selectedPoint.confidence_score * 100).toFixed(0)}%
+              </p>
+            </>
+          ) : (
+            <p className="text-xs font-medium leading-5 text-slate-500">
+              Drag article nodes around. Hover for title, click a node to inspect details.
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -130,6 +246,7 @@ export default function TopicsPage() {
     totalCount: 0,
     sortBy: 'size',
     searchQuery: '',
+    pcaMap: null,
   });
 
   const [showMobileFilters, setShowMobileFilters] = useState(false);
@@ -178,12 +295,20 @@ export default function TopicsPage() {
           params.keyword = debouncedSearchQuery;
         }
 
-        const response = await apiClient.get<ClusterListResponse>('/clusters', { params });
-        const data = response.data;
+        const clustersResponse = await apiClient.get<ClusterListResponse>('/clusters', { params });
+        const data = clustersResponse.data;
+        const clusterIds = (data.clusters || []).map((cluster) => cluster.id);
+        const pcaParams = new URLSearchParams();
+        pcaParams.set('limit', '250');
+        clusterIds.forEach((clusterId) => pcaParams.append('cluster_ids', clusterId));
+        const pcaResponse = await apiClient.get<ClusterPCAMapResponse>(
+          `/clusters/pca-map?${pcaParams.toString()}`
+        );
 
         setState((s) => ({
           ...s,
           clusters: data.clusters || [],
+          pcaMap: pcaResponse.data,
           totalPages: data.pagination.total_pages,
           totalCount: data.pagination.total_count,
           currentPage: data.pagination.page,
@@ -208,6 +333,26 @@ export default function TopicsPage() {
 
     fetchClusters();
   }, [state.currentPage, state.sortBy, state.pageSize, debouncedSearchQuery, router]);
+
+  useEffect(() => {
+    if (state.pcaMap?.status !== 'queued' || state.clusters.length === 0) return;
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const pcaParams = new URLSearchParams();
+        pcaParams.set('limit', '250');
+        state.clusters.forEach((cluster) => pcaParams.append('cluster_ids', cluster.id));
+        const response = await apiClient.get<ClusterPCAMapResponse>(
+          `/clusters/pca-map?${pcaParams.toString()}`
+        );
+        setState((s) => ({ ...s, pcaMap: response.data }));
+      } catch {
+        // Leave the queued state visible; the next page interaction will retry.
+      }
+    }, 2500);
+
+    return () => window.clearTimeout(timer);
+  }, [state.pcaMap?.status, state.clusters]);
 
   const triggerClustering = async () => {
     setIsTriggering(true);
@@ -310,49 +455,19 @@ export default function TopicsPage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#f5f8fc]">
+    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_16%_12%,rgba(37,99,235,0.10),transparent_30%),radial-gradient(circle_at_88%_8%,rgba(20,184,166,0.10),transparent_28%),linear-gradient(180deg,#f8fbff_0%,#eef5f8_100%)]">
       {/* Main Content */}
       <div className="relative z-0 pt-44 md:pt-48">
-        <div className="mx-auto max-w-7xl px-4 py-8 md:py-12">
-
-          {/* ── Page header row ── */}
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-            className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"
-          >
-            <div>
-              <h1 className="mb-1 text-4xl font-bold text-slate-950 md:text-5xl">
-                Topics
-              </h1>
-              <p className="text-base text-slate-500">
-                Semantic clusters of recent tech news
-              </p>
-            </div>
-
-            {/* Admin retrigger button */}
-            {user?.is_admin && (
-              <button
-                type="button"
-                onClick={triggerClustering}
-                className="flex flex-shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:border-blue-200 hover:text-blue-700 hover:shadow-md"
-              >
-                <RefreshCw size={16} className={isTriggering ? 'animate-spin' : ''} />
-                {isTriggering ? 'Clustering...' : 'Retrigger Clustering'}
-              </button>
-            )}
-          </motion.div>
-
+        <div className="mx-auto max-w-[1440px] px-4 py-6 md:px-8 md:py-10">
           {/* ── Filters / Search bar ── */}
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.1 }}
-            className="mb-8 space-y-4"
+            className="mb-7 space-y-4"
           >
             {/* Search + sort pill */}
-            <div className="flex flex-col items-stretch gap-3 rounded-2xl border border-slate-200/80 bg-white/90 px-4 py-3 shadow-[0_18px_35px_-28px_rgba(15,23,42,0.45)] backdrop-blur-xl sm:flex-row sm:items-center">
+            <div className="flex flex-col items-stretch gap-3 rounded-[24px] border border-white/55 border-t-white/90 bg-white/62 px-4 py-3 shadow-[0_18px_45px_-32px_rgba(15,23,42,0.5),inset_0_1px_0_rgba(255,255,255,0.88)] backdrop-blur-3xl sm:flex-row sm:items-center">
               {/* Search input */}
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
@@ -361,7 +476,7 @@ export default function TopicsPage() {
                   placeholder="Search topics..."
                   value={state.searchQuery}
                   onChange={(e) => handleSearch(e.target.value)}
-                  className="w-full rounded-xl bg-transparent py-2 pl-9 pr-4 text-sm text-slate-900 transition-all placeholder:text-slate-400 focus:outline-none"
+                  className="w-full rounded-2xl bg-white/30 py-2.5 pl-9 pr-4 text-sm font-medium text-slate-900 transition-all placeholder:text-slate-400 focus:bg-white/55 focus:outline-none"
                 />
                 {state.searchQuery && (
                   <button
@@ -376,7 +491,7 @@ export default function TopicsPage() {
               </div>
 
               {/* Divider */}
-              <div className="hidden sm:block w-px h-6 bg-slate-200" />
+              <div className="hidden h-6 w-px bg-white/70 sm:block" />
 
               {/* Sort buttons — desktop */}
               <div className="hidden sm:flex items-center gap-1">
@@ -388,8 +503,8 @@ export default function TopicsPage() {
                     onClick={() => handleSortChange(sort)}
                     className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
                       state.sortBy === sort
-                        ? 'bg-blue-600 text-white shadow'
-                        : 'border border-slate-200 bg-slate-50 text-slate-600 hover:bg-white'
+                        ? 'bg-blue-600 text-white shadow-[0_10px_22px_rgba(37,99,235,0.24)]'
+                        : 'border border-white/55 bg-white/45 text-slate-600 hover:bg-white/75'
                     }`}
                   >
                     {sort.charAt(0).toUpperCase() + sort.slice(1)}
@@ -397,15 +512,41 @@ export default function TopicsPage() {
                 ))}
               </div>
 
+              {user?.is_admin && (
+                <>
+                  <div className="hidden h-6 w-px bg-white/70 sm:block" />
+                  <button
+                    type="button"
+                    onClick={triggerClustering}
+                    className="hidden flex-shrink-0 items-center justify-center gap-2 rounded-2xl border border-white/60 bg-white/58 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur-2xl transition-all hover:bg-white/82 hover:text-blue-700 sm:flex"
+                  >
+                    <RefreshCw size={15} className={isTriggering ? 'animate-spin' : ''} />
+                    {isTriggering ? 'Clustering...' : 'Retrigger'}
+                  </button>
+                </>
+              )}
+
               {/* Mobile filter toggle */}
-              <button
-                type="button"
-                className="sm:hidden flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/80 border border-white/30 text-slate-600 text-xs font-medium"
-                onClick={() => setShowMobileFilters(!showMobileFilters)}
-              >
-                <Filter className="w-3.5 h-3.5" />
-                Filters
-              </button>
+              <div className="flex gap-2 sm:hidden">
+                {user?.is_admin && (
+                  <button
+                    type="button"
+                    onClick={triggerClustering}
+                    className="flex items-center gap-2 rounded-xl border border-white/50 bg-white/70 px-3 py-1.5 text-xs font-semibold text-slate-700"
+                  >
+                    <RefreshCw size={14} className={isTriggering ? 'animate-spin' : ''} />
+                    Run
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="flex items-center gap-2 rounded-xl border border-white/50 bg-white/70 px-3 py-1.5 text-xs font-medium text-slate-600"
+                  onClick={() => setShowMobileFilters(!showMobileFilters)}
+                >
+                  <Filter className="w-3.5 h-3.5" />
+                  Filters
+                </button>
+              </div>
             </div>
 
             {/* Mobile filters panel */}
@@ -415,7 +556,7 @@ export default function TopicsPage() {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="sm:hidden bg-gradient-to-br from-white/60 to-white/40 backdrop-blur-xl border border-white/30 rounded-2xl px-4 py-3 shadow-lg"
+                  className="sm:hidden rounded-2xl border border-white/55 bg-white/62 px-4 py-3 shadow-lg backdrop-blur-3xl"
                 >
                   <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Sort by</span>
                   <div className="grid grid-cols-3 gap-2 mt-2">
@@ -430,7 +571,7 @@ export default function TopicsPage() {
                         className={`px-3 py-2 rounded-xl text-xs font-medium transition-all ${
                           state.sortBy === sort
                             ? 'bg-blue-600 text-white'
-                            : 'bg-white/80 border border-white/30 text-slate-600'
+                            : 'bg-white/65 border border-white/50 text-slate-600'
                         }`}
                       >
                         {sort.charAt(0).toUpperCase() + sort.slice(1)}
@@ -448,7 +589,7 @@ export default function TopicsPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.15 }}
           >
-            {!state.loading && <ClusterMap clusters={state.clusters} />}
+            {!state.loading && <ClusterMap data={state.pcaMap} />}
           </motion.div>
 
           {/* ── Info text ── */}
@@ -456,15 +597,19 @@ export default function TopicsPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.6, delay: 0.2 }}
-            className="mb-6 text-sm text-slate-500"
+            className="mb-6 flex flex-wrap items-center gap-2 text-sm text-slate-500"
           >
             {state.loading ? (
               <span>Loading topics...</span>
             ) : (
-              <span>
-                Showing <span className="font-semibold text-slate-700">{state.clusters.length}</span> of{' '}
-                <span className="font-semibold text-slate-700">{state.totalCount}</span> topics
-              </span>
+              <>
+                <span className="rounded-full border border-white/60 bg-white/55 px-3 py-1.5 font-medium shadow-sm backdrop-blur-xl">
+                  <span className="font-bold text-slate-800">{state.clusters.length}</span> visible
+                </span>
+                <span className="rounded-full border border-white/60 bg-white/55 px-3 py-1.5 font-medium shadow-sm backdrop-blur-xl">
+                  <span className="font-bold text-slate-800">{state.totalCount}</span> topics in latest clustering set
+                </span>
+              </>
             )}
           </motion.div>
 
@@ -473,7 +618,7 @@ export default function TopicsPage() {
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="mb-6 p-4 rounded-2xl bg-red-50/80 border border-red-200/60 text-red-700 text-sm"
+              className="mb-6 rounded-2xl border border-red-200/60 bg-red-50/80 p-4 text-sm text-red-700"
             >
               {state.error}
             </motion.div>
@@ -486,7 +631,7 @@ export default function TopicsPage() {
             animate={state.loading ? 'hidden' : 'visible'}
             className="mb-12"
           >
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
               {state.loading ? (
                 Array.from({ length: state.pageSize }).map((_, i) => (
                   <ArticleCardSkeleton key={i} />
@@ -504,7 +649,9 @@ export default function TopicsPage() {
                   className="col-span-full py-12 text-center"
                 >
                   <div className="inline-flex flex-col items-center justify-center gap-3">
-                    <div className="text-5xl">🔍</div>
+                    <div className="flex h-14 w-14 items-center justify-center rounded-[22px] border border-white/60 bg-white/62 text-blue-600 shadow-lg backdrop-blur-2xl">
+                      <Search size={24} aria-hidden="true" />
+                    </div>
                     <h3 className="text-xl font-semibold text-slate-900">
                       {state.searchQuery ? 'No topics found' : 'No topics available'}
                     </h3>
@@ -534,13 +681,13 @@ export default function TopicsPage() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.3 }}
-              className="flex items-center justify-between sm:justify-center gap-2 flex-wrap"
+              className="flex flex-wrap items-center justify-between gap-2 sm:justify-center"
             >
               <button
                 type="button"
                 onClick={() => handlePageChange(Math.max(1, state.currentPage - 1))}
                 disabled={state.currentPage === 1}
-                className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-gradient-to-br from-white/70 to-white/50 backdrop-blur-xl border border-white/40 text-slate-700 font-medium transition-all hover:from-white/80 hover:to-white/60 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg"
+                className="flex items-center gap-2 rounded-2xl border border-white/55 bg-white/62 px-4 py-2 font-medium text-slate-700 shadow-lg backdrop-blur-3xl transition-all hover:bg-white/78 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <ChevronLeft className="w-5 h-5" />
                 <span className="hidden sm:inline">Previous</span>
@@ -560,7 +707,7 @@ export default function TopicsPage() {
                       className={`w-10 h-10 rounded-xl font-medium transition-all ${
                         state.currentPage === page
                           ? 'bg-blue-600 text-white shadow-xl'
-                          : 'bg-gradient-to-br from-white/70 to-white/50 backdrop-blur-xl border border-white/40 text-slate-700 hover:from-white/80 hover:to-white/60 shadow-lg'
+                          : 'border border-white/55 bg-white/62 text-slate-700 shadow-lg backdrop-blur-3xl hover:bg-white/78'
                       }`}
                     >
                       {page}
@@ -573,7 +720,7 @@ export default function TopicsPage() {
                 type="button"
                 onClick={() => handlePageChange(Math.min(state.totalPages, state.currentPage + 1))}
                 disabled={state.currentPage === state.totalPages}
-                className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-gradient-to-br from-white/70 to-white/50 backdrop-blur-xl border border-white/40 text-slate-700 font-medium transition-all hover:from-white/80 hover:to-white/60 disabled:opacity-40 disabled:cursor-not-allowed shadow-lg"
+                className="flex items-center gap-2 rounded-2xl border border-white/55 bg-white/62 px-4 py-2 font-medium text-slate-700 shadow-lg backdrop-blur-3xl transition-all hover:bg-white/78 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <span className="hidden sm:inline">Next</span>
                 <ChevronRight className="w-5 h-5" />

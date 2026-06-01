@@ -1,439 +1,129 @@
-# Clustering Feature Guide
+# Clustering Guide
 
-## Overview
+The clustering system groups published articles into semantic topics and powers `/topics`, cluster detail pages, admin evaluation screens, and the article embedding map.
 
-The clustering feature automatically groups articles into semantic topics using HDBSCAN density-based clustering. The system runs on a daily schedule (6am & 6pm UTC) via Celery Beat, processes embeddings with quality metrics, and stores results in DynamoDB.
+## Pipeline Overview
 
-## Architecture
+```text
+published articles
+  -> embeddings from Qdrant or OpenAI
+  -> clustering/evaluation in Celery
+  -> cluster metadata + article assignments in DynamoDB
+  -> worker-precomputed PCA map in Redis
+  -> topic UI and APIs
+```
 
-### Components
+## Components
 
-| Component | Purpose |
+| Component | Responsibility |
 | --- | --- |
-| **Embedding Service** | Generates and caches article embeddings via OpenAI (text-embedding-3-small) |
-| **HDBSCAN Engine** | Performs density-based clustering with automatic noise detection |
-| **Evaluation Metrics** | Calculates Silhouette, Davies-Bouldin, and Calinski-Harabasz scores |
-| **Evaluation Pipeline** | Sweeps k-values, ranks results, selects optimal clustering |
-| **Celery Task** | Orchestrates the full pipeline on schedule with retries |
-| **DynamoDB Tables** | Stores clusters, assignments, evaluations, and embeddings |
+| `EmbeddingService` | Builds embedding text and generates OpenAI `text-embedding-3-small` vectors when missing. |
+| `QdrantService` | Stores and retrieves article vectors for semantic search and PCA map generation. |
+| `ClusteringEngine` | Runs HDBSCAN clustering for scheduled clustering jobs. |
+| `EvaluationPipeline` | Evaluates k-values with Silhouette, Davies-Bouldin, and Calinski-Harabasz metrics. |
+| `clustering_tasks.py` | Celery orchestration for clustering, evaluation handoff, metadata persistence, and PCA map refresh. |
+| `cluster_pca_map_service.py` | Builds article-level PCA payloads from cluster assignments and embeddings. |
+| `pca_map_tasks.py` | Celery task for cacheable PCA map generation. |
 
-### Data Flow
+## Data Model
 
-```
-Article Fetch
-    ↓
-Embedding Generation (batch 100, cached)
-    ↓
-HDBSCAN Clustering (min_cluster_size=5)
-    ↓
-Quality Metrics Calculation
-    ↓
-Evaluation Pipeline & K-Selection
-    ↓
-Store Results (DynamoDB, 7-day TTL)
-    ↓
-CloudWatch Metrics & Alerts
-```
+| Table / Store | Purpose |
+| --- | --- |
+| DynamoDB `article_clusters` | Maps `cluster_id -> article_id` with assignment confidence. |
+| DynamoDB `cluster_metadata` | Cluster labels, descriptions, keywords, top articles, counts, and evaluation ID. |
+| DynamoDB `clustering_evaluation` | Historical evaluation results and selected k-values. |
+| Qdrant article collection | Article embeddings and searchable article metadata. |
+| Redis | Celery broker/backend plus cached PCA map payloads. |
 
-## DynamoDB Tables
+## Latest Evaluation Filtering
 
-### `tech-news-article_clusters`
-Maps articles to clusters with reverse lookups.
+`GET /v1/clusters` scans cluster metadata, filters to the latest `evaluation_id`, sorts the filtered result, and paginates in memory. That means UI copy like `12 visible / 14 topics in latest clustering set` is page size versus latest-evaluation total.
 
-| Key | Type | Purpose |
+## PCA Map
+
+The map is article-level, not cluster-level:
+
+- each point is one article;
+- coordinates come from PCA over article embeddings;
+- colors represent cluster assignments;
+- no edges are drawn because the system does not store graph relationships;
+- frontend nodes are draggable and clickable for inspection.
+
+The API does not run PCA inline. `GET /v1/clusters/pca-map` serves Redis-cached payloads and queues `tasks.generate_cluster_pca_map` on cache miss. See [CLUSTERING_PCA_MAP.md](CLUSTERING_PCA_MAP.md).
+
+## Main Endpoints
+
+| Method | Path | Description |
 | --- | --- | --- |
-| `cluster_id` (PK) | String | Cluster identifier |
-| `article_id` (SK) | String | Article in cluster |
-| `relevance_score` | Number | Relevance to cluster (0-1) |
-| `created_at` | Number | Timestamp |
-| `expires_at` (TTL) | Number | Auto-expire after 7 days |
+| `GET` | `/v1/clusters` | List latest-evaluation clusters with pagination and sorting. |
+| `GET` | `/v1/clusters/pca-map` | Cached article embedding map; queues worker generation when missing. |
+| `GET` | `/v1/clusters/trending` | Top trending clusters. |
+| `GET` | `/v1/clusters/{cluster_id}` | Cluster detail with paginated articles. |
+| `GET` | `/v1/clusters/{cluster_id}/articles` | Articles in one cluster. |
+| `GET` | `/v1/admin/clustering/evaluations` | Evaluation history. |
+| `POST` | `/v1/admin/clustering/evaluations/trigger` | Queue manual clustering evaluation. |
 
-**GSI:** `article_id-index` → reverse lookup articles
+## Worker Flow
 
-### `tech-news-cluster_metadata`
-Cluster information and quality metrics.
+Scheduled clustering runs from Celery Beat at 06:00 and 18:00 UTC.
 
-| Key | Type | Purpose |
-| --- | --- | --- |
-| `cluster_id` (PK) | String | Cluster identifier |
-| `cluster_label` | String | Human-readable label (AI-generated) |
-| `num_articles` | Number | Article count in cluster |
-| `silhouette_score` | Number | Cohesion metric (higher better, -1 to 1) |
-| `davies_bouldin_index` | Number | Separation metric (lower better, ≥0) |
-| `calinski_harabasz_index` | Number | Density metric (higher better, ≥0) |
-| `created_at` | Number | Timestamp |
-| `expires_at` (TTL) | Number | Auto-expire after 7 days |
-
-### `tech-news-article_embeddings`
-Cached embeddings to avoid re-computing.
-
-| Key | Type | Purpose |
-| --- | --- | --- |
-| `article_id` (PK) | String | Article identifier |
-| `embedding_vector` | Binary | 1536-dim OpenAI embedding |
-| `embedding_model` | String | Model version (text-embedding-3-small) |
-| `created_at` | Number | Timestamp |
-| `expires_at` (TTL) | Number | Auto-expire after 7 days |
-
-### `tech-news-clustering_evaluations`
-Evaluation results for analysis and optimization.
-
-| Key | Type | Purpose |
-| --- | --- | --- |
-| `evaluation_id` (PK) | String | Unique evaluation ID |
-| `run_timestamp` | Number | When clustering ran |
-| `k_value` | Number | Cluster count tested |
-| `metrics` | Map | Silhouette, Davies-Bouldin, Calinski-Harabasz scores |
-| `composite_score` | Number | Weighted metric score |
-| `rank` | Number | Rank among all k-values tested |
-| `selected` | Boolean | True if this k was selected |
-| `expires_at` (TTL) | Number | Auto-expire after 7 days |
-
-## API Endpoints
-
-### List Clusters
-**GET** `/v1/clusters`
-
-Query parameters:
-- `page` (int, default 1): Page number
-- `page_size` (int, default 20): Items per page
-- `sort_by` (str, default "size"): "size", "score", "created"
-
-Response:
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "cluster_id": "c-uuid",
-      "label": "AI/ML Breakthroughs",
-      "num_articles": 42,
-      "silhouette_score": 0.76,
-      "davies_bouldin_index": 0.85,
-      "calinski_harabasz_index": 156.3,
-      "created_at": 1717000000,
-      "top_articles": [
-        {"article_id": "a1", "title": "...", "relevance_score": 0.98}
-      ]
-    }
-  ],
-  "meta": {"total": 127, "page": 1, "limit": 20}
-}
+```text
+tasks.cluster_articles
+  -> fetch articles
+  -> get/generate embeddings
+  -> cluster or apply selected k
+  -> save assignments and metadata
+  -> optionally queue evaluation
+  -> queue PCA map refresh
 ```
 
-### Get Cluster Detail
-**GET** `/v1/clusters/{cluster_id}`
-
-Response:
-```json
-{
-  "success": true,
-  "data": {
-    "cluster_id": "c-uuid",
-    "label": "AI/ML Breakthroughs",
-    "num_articles": 42,
-    "silhouette_score": 0.76,
-    "davies_bouldin_index": 0.85,
-    "calinski_harabasz_index": 156.3,
-    "articles": [
-      {
-        "article_id": "a1",
-        "title": "...",
-        "summary": "...",
-        "relevance_score": 0.98,
-        "created_at": 1717000000
-      }
-    ]
-  }
-}
-```
-
-### Get Clustering Evaluation Results
-**GET** `/v1/admin/clustering/evaluations`
-
-Query parameters:
-- `run_timestamp` (int, optional): Filter by specific run
-- `limit` (int, default 50): Max results
-
-Response:
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "evaluation_id": "eval-uuid",
-      "run_timestamp": 1717000000,
-      "k_value": 32,
-      "metrics": {
-        "silhouette_score": 0.76,
-        "davies_bouldin_index": 0.85,
-        "calinski_harabasz_index": 156.3
-      },
-      "composite_score": 0.84,
-      "rank": 1,
-      "selected": true
-    }
-  ]
-}
-```
-
-## Backend Implementation
-
-### Embedding Service
-```python
-# backend/app/services/embedding_service.py
-from app.services.embedding_service import EmbeddingService
-
-service = EmbeddingService()
-embeddings_dict = await service.batch_embed_articles(articles)
-# Returns: {article_id: embedding_vector}
-```
-
-Features:
-- Batch processing (max 100 per API call)
-- DynamoDB caching before API calls
-- Exponential backoff (3 retries, 100s max wait)
-- Handles edge cases: empty list, rate limits, timeouts
-
-### HDBSCAN Clustering
-```python
-# backend/app/services/clustering_engine.py
-from app.services.clustering_engine import ClusteringEngine
-
-engine = ClusteringEngine(min_cluster_size=5, min_samples=3, metric="cosine")
-assignments, stats = engine.cluster_articles(embeddings, article_ids)
-# Returns: {article_id: cluster_id}, {num_clusters, num_noise, ...}
-```
-
-Features:
-- HDBSCAN with cosine distance
-- Automatic noise detection (cluster_id = -1)
-- Handles edge cases: < 5 articles, constant embeddings
-- Detailed statistics for monitoring
-
-### Quality Metrics
-```python
-# backend/app/services/evaluation/
-from app.services.evaluation.silhouette import calculate_silhouette_score
-from app.services.evaluation.davies_bouldin import calculate_davies_bouldin_index
-from app.services.evaluation.calinski_harabasz import calculate_calinski_harabasz_index
-
-silhouette = await calculate_silhouette_score(embeddings, labels)
-davies_bouldin = await calculate_davies_bouldin_index(embeddings, labels)
-calinski_harabasz = await calculate_calinski_harabasz_index(embeddings, labels)
-```
-
-### Evaluation Pipeline
-```python
-# backend/app/services/evaluation/evaluation_pipeline.py
-from app.services.evaluation.evaluation_pipeline import EvaluationPipeline
-
-pipeline = EvaluationPipeline(k_min=5, k_max=100, step=5)
-results = await pipeline.evaluate_clustering(embeddings, articles)
-# Returns: {selected_k, evaluations, composite_scores}
-```
-
-Features:
-- Sweeps k-values (5-100, every 5)
-- Ranks by composite score
-- Weighted metrics (admin-configurable)
-- Stores all results in DynamoDB for analysis
-
-### Celery Task
-```python
-# backend/app/workers/tasks/clustering_tasks.py
-from app.workers.celery_app import app
-
-@app.task(bind=True, max_retries=3)
-def cluster_articles(self):
-    # Orchestrates: fetch → embed → cluster → evaluate → store
-```
-
-Scheduled via Celery Beat:
-```python
-# backend/app/workers/celery_app.py
-app.conf.beat_schedule = {
-    'cluster_morning': {
-        'task': 'app.workers.tasks.clustering_tasks.cluster_articles',
-        'schedule': crontab(hour=6, minute=0),  # 6am UTC
-    },
-    'cluster_evening': {
-        'task': 'app.workers.tasks.clustering_tasks.cluster_articles',
-        'schedule': crontab(hour=18, minute=0),  # 6pm UTC
-    },
-}
-```
-
-## Frontend Implementation
-
-### Topics Page
-**Route:** `/topics`
-
-Features:
-- Displays all active clusters as topic cards
-- Filters by metric (cohesion, separation, density)
-- Search clusters by label
-- Pagination (20 per page)
-
-### Cluster Detail View
-**Route:** `/topics/[cluster_id]`
-
-Features:
-- Cluster metadata and metrics
-- Top 50 articles in cluster
-- Relevance scores
-- Visual metrics display (bars, gauges)
-
-### Visualization
-- 3-metric plot showing cluster quality
-- Time-series trends of metric values
-- K-value sweep results chart
-
-## Monitoring
-
-### CloudWatch Metrics
-```
-clustering/run_duration_seconds (histogram)
-clustering/num_articles_processed (count)
-clustering/num_clusters_created (count)
-clustering/noise_percentage (gauge)
-clustering/silhouette_score (gauge)
-clustering/davies_bouldin_index (gauge)
-clustering/calinski_harabasz_index (gauge)
-clustering/task_success (counter)
-clustering/task_error (counter)
-```
-
-### CloudWatch Alarms
-```
-clustering_task_failure: task fails 2+ times
-clustering_high_noise: noise > 20%
-clustering_poor_quality: silhouette < 0.5
-clustering_duration_exceeded: > 5 minutes
-```
+Manual evaluation can also queue clustering with the selected k-value. After the cluster metadata is saved, PCA map refresh is queued so the UI can serve a fresh cached visualization.
 
 ## Configuration
 
-### Environment Variables
+Important environment variables:
+
 ```bash
-# Clustering
 CLUSTERING_ENABLED=true
 CLUSTERING_MIN_CLUSTER_SIZE=5
 CLUSTERING_MIN_SAMPLES=3
-CLUSTERING_MAX_SEARCH_RESULTS=5
 CLUSTERING_K_MIN=5
 CLUSTERING_K_MAX=100
-CLUSTERING_K_STEP=5
-
-# Evaluation weights (must sum to 1.0)
 CLUSTERING_SILHOUETTE_WEIGHT=0.4
 CLUSTERING_DAVIES_BOULDIN_WEIGHT=0.3
 CLUSTERING_CALINSKI_HARABASZ_WEIGHT=0.3
-
-# DynamoDB TTL
 CLUSTERING_TTL_DAYS=7
-```
-
-### Admin Weights Configuration
-Admin users can adjust metric weights via the settings API:
-```
-POST /v1/admin/clustering/config
-{
-  "silhouette_weight": 0.5,
-  "davies_bouldin_weight": 0.3,
-  "calinski_harabasz_weight": 0.2
-}
 ```
 
 ## Troubleshooting
 
-### Clustering Task Not Running
-1. Check Celery Beat is running: `celery -A app.workers.celery_app beat --loglevel=debug`
-2. Verify schedule in CloudWatch logs
-3. Check DynamoDB tables exist (Terraform)
-4. Verify IAM role has DynamoDB permissions
+### Topic count looks wrong
 
-### Poor Clustering Quality (Low Silhouette Score)
-1. Check article embeddings are diverse
-2. Reduce `min_cluster_size` if too few clusters
-3. Increase articles in corpus (need > 100 for good results)
-4. Review evaluation results for optimal k-value
+Check whether you are comparing visible page count to latest-evaluation total. The first page may show 12 visible topics while the API reports 14 total latest topics.
 
-### Embedding API Rate Limits
-1. Batch size is auto-limited to 100 per call
-2. Cache is checked before API calls
-3. Exponential backoff with max 3 retries
-4. Check OpenAI quota and usage
+### PCA map stays queued
 
-### Missing or Stale Clusters
-1. Verify scheduling: `SELECT * FROM celery.beat_schedule`
-2. Check TTL expiration: DynamoDB auto-deletes after 7 days
-3. Manually trigger: `celery -A app.workers.celery_app call app.workers.tasks.clustering_tasks.cluster_articles`
+1. Confirm Celery worker is running.
+2. Confirm Redis is reachable from API and worker.
+3. Check worker logs for `tasks.generate_cluster_pca_map`.
+4. Confirm Qdrant has embeddings for the article IDs in the selected clusters.
 
-## Performance
+### Missing article nodes
 
-| Operation | Time | Notes |
-| --- | --- | --- |
-| Fetch 500 articles | 100ms | DynamoDB query |
-| Generate embeddings (100 articles) | 2s | OpenAI API |
-| Cache lookup (1000 articles) | 50ms | DynamoDB batch |
-| HDBSCAN clustering (500 articles) | 3s | Cosine distance |
-| Metrics calculation | 1s | Scikit-learn |
-| Evaluation pipeline (96 k-values) | 2m | Full sweep |
-| Total end-to-end | < 5 min | For 500 articles |
+The PCA map only includes articles that have embeddings in Qdrant. Missing embeddings are skipped rather than blocking the map.
 
-## Testing
+### Avoid fake graph edges
 
-### Unit Tests
-```bash
+Do not draw edges unless the backend provides a real relationship source. Similarity edges, citation edges, source co-occurrence, or explicit article relationships can be added later as a separate feature.
+
+## Tests And Checks
+
+```powershell
 cd backend
 pytest tests/test_clustering_engine.py
-pytest tests/test_embedding_service.py
-pytest tests/test_clustering_metrics.py
-pytest tests/test_evaluation_pipeline.py
-```
-
-### Integration Tests
-```bash
-pytest tests/test_clustering_integration.py
 pytest tests/test_clustering_tasks.py
+python -m py_compile app/api/v1/clusters/router.py app/services/cluster_pca_map_service.py
+
+cd ../frontend
+npm run type-check
 ```
-
-### E2E Tests
-```bash
-pytest tests/test_clustering_e2e.py
-# Or manually:
-# 1. Create test articles
-# 2. Trigger clustering task
-# 3. Verify DynamoDB results
-# 4. Check metrics and UI
-```
-
-## Cost Estimation
-
-### Monthly (500 articles/day)
-
-| Service | Cost | Notes |
-| --- | --- | --- |
-| DynamoDB (on-demand) | $5-10 | 15M writes/month at $1.25 per M |
-| OpenAI Embeddings | $15-20 | 15K articles × $0.02 per 1K |
-| Compute (Celery) | $5-10 | Included in ECS allocation |
-| CloudWatch (logs, metrics) | $2-5 | 200GB logs at $0.50 per GB |
-| **Total** | **$27-45** | Scales linearly |
-
-## Future Enhancements
-
-- [ ] Multi-language clustering
-- [ ] Real-time clustering updates (instead of fixed schedule)
-- [ ] Custom clustering algorithms (configurable)
-- [ ] Hierarchical clustering visualization
-- [ ] Topic name suggestions via LLM
-- [ ] A/B testing framework for metrics
-- [ ] Cluster drift detection
-
-## References
-
-- [HDBSCAN Documentation](https://hdbscan.readthedocs.io/)
-- [Scikit-learn Clustering Metrics](https://scikit-learn.org/stable/modules/clustering.html#clustering-evaluation)
-- [OpenAI Embeddings API](https://platform.openai.com/docs/guides/embeddings)
-- [Celery Documentation](https://docs.celeryproject.io/)

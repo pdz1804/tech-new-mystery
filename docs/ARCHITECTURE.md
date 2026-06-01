@@ -54,6 +54,19 @@ A module-level `AgentCoreCircuitBreaker` (threshold 5 failures, 30 s recovery) p
    - Calinski-Harabasz index (higher is better)
 5. Cluster metadata, article assignments, and evaluation results are written to DynamoDB for topic browsing and admin review.
 
+### Article Embedding Map
+
+The Topics page includes a Neo4j-style article map. It is intentionally worker-backed:
+
+1. Frontend loads the visible cluster list from `GET /v1/clusters`.
+2. Frontend requests `GET /v1/clusters/pca-map` with those cluster IDs.
+3. API checks Redis for a cached PCA map payload.
+4. On cache miss, API queues `tasks.generate_cluster_pca_map` and returns `status="queued"`.
+5. Celery worker fetches article assignments, pulls embeddings from Qdrant, runs PCA, and stores the map in Redis.
+6. Frontend polls until `status="ready"` and renders draggable article nodes colored by cluster.
+
+The visualization is node-only. Edges should not be rendered unless a future feature stores real article relationships.
+
 ### Admin Clustering API (`/v1/admin`)
 
 - `GET/PUT /admin/clustering/config` — read/update HDBSCAN parameters and metric weights.
@@ -66,4 +79,3 @@ A module-level `AgentCoreCircuitBreaker` (threshold 5 failures, 30 s recovery) p
 - Redis: Celery broker/backend and caching.
 - Qdrant: semantic vector retrieval (articles corpus, embedding cache).
 - S3: media assets (presigned URLs, 24 h TTL).
-

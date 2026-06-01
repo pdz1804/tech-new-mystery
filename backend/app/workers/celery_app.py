@@ -71,7 +71,7 @@ try:
     from app.workers.tasks import (
         tavily_tasks, newsapi_tasks, crawl_tasks, trending_tasks,
         digest_tasks, submission_tasks, summary_tasks, evaluation_tasks,
-        clustering_tasks, embedding_tasks
+        clustering_tasks, embedding_tasks, pca_map_tasks
     )
 except ImportError:
     logger.exception("Failed to import Celery task modules")

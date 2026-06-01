@@ -43,15 +43,15 @@ export const ChatInterface = memo(function ChatInterface({
 
   return (
     <div className={cn('flex h-full flex-col overflow-hidden bg-transparent', className)}>
-      <div className="border-b border-black/5 bg-white/48 px-4 py-3 backdrop-blur-3xl md:px-6">
-        <div className="mx-auto flex max-w-4xl items-center justify-between">
+      <div className="border-b border-white/55 bg-white/58 px-4 py-3 backdrop-blur-3xl md:px-6">
+        <div className="mx-auto flex max-w-5xl items-center justify-between">
           <div className="flex min-w-0 items-center gap-3 flex-1">
-            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-2xl border border-black/5 border-t-white/70 bg-white/70 text-[#007AFF] shadow-[inset_0_1px_0_rgba(255,255,255,0.75),0_10px_24px_rgba(15,23,42,0.08)] backdrop-blur-2xl">
+            <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border border-blue-100/80 bg-blue-50/80 text-blue-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.84),0_10px_24px_rgba(37,99,235,0.10)]">
               <Bot className="h-[18px] w-[18px]" aria-hidden="true" />
             </div>
             <div className="min-w-0">
-              <h1 className="truncate text-[15px] font-semibold text-slate-950">{session.title}</h1>
-              <p className="mt-0.5 text-xs text-slate-500">
+              <h1 className="truncate font-sans text-base font-bold text-slate-950">{session.title}</h1>
+              <p className="mt-0.5 text-xs font-medium text-slate-500">
                 {isLoadingHistory ? 'Loading...' : `${visibleCount} messages`}
               </p>
             </div>
@@ -61,7 +61,7 @@ export const ChatInterface = memo(function ChatInterface({
             <button
               type="button"
               onClick={onCloseSidebar}
-              className="ml-3 hidden rounded-full border border-black/5 bg-white/60 p-2 text-slate-600 shadow-sm backdrop-blur-xl transition-colors hover:bg-white/85 hover:text-slate-950 md:inline-flex"
+              className="ml-3 hidden rounded-2xl border border-white/60 bg-white/58 p-2 text-slate-600 shadow-sm backdrop-blur-xl transition-colors hover:bg-white/82 hover:text-slate-950 md:inline-flex"
               title="Hide sidebar"
               aria-label="Hide sidebar"
             >
@@ -97,7 +97,7 @@ export const ChatInterface = memo(function ChatInterface({
         </div>
       )}
 
-      <div className="bg-gradient-to-t from-white/82 via-white/58 to-transparent px-3 pb-4 pt-3 backdrop-blur-2xl sm:px-6">
+      <div className="bg-gradient-to-t from-white/76 via-white/48 to-transparent px-3 pb-4 pt-3 backdrop-blur-2xl sm:px-6">
         <div className="mx-auto max-w-3xl">
           <ChatInput
             onSubmit={sendMessage}

@@ -50,19 +50,20 @@ export const ChatMessage = memo(function ChatMessage({
   return (
     <div
       className={cn(
-        'group flex w-full gap-3 py-3',
+        'group flex w-full gap-3 py-2.5',
         isUser ? 'justify-end' : 'justify-start'
       )}
     >
       {!isUser && (
-        <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-2xl border border-black/5 border-t-white/70 bg-white/65 text-slate-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.7),0_8px_18px_rgba(15,23,42,0.06)] backdrop-blur-2xl">
+        <div className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-2xl border border-blue-100 bg-blue-50 text-blue-600 shadow-[0_8px_18px_rgba(37,99,235,0.10)]">
           <Bot className="h-4 w-4" aria-hidden="true" />
         </div>
       )}
 
       <div
         className={cn(
-          'flex min-w-0 max-w-[78%] flex-col gap-2 sm:max-w-[72%]',
+          'flex min-w-0 flex-col gap-2',
+          isUser ? 'max-w-[78%] sm:max-w-[68%]' : 'max-w-[min(100%,860px)] flex-1',
           isUser ? 'items-end' : 'items-start'
         )}
       >
@@ -78,8 +79,8 @@ export const ChatMessage = memo(function ChatMessage({
           className={cn(
             'min-w-0 break-words text-[15px] leading-7 transition-all',
             isUser
-              ? 'rounded-[22px] bg-[#007AFF] px-4 py-2.5 text-white shadow-[0_10px_24px_rgba(0,122,255,0.22)]'
-              : 'rounded-[22px] border border-black/5 border-t-white/70 bg-white/64 px-4 py-3 text-slate-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.72),0_12px_28px_rgba(15,23,42,0.07)] backdrop-blur-2xl'
+              ? 'rounded-[20px] rounded-br-md bg-blue-600 px-4 py-2.5 text-white shadow-[0_10px_24px_rgba(37,99,235,0.24)]'
+              : 'w-full rounded-[20px] rounded-tl-md border border-white/60 border-t-white/90 bg-white/66 px-5 py-4 text-slate-950 shadow-[0_16px_36px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.88)] backdrop-blur-3xl'
           )}
         >
           {isThinking || isUsingTools ? (
@@ -98,13 +99,13 @@ export const ChatMessage = memo(function ChatMessage({
           ) : isAssistantStreaming ? (
             <p className="whitespace-pre-wrap text-slate-950">{message.content}</p>
           ) : (
-            <MarkdownContent content={message.content} />
+            <MarkdownContent content={message.content} className="chat-markdown" />
           )}
         </div>
 
         {!isThinking && (
         <div
-          className="flex gap-1 rounded-full border border-black/5 bg-white/70 px-1.5 py-1 opacity-0 shadow-sm backdrop-blur-xl transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100"
+          className="flex gap-1 rounded-full border border-white/60 bg-white/70 px-1.5 py-1 opacity-0 shadow-sm backdrop-blur-xl transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100"
         >
           <button
             type="button"

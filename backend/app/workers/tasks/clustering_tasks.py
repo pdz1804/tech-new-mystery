@@ -253,6 +253,17 @@ async def _cluster_articles_async(embeddings=None, article_ids=None, k_value=Non
             logger.info("Clustering evaluation disabled (clustering_evaluation_enabled=False)")
             result["evaluation_triggered"] = False
 
+        try:
+            from app.services.cluster_pca_map_service import pca_cache_key
+            from app.workers.tasks.pca_map_tasks import generate_cluster_pca_map
+
+            cache_key = pca_cache_key(cluster_ids=None, limit=250)
+            generate_cluster_pca_map.delay(cache_key=cache_key, cluster_ids=None, limit=250)
+            result["pca_map_triggered"] = True
+        except Exception as e:
+            logger.error(f"Failed to trigger PCA map generation: {e}")
+            result["pca_map_triggered"] = False
+
         return result
 
     except Exception as e:

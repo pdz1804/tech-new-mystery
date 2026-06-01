@@ -34,6 +34,31 @@ export interface ClusterListResponse {
   };
 }
 
+export interface PCAArticlePoint {
+  article_id: string;
+  title: string;
+  cluster_id: string;
+  cluster_label: string;
+  x: number;
+  y: number;
+  confidence_score: number;
+}
+
+export interface PCAClusterLegendItem {
+  cluster_id: string;
+  label: string;
+  color: string;
+  article_count: number;
+}
+
+export interface ClusterPCAMapResponse {
+  points: PCAArticlePoint[];
+  clusters: PCAClusterLegendItem[];
+  total_articles: number;
+  total_clusters: number;
+  status: 'ready' | 'queued' | 'unavailable';
+}
+
 export interface ClusterDetailResponse {
   success?: boolean;
   id: string;

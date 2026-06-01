@@ -1,69 +1,83 @@
 # Tech News Mystery
 
-Tech News Mystery is a full-stack tech news application with two major AI features:
+Tech News Mystery is a full-stack AI news intelligence platform. It ingests and curates technology articles, groups them into semantic topics, and provides an agentic chat interface for exploring the corpus.
 
-- Semantic article clustering (HDBSCAN + evaluation metrics)
-- Chatbot with a separate Agent Core runtime (LangGraph + LangChain + Bedrock)
+The system is built around a clear separation of concerns: Next.js for the product UI, FastAPI for APIs, Celery for long-running jobs, Qdrant for vector retrieval, DynamoDB for application state, and a separate Agent Core runtime for tool-using chat.
 
-## Recent Fixes (May 31)
+## Highlights
 
-Token-by-token streaming is now fully working:
-- Fixed SSE first-token rendering delay (was 1.3s, now ~50-100ms)
-- Implemented memoized markdown parsing for progressive rendering
-- Tool results display correctly with collapsible previews
-- Markdown renders progressively as tokens arrive
-- Final answer tokens stream correctly after tool execution
+- Semantic article clustering with OpenAI embeddings, Qdrant, HDBSCAN/K-means evaluation, and DynamoDB-backed topic metadata.
+- Neo4j-style article embedding map: worker-precomputed PCA projection, draggable article nodes, cluster coloring, hover labels, and click inspection.
+- Agentic chatbot with persisted sessions, streaming responses, semantic search tools, and Agent Core integration.
+- Production-minded infrastructure with Terraform, ECS services, Redis/Celery workers, scheduled jobs, and CI/CD workflows.
+- Apple Liquid Glass-inspired frontend with responsive topic browsing, chat UI, admin pages, and article discovery.
 
-## Current Feature Status
+## Architecture
 
-### Clustering
+```text
+frontend (Next.js)
+   |
+   v
+api (FastAPI /v1)
+   |             \
+   |              -> agent-core (LangGraph + Bedrock tools)
+   v
+DynamoDB, Qdrant, Redis, S3
+   ^
+   |
+worker + beat (Celery)
+```
 
-- Backend clustering pipeline is implemented with:
-  - OpenAI embeddings (`text-embedding-3-small`)
-  - HDBSCAN clustering (`metric=cosine`, `algorithm=generic`)
-  - Quality metrics: Silhouette, Davies-Bouldin, Calinski-Harabasz
-  - Evaluation persistence and trending/list/detail APIs
-- Frontend topics/cluster pages are integrated in the main app.
+Core runtime services:
 
-### Chatbot
+| Service | Purpose |
+| --- | --- |
+| `frontend` | Next.js app for articles, topics, chat, profile, and admin screens. |
+| `api` | FastAPI API for auth, articles, search, clustering, chat, and health checks. |
+| `worker` | Celery worker for crawl, embedding, clustering, evaluation, summaries, and PCA map jobs. |
+| `beat` | Celery Beat scheduler for recurring crawls, clustering, and trending recalculation. |
+| `agent-core` | Separate agent runtime for chat orchestration and tool execution. |
 
-- Chat is integrated as `/chatbot` in the existing frontend app (not a separate frontend).
-- Chat sessions/messages are persisted in DynamoDB:
-  - `tech-news-conversation_sessions`
-  - `tech-news-conversation_messages`
-- Backend supports create/list/get/rename/archive/restore/delete sessions and SSE streaming.
-- Backend streams to a separate `agent-core` service via HTTP and persists user/assistant messages.
+## Clustering And PCA Map Flow
 
-## Runtime Architecture
+The topic graph intentionally avoids doing heavy PCA work inside request handlers.
 
-- `frontend`: Next.js
-- `api`: FastAPI
-- `worker`: Celery worker
-- `beat`: Celery beat scheduler
-- `agent-core`: separate agent runtime service (LangGraph/LangChain/Bedrock)
+```text
+latest clusters
+  -> article assignments per cluster
+  -> article embeddings from Qdrant
+  -> PCA in Celery worker
+  -> Redis cached map payload
+  -> API serves cached result to frontend
+```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/DEPLOYMENT_ARCHITECTURE.md](docs/DEPLOYMENT_ARCHITECTURE.md).
+When `/v1/clusters/pca-map` is requested:
 
-## CI/CD and Infra
+1. API checks Redis for the requested map.
+2. If cached, it returns `status: "ready"` with article nodes.
+3. If missing, it queues `tasks.generate_cluster_pca_map` and returns `status: "queued"`.
+4. The frontend shows a preparing state and polls until the cached map is ready.
 
-- App CI/CD: `.github/workflows/deploy.yml`
-  - Runs backend/frontend checks
-  - Builds and pushes images for `backend`, `frontend`, and `agent-core`
-  - Forces ECS rollout for `api`, `frontend`, `worker`, `beat`, `agent-core`
-- Terraform workflow: `.github/workflows/terraform.yml`
-  - `fmt`, `init`, `validate`, `plan`
-  - `apply` on push to `main`
+See [docs/CLUSTERING_PCA_MAP.md](docs/CLUSTERING_PCA_MAP.md) for implementation details.
 
 ## Local Development
 
-1. Start infrastructure services:
+### Prerequisites
+
+- Node.js 20+
+- Python 3.11+
+- Docker Desktop
+- AWS credentials for cloud-backed development paths
+- OpenAI API key for embedding generation
+
+### Start Infrastructure
 
 ```powershell
 cd infra
 docker compose up redis agent-core
 ```
 
-2. Start backend:
+### Start Backend
 
 ```powershell
 cd backend
@@ -71,7 +85,14 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-3. Start frontend:
+### Start Worker
+
+```powershell
+cd backend
+celery -A app.workers.celery_app worker --loglevel=info
+```
+
+### Start Frontend
 
 ```powershell
 cd frontend
@@ -81,16 +102,60 @@ npm run dev
 
 Local URLs:
 
-- Frontend: `http://localhost:3000`
-- Backend: `http://localhost:8000`
-- Swagger: `http://localhost:8000/docs`
-- Agent Core health: `http://localhost:8080/health`
+| Target | URL |
+| --- | --- |
+| Frontend | `http://localhost:3000` |
+| Backend API | `http://localhost:8000` |
+| Swagger UI | `http://localhost:8000/docs` |
+| Agent Core health | `http://localhost:8080/health` |
 
-## Docs Index
+## Useful Commands
 
-- [docs/README.md](docs/README.md)
-- [docs/API_REFERENCE.md](docs/API_REFERENCE.md)
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [docs/DEPLOYMENT_ARCHITECTURE.md](docs/DEPLOYMENT_ARCHITECTURE.md)
-- [docs/MANUAL_STARTUP.md](docs/MANUAL_STARTUP.md)
-- [docs/GITHUB_CICD.md](docs/GITHUB_CICD.md)
+```powershell
+# Frontend
+cd frontend
+npm run type-check
+npm run test
+
+# Backend
+cd backend
+pytest
+python -m py_compile app/api/v1/clusters/router.py app/services/cluster_pca_map_service.py
+
+# Terraform
+cd infra/terraform
+terraform fmt
+terraform validate
+```
+
+## Documentation
+
+- [Documentation Index](docs/README.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [API Reference](docs/API_REFERENCE.md)
+- [Clustering Guide](docs/CLUSTERING_GUIDE.md)
+- [PCA Map Architecture](docs/CLUSTERING_PCA_MAP.md)
+- [Chatbot Guide](docs/CHATBOT_GUIDE.md)
+- [Manual Startup](docs/MANUAL_STARTUP.md)
+- [Deployment Architecture](docs/DEPLOYMENT_ARCHITECTURE.md)
+
+## Repository Layout
+
+```text
+agent_core/        Agent runtime service for chat orchestration
+backend/           FastAPI app, workers, repositories, services, tests
+frontend/          Next.js app and UI components
+infra/             Docker Compose and Terraform infrastructure
+docs/              Architecture, operations, feature guides, and references
+scripts/           Operational helper scripts
+```
+
+## Notes For Developers
+
+- Browser warning `Extra attributes from the server: bis_skin_checked` is usually caused by a browser extension injecting attributes before React hydration. It is not generated by this codebase.
+- The PCA graph has no fake relationship edges. Dots are article nodes projected by PCA and colored by cluster assignment.
+- Heavy operations belong in Celery workers. API routes should serve cached state, enqueue work, or stream lightweight events.
+
+## License
+
+See [LICENSE](LICENSE).

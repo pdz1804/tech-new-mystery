@@ -59,7 +59,7 @@ export const ChatInput = memo(function ChatInput({
 
   return (
     <div className="w-full">
-      <div className="rounded-[26px] border border-black/8 border-t-white/70 bg-white/76 p-2.5 shadow-[0_18px_44px_rgba(15,23,42,0.12),inset_0_1px_0_rgba(255,255,255,0.75)] backdrop-blur-3xl transition-all focus-within:border-[#007AFF]/45 focus-within:bg-white/86 focus-within:shadow-[0_20px_52px_rgba(15,23,42,0.14),0_0_0_4px_rgba(0,122,255,0.12),inset_0_1px_0_rgba(255,255,255,0.8)]">
+      <div className="rounded-[24px] border border-white/60 border-t-white/90 bg-white/72 p-2 shadow-[0_18px_44px_rgba(15,23,42,0.12),inset_0_1px_0_rgba(255,255,255,0.88)] backdrop-blur-3xl transition-all focus-within:border-blue-400/60 focus-within:bg-white/86 focus-within:shadow-[0_20px_52px_rgba(15,23,42,0.14),0_0_0_4px_rgba(37,99,235,0.12),inset_0_1px_0_rgba(255,255,255,0.9)]">
         <div className="flex items-end gap-2">
           <textarea
             ref={textareaRef}
@@ -79,7 +79,7 @@ export const ChatInput = memo(function ChatInput({
             <button
               type="button"
               onClick={onCancel}
-              className="mb-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-slate-950 text-white shadow-[0_10px_22px_rgba(15,23,42,0.2)] transition-transform active:scale-95"
+              className="mb-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-[0_10px_22px_rgba(15,23,42,0.2)] transition-transform active:scale-95"
               title="Stop response"
               aria-label="Stop response"
             >
@@ -91,10 +91,10 @@ export const ChatInput = memo(function ChatInput({
               onClick={handleSubmit}
               disabled={isSubmitDisabled}
               className={cn(
-                'mb-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full transition-all',
+                'mb-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl transition-all',
                 isSubmitDisabled
                   ? 'bg-slate-200 text-slate-400'
-                  : 'bg-[#007AFF] text-white shadow-[0_12px_26px_rgba(0,122,255,0.28)] hover:bg-[#0A84FF] active:scale-95'
+                  : 'bg-blue-600 text-white shadow-[0_12px_26px_rgba(37,99,235,0.28)] hover:bg-blue-500 active:scale-95'
               )}
               title="Send message"
               aria-label="Send message"

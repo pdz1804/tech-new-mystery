@@ -53,6 +53,37 @@ class ClusterListResponse(BaseModel):
     pagination: PaginationInfo = Field(..., description="Pagination metadata")
 
 
+class PCAArticlePoint(BaseModel):
+    """Single article projected into 2D PCA space."""
+
+    article_id: str
+    title: str
+    cluster_id: str
+    cluster_label: str
+    x: float
+    y: float
+    confidence_score: float
+
+
+class PCAClusterLegendItem(BaseModel):
+    """Cluster color legend for the PCA map."""
+
+    cluster_id: str
+    label: str
+    color: str
+    article_count: int
+
+
+class ClusterPCAMapResponse(BaseModel):
+    """Article-level PCA visualization for the latest clustering set."""
+
+    points: list[PCAArticlePoint] = Field(..., description="Article points in 2D PCA space")
+    clusters: list[PCAClusterLegendItem] = Field(..., description="Cluster color legend")
+    total_articles: int = Field(..., description="Number of articles projected")
+    total_clusters: int = Field(..., description="Number of clusters represented")
+    status: str = Field("ready", description="ready, queued, or unavailable")
+
+
 class ArticleInCluster(BaseModel):
     """Article in a cluster (with confidence score)."""
 

@@ -1,103 +1,55 @@
 # Documentation Index
 
-- [API Reference](API_REFERENCE.md): current HTTP endpoints and chat/cluster APIs.
-- [Architecture](ARCHITECTURE.md): runtime components, data flow, persistence.
-- [Deployment Architecture](DEPLOYMENT_ARCHITECTURE.md): Terraform + ECS + CI/CD behavior.
-- [Manual Startup](MANUAL_STARTUP.md): local run steps for frontend/backend/agent-core.
-- [GitHub CI/CD](GITHUB_CICD.md): workflow behavior and required variables.
+This folder contains operational and engineering documentation for Tech News Mystery. The root [README](../README.md) is the project front door; this index points to deeper references.
 
----
+## Start Here
 
-## Streaming Architecture
+| Document | Use When |
+| --- | --- |
+| [Architecture](ARCHITECTURE.md) | You need the system map, service responsibilities, data stores, and major flows. |
+| [API Reference](API_REFERENCE.md) | You need current HTTP endpoints and response behavior. |
+| [Manual Startup](MANUAL_STARTUP.md) | You need to run the stack locally. |
+| [Deployment Architecture](DEPLOYMENT_ARCHITECTURE.md) | You need production infrastructure context. |
 
-The chat system implements real-time token-by-token streaming via Server-Sent Events (SSE):
+## Product Features
 
-1. **Backend (FastAPI)**: 
-   - Calls Agent Core `/chat/stream` with `ConverseStream` API
-   - Streams events: `delta` (tokens), `content_block_start/stop`, `input_json_delta` (tool results)
-   - Buffers tokens and sends SSE events with ~50ms latency
+| Document | Scope |
+| --- | --- |
+| [Chatbot Guide](CHATBOT_GUIDE.md) | Chat sessions, SSE streaming, Agent Core integration, and troubleshooting. |
+| [Chatbot Feature Spec](CHATBOT_FEATURE_SPEC.md) | Long-form design notes and historical requirements for chat. |
+| [Clustering Guide](CLUSTERING_GUIDE.md) | Clustering pipeline, worker flow, tables, APIs, and operational guidance. |
+| [Clustering PCA Map](CLUSTERING_PCA_MAP.md) | Worker-backed Neo4j-style article embedding map. |
+| [Clustering Feature Spec](CLUSTERING_FEATURE_SPEC.md) | Long-form design notes and historical requirements for clustering. |
+| [Crawl4AI Guide](CRAWL4AI_GUIDE.md) | Article crawling and scraping integration. |
 
-2. **Frontend (React)**:
-   - Opens EventSource connection to `/v1/chat/sessions/{id}/stream`
-   - Parses SSE events and updates React state
-   - Memoized markdown parsing prevents re-renders on every token
-   - Renders progressively as tokens arrive (~50-100ms first token)
+## Frontend
 
-3. **Tool Results**:
-   - Tool execution (search, browse, code) returns JSON delta events
-   - Frontend collects full tool result and displays in collapsible container
-   - Final answer tokens stream after tool results
+| Document | Scope |
+| --- | --- |
+| [Frontend Documentation Index](frontend/DOCUMENTATION_INDEX.md) | Current frontend docs map. |
+| [Design System](frontend/DESIGN_SYSTEM.md) | Visual language, Liquid Glass patterns, colors, spacing, and components. |
 
----
+## Delivery And Infrastructure
 
-## Features
+| Document | Scope |
+| --- | --- |
+| [CI/CD Configuration](CI_CD_CONFIGURATION.md) | Workflow configuration and deployment variables. |
+| [CI/CD Readiness](CI_CD_READINESS.md) | Readiness checklist for CI/CD rollout. |
+| [GitHub CI/CD](GITHUB_CICD.md) | Short guide to GitHub workflow behavior. |
+| [Terraform Deployment Manual](DEPLOYMENT_MANUAL_TERRAFORM.md) | Manual Terraform deployment flow. |
+| [Terraform CI/CD Issues](TERRAFORM_CI_CD_ISSUES.md) | Known Terraform workflow issues and fixes. |
 
-### Clustering
+## Investigations And Working Notes
 
-- HDBSCAN clustering on article embeddings (cosine distance, `algorithm=generic`).
-- Embeddings: OpenAI `text-embedding-3-small` via Qdrant.
-- Evaluation metrics per run: Silhouette, Davies-Bouldin, Calinski-Harabasz.
-- Admin API for configuration, evaluation history, and manual triggering.
-- Topic browsing UI at `/topics` and `/clusters/[slug]`.
+| Document | Notes |
+| --- | --- |
+| [Streaming Lag Investigation](STREAMING_LAG_INVESTIGATION.md) | Historical analysis of chat streaming latency. |
+| [Startup Correct Commands](STARTUP_CORRECT_COMMANDS.md) | Quick command reference for local startup. |
+| [Tasks](TASKS.md) | Historical task planning and implementation notes. |
 
-**Cluster endpoints** (`/v1/clusters`):
+## Documentation Hygiene
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/clusters` | List clusters (pagination, sort by size/recency/diversity) |
-| `GET` | `/clusters/trending` | Trending clusters |
-| `GET` | `/clusters/{cluster_id}` | Cluster detail |
-| `GET` | `/clusters/{cluster_id}/articles` | Articles in a cluster |
-
-**Admin cluster endpoints** (`/v1/admin`):
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET/PUT` | `/admin/clustering/config` | Read/update HDBSCAN params and metric weights |
-| `GET` | `/admin/clustering/evaluations` | Evaluation run history |
-| `POST` | `/admin/clustering/trigger` | Manually trigger clustering |
-
-### Chatbot
-
-- LangGraph `create_react_agent` backed by AWS Bedrock Converse.
-- Three tools: `semantic_search` (Qdrant), `browse_web` (AgentCore Browser), `execute_code` (AgentCore Code Interpreter).
-- SSE streaming via per-request `httpx.AsyncClient`; circuit breaker on agent-core connection.
-- Long-term memory via AWS Bedrock AgentCore Memory (`MEMORY_ID`); falls back to DynamoDB session context when absent.
-- Chat sessions and messages persisted in DynamoDB (TTL 90 days).
-
-**Chat endpoints** (`/v1/chat`):
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/chat/sessions` | Create session |
-| `GET` | `/chat/sessions` | List sessions |
-| `GET` | `/chat/sessions/{id}` | Get session |
-| `PUT` | `/chat/sessions/{id}` | Rename session |
-| `PUT` | `/chat/sessions/{id}/archive` | Archive session |
-| `PUT` | `/chat/sessions/{id}/restore` | Restore session |
-| `DELETE` | `/chat/sessions/{id}` | Delete session |
-| `GET` | `/chat/sessions/{id}/messages` | List messages |
-| `POST` | `/chat/sessions/{id}/message` | Add user message |
-| `POST` | `/chat/sessions/{id}/stream` | Stream assistant response (SSE) |
-
----
-
-## Agent Core Startup
-
-**Docker (recommended):**
-```powershell
-cd infra && docker compose up agent-core -d
-```
-
-**Direct (local dev without Docker):**
-```bash
-# In the project root with venv activated
-cd agent_core
-python -m agent_core.server   # starts BedrockAgentCoreApp on port 8080
-```
-
-Required env vars: `OPENAI_API_KEY`, `QDRANT_URL`, `QDRANT_API_KEY`.  
-Optional: `MEMORY_ID` (AgentCore Memory), `BROWSER_ID`, `CODE_INTERPRETER_ID`.
-
-See [Manual Startup](MANUAL_STARTUP.md) for full local dev instructions.
-
+- Prefer updating the concise guides first: `ARCHITECTURE.md`, `API_REFERENCE.md`, and feature guides.
+- Keep large feature specs only when they preserve design rationale that is not captured elsewhere.
+- Avoid adding new “status complete” reports unless they are tied to a release or incident.
+- Link new operational behavior from this index and the root README.

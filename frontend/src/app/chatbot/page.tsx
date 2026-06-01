@@ -68,27 +68,27 @@ export default function ChatbotPage() {
   }
 
   return (
-    <div className="fixed inset-0 overflow-hidden bg-[radial-gradient(circle_at_18%_12%,rgba(0,122,255,0.10),transparent_30%),radial-gradient(circle_at_84%_20%,rgba(52,199,89,0.08),transparent_28%),linear-gradient(180deg,#f7f9fc_0%,#eef3f8_100%)] px-3 pb-4 pt-40 md:px-5 md:pt-44">
-      <div className="mx-auto flex h-full min-h-0 max-w-[1360px] overflow-hidden rounded-[30px] border border-black/8 border-t-white/80 bg-white/52 shadow-[0_28px_70px_-36px_rgba(15,23,42,0.45),inset_0_1px_0_rgba(255,255,255,0.74)] backdrop-blur-3xl">
+    <div className="fixed inset-0 overflow-hidden bg-[radial-gradient(circle_at_18%_12%,rgba(37,99,235,0.12),transparent_30%),radial-gradient(circle_at_84%_20%,rgba(20,184,166,0.10),transparent_28%),linear-gradient(180deg,#f8fbff_0%,#edf4f8_100%)] px-4 pb-4 pt-44 md:pt-48">
+      <div className="mx-auto flex h-full min-h-0 max-w-[1440px] overflow-hidden rounded-[28px] border border-black/10 border-t-white/80 bg-white/58 shadow-[0_30px_80px_-44px_rgba(15,23,42,0.55),inset_0_1px_0_rgba(255,255,255,0.86)] backdrop-blur-3xl">
         <aside
           className={`
-            fixed left-3 top-40 z-30 flex h-[calc(100svh-10.75rem)] w-[300px] flex-shrink-0 flex-col
-            rounded-[28px] border border-black/8 border-t-white/80 bg-white/66 shadow-[0_24px_56px_rgba(15,23,42,0.16),inset_0_1px_0_rgba(255,255,255,0.76)] backdrop-blur-3xl
+            fixed left-4 top-44 z-30 flex h-[calc(100svh-12rem)] w-[312px] flex-shrink-0 flex-col
+            rounded-[24px] border border-white/55 border-t-white/90 bg-white/66 shadow-[0_24px_56px_rgba(15,23,42,0.14),inset_0_1px_0_rgba(255,255,255,0.88)] backdrop-blur-3xl
             transition-all duration-300 ease-out md:static md:z-auto md:h-full md:shadow-none
             ${sidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
           `}
         >
-          <div className="border-b border-black/5 p-3.5">
+          <div className="border-b border-white/55 p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
-                <h1 className="font-sans text-[17px] font-semibold text-slate-950">Chats</h1>
-                <p className="text-xs text-slate-500">Recent conversations</p>
+                <h1 className="font-sans text-[18px] font-bold text-slate-950">Chats</h1>
+                <p className="text-xs font-medium text-slate-500">Recent conversations</p>
               </div>
               <button
                 type="button"
                 onClick={() => createSessionMutation.mutate()}
                 disabled={createSessionMutation.isPending}
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-[#007AFF] text-white shadow-[0_12px_24px_rgba(0,122,255,0.26)] transition-all hover:bg-[#0A84FF] active:scale-95 disabled:opacity-50"
+                className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-[0_14px_26px_rgba(15,23,42,0.20)] transition-all hover:bg-slate-800 active:scale-95 disabled:opacity-50"
                 aria-label="Create chat"
               >
                 <Plus className="h-4 w-4" aria-hidden="true" />
@@ -103,7 +103,7 @@ export default function ChatbotPage() {
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Search"
-                className="h-10 w-full rounded-2xl border border-black/5 border-t-white/70 bg-white/62 pl-9 pr-3 text-sm text-slate-900 outline-none shadow-[inset_0_1px_0_rgba(255,255,255,0.66)] backdrop-blur-2xl transition-all placeholder:text-slate-400 focus:border-[#007AFF]/45 focus:bg-white/82 focus:ring-4 focus:ring-[#007AFF]/10"
+                className="h-10 w-full rounded-2xl border border-white/60 bg-white/62 pl-9 pr-3 text-sm text-slate-900 outline-none shadow-[inset_0_1px_0_rgba(255,255,255,0.78)] backdrop-blur-2xl transition-all placeholder:text-slate-400 focus:border-blue-400/60 focus:bg-white/82 focus:ring-4 focus:ring-blue-500/10"
               />
             </label>
           </div>
@@ -128,14 +128,14 @@ export default function ChatbotPage() {
         {/* Sidebar overlay backdrop on mobile */}
         {sidebarOpen && (
           <div
-            className="fixed inset-x-0 bottom-0 top-36 z-20 bg-slate-950/20 backdrop-blur-sm md:hidden"
+            className="fixed inset-x-0 bottom-0 top-40 z-20 bg-slate-950/20 backdrop-blur-sm md:hidden"
             onClick={() => setSidebarOpen(false)}
             aria-hidden="true"
           />
         )}
 
-        <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white/24">
-          <div className="flex h-14 items-center gap-3 border-b border-black/5 bg-white/55 px-4 backdrop-blur-2xl md:hidden">
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white/20">
+          <div className="flex h-14 items-center gap-3 border-b border-white/55 bg-white/65 px-4 backdrop-blur-2xl md:hidden">
             <button
               type="button"
               onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -242,7 +242,7 @@ function SessionRail({
   }
 
   return (
-    <div className="scrollbar-none min-h-0 flex-1 overflow-y-auto p-2.5">
+    <div className="scrollbar-none min-h-0 flex-1 overflow-y-auto p-3">
       {sessions.map((session) => {
         const isActive = activeSessionId === session.id;
         const isRenaming = renamingId === session.id;
@@ -251,10 +251,10 @@ function SessionRail({
         return (
           <div
             key={session.id}
-            className={`group relative mb-1 flex items-center rounded-xl px-3 py-2 transition-all ${
+            className={`group relative mb-1.5 flex items-center rounded-2xl px-3 py-2.5 transition-all ${
               isActive
-                ? 'border border-black/5 border-t-white/80 bg-white/78 text-slate-950 shadow-[0_12px_26px_rgba(15,23,42,0.08),inset_0_1px_0_rgba(255,255,255,0.72)] backdrop-blur-2xl'
-                : 'text-slate-700 hover:bg-white/48'
+                ? 'border border-white/70 bg-white/78 text-slate-950 shadow-[0_12px_26px_rgba(15,23,42,0.08),inset_3px_0_0_#2563eb]'
+                : 'text-slate-700 hover:bg-white/66'
             }`}
           >
             {/* Rename input — replaces the button while editing */}

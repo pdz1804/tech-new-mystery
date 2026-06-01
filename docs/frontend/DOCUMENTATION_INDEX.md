@@ -1,191 +1,43 @@
-# Tech News Mystery - Documentation Index
+# Frontend Documentation Index
 
-**Last Updated:** May 19, 2026  
-**Status:** ✅ Complete with all pages modernized
+The frontend is a Next.js application that implements article discovery, topic exploration, chat, profile, and admin workflows.
 
----
+## Current References
 
-## 📋 Documentation Files
+| Document | Purpose |
+| --- | --- |
+| [Design System](DESIGN_SYSTEM.md) | Visual primitives, colors, spacing, glass surfaces, buttons, cards, and accessibility rules. |
+| [Project Architecture](../ARCHITECTURE.md) | Service boundaries and frontend/backend integration points. |
+| [API Reference](../API_REFERENCE.md) | HTTP endpoints used by frontend pages and hooks. |
+| [Clustering PCA Map](../CLUSTERING_PCA_MAP.md) | Article embedding map data flow and UI behavior. |
+| [Chatbot Guide](../CHATBOT_GUIDE.md) | Chat UI, SSE streaming, and session behavior. |
 
-### Core Design & Implementation
-- **[DESIGN_SYSTEM.md](DESIGN_SYSTEM.md)** - Complete design system reference with color palette, typography, spacing, animations, and accessibility guidelines
-- **[MODERNIZATION_COMPLETE.md](MODERNIZATION_COMPLETE.md)** - Final implementation status with metrics, file changes, and validation results
-- **[TESTING_REPORT.md](TESTING_REPORT.md)** - Comprehensive testing report with feature verification and color consistency checks
+## Important Routes
 
----
+| Route | Description |
+| --- | --- |
+| `/` | Home and article discovery entry point. |
+| `/articles` | Article browsing and filtering. |
+| `/articles/[slug]` | Article detail page. |
+| `/topics` | Topic list, search/sort controls, and Neo4j-style article embedding map. |
+| `/topics/[slug]` | Cluster detail and articles in topic. |
+| `/chatbot` | Chat sessions and streaming assistant UI. |
+| `/profile` | User settings, preferences, and saved content. |
+| `/admin/*` | Admin queue, users, articles, search, and clustering controls. |
 
-## 🎨 Design System Overview
+## UI Direction
 
-### Color Palette
-- **Primary:** Blue (#0066FF)
-- **Gradients:** Blue-600 → Indigo-600
-- **Semantic:** Success (green), Warning (amber), Error (red)
-- **Backgrounds:** Blue-50/Indigo-50 for form fields and cards
+The current product style follows an Apple Liquid Glass direction:
 
-### Components
-- **Glass Effects:** `.glass-base`, `.glass-card`, `.glass-dark`
-- **Buttons:** `.btn-primary`, `.btn-secondary`, `.btn-ghost`
-- **Inputs:** `.input-base` with focus ring and glass variants
-- **Cards:** `.card-interactive` with hover lift animations
+- translucent surfaces with restrained blur;
+- soft borders and inset highlights;
+- blue accent for active controls;
+- compact controls and readable dense cards;
+- no decorative glass where it reduces clarity.
 
-### Animations
-- **Durations:** 150ms (micro), 200ms (short), 300ms (base), 400ms (long)
-- **Easing:** ease-out for entering, ease-in for exiting
-- **Stagger:** 50ms per item on lists
-- **Motion:** respects prefers-reduced-motion
+For new frontend work, prefer existing components and tokens before introducing new styles.
 
----
+## Notes
 
-## 📄 Pages Documented
-
-| Page | Status | Key Features |
-|------|--------|--------------|
-| Landing (`/landing`) | ✅ | Login/Register redirects, Hero, Features, CTA |
-| Articles (`/articles`) | ✅ | Blue gradient hero, Glass filter bar, Smart pagination, Total count display |
-| Search (`/search`) | ✅ | Bright hero, Category filters, Recent searches |
-| Profile (`/profile`) | ✅ | Tab navigation, Account/Preferences/Saved |
-| Admin (`/admin/articles`) | ✅ | Gradient header, Modern table, Pagination |
-| Article Detail (`/articles/[slug]`) | ✅ | Glass containers, Modern styling |
-| Auth (`/login`, `/register`) | ✅ | Glass cards, Input-base styling |
-
----
-
-## 📄 Pagination System
-
-The Articles page implements an optimized pagination system with smart display for large page counts:
-
-### Features
-- **Total Article Count:** Retrieved from API's `meta.total_count` field
-- **Smart Pagination Display:** 
-  - For ≤7 pages: Shows all pages (1 2 3 4 5 6 7)
-  - For >7 pages: Shows smart ellipsis pattern (1 2 ... 49 50 51 ... 99 100)
-  - Non-clickable ellipsis with clickable page numbers
-- **Fetch Optimization:** Fetches 100 articles per request
-- **Client-side Display:** Shows 12 articles per page with local pagination
-
-### State Management
-- `totalArticles`: Total count from API (used for page calculation)
-- `allArticles`: Articles fetched from backend (limit=100)
-- `page`: Current page for display (1-based)
-- `totalPages`: Calculated as `Math.ceil(totalArticles / 12)`
-
-### Implementation Details
-- Helper function `getVisiblePages(currentPage, totalPages)` generates visible page numbers
-- Ellipsis (...) inserted when gaps >1 page exist
-- Maintains accessibility with ARIA labels on buttons
-- Backend API returns pagination metadata with total_count
-
-### Examples
-- 62 total articles → 6 pages → displays "1 2 3 4 5 6"
-- 245 total articles → 21 pages → displays "1 2 ... 10 11 12 ... 20 21"
-- 1000 articles → 84 pages → displays "1 2 ... 49 50 51 ... 83 84"
-
----
-
-## ✅ Implementation Checklist
-
-- [x] Design system created with glassmorphism effects
-- [x] Color palette applied consistently across all pages
-- [x] Button styling (.btn-* utilities) implemented
-- [x] Form inputs use .input-base with proper focus states
-- [x] All pages have gradient backgrounds (white to slate-50)
-- [x] Glass effects on navigation, filter bars, and cards
-- [x] Animations with smooth transitions (150-300ms)
-- [x] Dark mode support with dark: prefix classes
-- [x] Responsive design for mobile/tablet/desktop
-- [x] Accessibility features (focus rings, labels, ARIA)
-- [x] TypeScript compilation passes with 0 new errors
-- [x] All major pages enhanced with bright colors
-- [x] Admin page modernized with gradient styling
-- [x] Profile page enhanced with blue gradient form fields
-- [x] Landing page verified with proper redirects
-- [x] Testing completed and validated
-- [x] Pagination system optimized with smart display (ellipsis for large page counts)
-- [x] Total article count from API integrated (total_count field)
-- [x] Pages calculated using ceil(total_count / itemsPerPage)
-- [x] Backend count queries optimized (DynamoDB SELECT='COUNT')
-
----
-
-## 🔍 Quick Start
-
-### For Design Reference
-See **DESIGN_SYSTEM.md** for:
-- Complete color token definitions
-- Typography scale and font pairings
-- Spacing system (4px/8px increments)
-- Shadow and elevation scales
-- Animation guidelines
-- Accessibility standards
-
-### For Implementation Details
-See **MODERNIZATION_COMPLETE.md** for:
-- List of all modified files
-- Design system adoption per component
-- Quality assurance results
-- Performance considerations
-
-### For Testing & Verification
-See **TESTING_REPORT.md** for:
-- Page load test results
-- Feature verification checklist
-- Color consistency validation
-- Design system compliance checks
-- Browser compatibility notes
-
----
-
-## 🚀 Next Steps
-
-### For Browser Testing
-1. Start dev server: `npm run dev`
-2. Visit `localhost:3000/landing` (or localhost:3002 if 3000 is in use)
-3. Verify login/register buttons redirect correctly
-4. Check visual appearance of blue gradients and glass effects
-5. Test responsive layout on mobile (375px)
-
-### For Production Deployment
-- [ ] Run `npm run build` to verify production build
-- [ ] Test in Chrome, Firefox, Safari for visual consistency
-- [ ] Verify dark mode in system preferences
-- [ ] Check Core Web Vitals (LCP, CLS, FID)
-- [ ] Accessibility audit with WAVE or axe DevTools
-
-### Optional Enhancements
-- Additional loading state animations
-- Success/error toast notifications
-- Image optimization (WebP/AVIF)
-- Code splitting by route
-- Progressive image loading
-
----
-
-## 📊 Quality Metrics
-
-| Metric | Status |
-|--------|--------|
-| TypeScript Compilation | ✅ 0 new errors |
-| Design System Coverage | ✅ 100% pages using utilities |
-| Color Consistency | ✅ Blue/indigo throughout |
-| Dark Mode Support | ✅ Full dark: prefix |
-| Responsive Design | ✅ Mobile/tablet/desktop |
-| Accessibility | ✅ Focus rings, ARIA labels |
-| Animation Performance | ✅ 60fps (transform/opacity only) |
-| Loading Status | ✅ All pages return 200 OK |
-
----
-
-## 📝 Notes
-
-- All color values use Tailwind semantic tokens (no hardcoded hex)
-- All buttons use predefined `.btn-*` classes
-- All inputs use `.input-base` utility
-- Glass effects use standard blur and transparency
-- Dark mode implemented with Tailwind's built-in dark: prefix
-- Animations respect system preference for reduced motion
-
----
-
-**Maintained By:** Development Team  
-**Last Updated:** May 19, 2026  
-**Project Status:** ✅ Complete and Ready for Testing
+- The previous frontend documentation index referenced generated reports that are no longer present in the repository. This file intentionally links only to existing docs.
+- Browser console warning `bis_skin_checked` is usually injected by a browser extension and should not be documented as an app hydration bug unless reproduced in a clean browser profile.

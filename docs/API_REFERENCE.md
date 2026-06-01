@@ -26,9 +26,25 @@ SSE event types:
 ## Clustering Endpoints
 
 - `GET /clusters`: list clusters
+- `GET /clusters/pca-map`: cached article embedding PCA map; queues worker generation on cache miss
 - `GET /clusters/trending`: trending clusters
 - `GET /clusters/{cluster_id}`: cluster detail
 - `GET /clusters/{cluster_id}/articles`: cluster article list
+
+### `GET /clusters/pca-map`
+
+Query parameters:
+
+- `limit` (int, optional): maximum article nodes to project. Default `250`, max `500`.
+- `cluster_ids` (string, repeated, optional): cluster IDs to include.
+
+Response status values:
+
+- `ready`: map payload is cached and ready to render.
+- `queued`: worker generation has been queued; client should poll again.
+- `unavailable`: cache or worker dispatch failed; page should remain usable.
+
+The response contains article-level PCA points. Each point includes `article_id`, `title`, `cluster_id`, `cluster_label`, normalized `x/y` coordinates, and `confidence_score`.
 
 Admin evaluation/config endpoints are mounted under `/v1/admin`.
 
@@ -48,4 +64,3 @@ JWT bearer token required for authenticated routes.
 - `GET /health/agent-core` — circuit breaker state `{"status":"ok","circuit_state":"closed","failure_count":0}`
 - `GET /health/llm` — LLM provider reachability
 - `GET /health/celery` — Celery broker reachability
-

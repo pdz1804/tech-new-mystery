@@ -8,6 +8,7 @@ from app.api.v1.clusters.schemas import (
     ClusterDetail,
     ClusterArticlesResponse,
     TrendingClustersResponse,
+    ClusterPCAMapResponse,
     PaginationInfo,
     ClusterSummary,
     TrendingClusterSummary,
@@ -17,6 +18,12 @@ from app.api.v1.clusters.schemas import (
 )
 from app.repositories.cluster_repository import ClusterRepository
 from app.repositories.article_repository import ArticleRepository
+from app.services.cluster_pca_map_service import (
+    get_latest_cluster_metadata,
+    get_cached_pca_map,
+    pca_cache_key,
+)
+from app.workers.tasks.pca_map_tasks import generate_cluster_pca_map
 
 logger = logging.getLogger(__name__)
 
@@ -55,20 +62,10 @@ async def list_clusters(
     )
 
     try:
-        # Fetch all clusters then paginate in memory.
+        # Fetch all latest-evaluation clusters then paginate in memory.
         # Avoids relying on DynamoDB count() which uses eventual consistency
         # and can lag behind recent writes by several seconds.
-        all_clusters, _ = await cluster_repo.list_cluster_metadata(
-            limit=10000,
-            sort_by=sort_by,
-        )
-
-        # Filter to only latest evaluation (if multiple evaluations exist)
-        if all_clusters:
-            eval_ids = [c.evaluation_id for c in all_clusters if hasattr(c, 'evaluation_id') and c.evaluation_id is not None]
-            if eval_ids:
-                latest_eval = max(eval_ids)
-                all_clusters = [c for c in all_clusters if hasattr(c, 'evaluation_id') and c.evaluation_id == latest_eval]
+        all_clusters = await get_latest_cluster_metadata(cluster_repo, sort_by=sort_by)
 
         total_count = len(all_clusters)
 
@@ -123,6 +120,47 @@ async def list_clusters(
     except Exception as e:
         logger.error(f"[CLUSTERS.LIST] Error: {type(e).__name__}: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to list clusters")
+
+
+@router.get("/pca-map", response_model=ClusterPCAMapResponse)
+async def get_cluster_pca_map(
+    limit: int = Query(250, ge=2, le=500, description="Maximum articles to project"),
+    cluster_ids: list[str] | None = Query(
+        None,
+        description="Optional cluster IDs to include. Repeated query param: cluster_ids=a&cluster_ids=b",
+    ),
+) -> ClusterPCAMapResponse:
+    """Return cached article-level PCA map data, queueing worker generation if absent."""
+    logger.info("[CLUSTERS.PCA_MAP] Request: limit=%s", limit)
+
+    cache_key = pca_cache_key(cluster_ids=cluster_ids, limit=limit)
+    try:
+        cached = get_cached_pca_map(cache_key)
+        if cached:
+            return cached
+
+        generate_cluster_pca_map.delay(
+            cache_key=cache_key,
+            cluster_ids=cluster_ids,
+            limit=limit,
+        )
+        return ClusterPCAMapResponse(
+            points=[],
+            clusters=[],
+            total_articles=0,
+            total_clusters=0,
+            status="queued",
+        )
+
+    except Exception as e:
+        logger.error("[CLUSTERS.PCA_MAP] Error: %s: %s", type(e).__name__, str(e), exc_info=True)
+        return ClusterPCAMapResponse(
+            points=[],
+            clusters=[],
+            total_articles=0,
+            total_clusters=0,
+            status="unavailable",
+        )
 
 
 @router.get("/trending", response_model=TrendingClustersResponse)
