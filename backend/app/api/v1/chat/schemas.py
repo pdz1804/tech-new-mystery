@@ -38,6 +38,13 @@ class VoiceSpeechRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=1200)
 
 
+class VoiceMessageRequest(BaseModel):
+    """Send one spoken turn to the low-latency voice agent."""
+
+    session_id: str = Field(..., min_length=1, max_length=255)
+    content: str = Field(..., min_length=1, max_length=1200)
+
+
 class VoiceLiveKitSessionRequest(BaseModel):
     """Create a LiveKit voice transport session."""
 

@@ -82,10 +82,11 @@ class ToolRegistry:
             # Register web search tool (Agent Core runtime built-in)
             web_search_tool = self._register_web_search_tool()
 
-            # Register code interpreter tool (Agent Core runtime built-in)
-            code_interpreter_tool = self._register_code_interpreter_tool()
+            # Code Interpreter is parked for now. Keep the registration method
+            # below so the capability can be restored without rebuilding it.
+            # code_interpreter_tool = self._register_code_interpreter_tool()
 
-            tools = [semantic_search_tool, web_search_tool, code_interpreter_tool]
+            tools = [semantic_search_tool, web_search_tool]
 
             logger.info(f"Successfully registered {len(tools)} tools")
             return tools

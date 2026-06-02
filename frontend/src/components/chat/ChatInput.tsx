@@ -63,26 +63,29 @@ export const ChatInput = memo(function ChatInput({
   );
 
   const isSubmitDisabled = !value.trim() || isLoading || disabled;
+  const showVoiceControl = Boolean(onToggleVoice);
 
   return (
     <div className="w-full">
       <div className="rounded-[24px] border border-white/60 border-t-white/90 bg-white/72 p-2 shadow-[0_18px_44px_rgba(15,23,42,0.12),inset_0_1px_0_rgba(255,255,255,0.88)] backdrop-blur-3xl transition-all focus-within:border-blue-400/60 focus-within:bg-white/86 focus-within:shadow-[0_20px_52px_rgba(15,23,42,0.14),0_0_0_4px_rgba(37,99,235,0.12),inset_0_1px_0_rgba(255,255,255,0.9)]">
         <div className="flex items-end gap-2">
-          <button
-            type="button"
-            onClick={onToggleVoice}
-            disabled={!voiceSupported || disabled}
-            className={cn(
-              'mb-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-45',
-              voiceEnabled
-                ? 'border-emerald-300/70 bg-emerald-50 text-emerald-700 shadow-[0_10px_22px_rgba(16,185,129,0.16)]'
-                : 'border-white/70 bg-white/66 text-slate-500 hover:bg-white/90 hover:text-slate-900'
-            )}
-            title={voiceSupported ? (voiceEnabled ? 'Talk or interrupt' : 'Start voice mode') : 'Voice input is not supported'}
-            aria-label={voiceEnabled ? 'Talk or interrupt' : 'Start voice mode'}
-          >
-            {voiceEnabled ? <Mic className="h-4 w-4" aria-hidden="true" /> : <MicOff className="h-4 w-4" aria-hidden="true" />}
-          </button>
+          {showVoiceControl && (
+            <button
+              type="button"
+              onClick={onToggleVoice}
+              disabled={!voiceSupported || disabled}
+              className={cn(
+                'mb-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-45',
+                voiceEnabled
+                  ? 'border-emerald-300/70 bg-emerald-50 text-emerald-700 shadow-[0_10px_22px_rgba(16,185,129,0.16)]'
+                  : 'border-white/70 bg-white/66 text-slate-500 hover:bg-white/90 hover:text-slate-900'
+              )}
+              title={voiceSupported ? (voiceEnabled ? 'Talk or interrupt' : 'Start voice mode') : 'Voice input is not supported'}
+              aria-label={voiceEnabled ? 'Talk or interrupt' : 'Start voice mode'}
+            >
+              {voiceEnabled ? <Mic className="h-4 w-4" aria-hidden="true" /> : <MicOff className="h-4 w-4" aria-hidden="true" />}
+            </button>
+          )}
 
           <textarea
             ref={textareaRef}
@@ -127,7 +130,7 @@ export const ChatInput = memo(function ChatInput({
           )}
         </div>
       </div>
-      {(voiceStatus || voiceListening) && (
+      {showVoiceControl && (voiceStatus || voiceListening) && (
         <div className="mt-2 flex items-center gap-2 px-2 text-xs font-medium text-slate-500">
           <span
             className={cn(

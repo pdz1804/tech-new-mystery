@@ -22,10 +22,12 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are the Tech News Mystery assistant — an expert analyst of technology news.
 
-You have access to three tools:
+You have access to two active tools:
 1. **semantic_search** — searches a curated internal database of tech news articles.
-2. **browse_web** — browses live web pages (including Google Search) for real-time information.
-3. **execute_code** — runs Python in an AWS-managed sandbox for data analysis or calculations.
+2. **browse_web** — browses live web pages for real-time information.
+
+The Code Interpreter tool is currently disabled. Do not claim that you can run
+code, generate charts, or execute calculations in a sandbox.
 
 Decision rules — follow these in order:
 1. For any question about news, events, people, companies, or trends: call semantic_search first.
@@ -34,10 +36,28 @@ Decision rules — follow these in order:
      https://html.duckduckgo.com/html/?q=<URL-encoded+query>
    - Extract the answer from the search results page.
 3. For a specific URL the user provides: call browse_web directly on that URL.
-4. For calculations or data processing: use execute_code.
+4. For calculations or data processing: reason directly if it is simple; otherwise
+   explain that deeper computation is not available in this mode.
 
 Never tell the user you couldn't find information without first trying browse_web.
-Always cite sources (article title, URL, or website name). Be concise and factual."""
+Always cite sources (article title, URL, or website name). Keep citations compact
+so the answer remains easy to listen to."""
+
+VOICE_SYSTEM_PROMPT = """You are the Tech News Mystery voice agent. Answer like a helpful person speaking out loud.
+
+Go straight to the answer in one natural paragraph.
+
+Keep it warm, concise, and easy to hear.
+
+Avoid markdown, headings, bullets, emojis, tool explanations, and long lists.
+
+If the user asks what you can do, say briefly that you can help explain tech-news topics, search the article corpus, and check the live web when needed.
+
+Never mention Code Interpreter or code execution; that capability is disabled.
+
+For news, companies, people, events, or trends, use semantic_search first, then browse_web if the internal results are weak or missing.
+
+Keep citations short and spoken-friendly, such as "according to The Verge" or "from the article title."""
 
 
 class AgentRuntime:
@@ -45,25 +65,37 @@ class AgentRuntime:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self._graph = self._build()
+        self._graph = self._build(
+            system_prompt=SYSTEM_PROMPT,
+            max_tokens=2048,
+            disable_streaming=False,
+        )
+        self._voice_graph = self._build(
+            system_prompt=VOICE_SYSTEM_PROMPT,
+            max_tokens=420,
+            disable_streaming=True,
+        )
 
-    def _build(self):
+    def _build(self, *, system_prompt: str, max_tokens: int, disable_streaming: bool):
         llm = ChatBedrockConverse(
             model=self.settings.agent_model,
             region_name=self.settings.bedrock_region,
-            temperature=0.2,
-            max_tokens=2048,
+            temperature=0.25,
+            max_tokens=max_tokens,
             # ChatBedrockConverse does not accept streaming=True. LangChain uses
             # .astream/.astream_events to select ConverseStream when streaming is
             # enabled; this makes that behavior explicit for tool-bound agents.
-            disable_streaming=False,
+            disable_streaming=disable_streaming,
         )
-        self._llm = llm
+        if not disable_streaming:
+            self._llm = llm
+        else:
+            self._voice_llm = llm
         tools = get_tools(self.settings)
         # Bind system prompt to the LLM
         from langchain_core.messages import SystemMessage
         llm_with_prompt = llm.bind(
-            system=SYSTEM_PROMPT
+            system=system_prompt
         )
         # Create ReAct agent with system-prompt-bound LLM
         graph = create_react_agent(llm_with_prompt, tools)
@@ -77,6 +109,10 @@ class AgentRuntime:
     @property
     def graph(self):
         return self._graph
+
+    @property
+    def voice_graph(self):
+        return self._voice_graph
 
     @property
     def streaming_diagnostics(self) -> dict[str, Any]:

@@ -39,7 +39,7 @@ class TestToolRegistryBasics:
 
         assert "semantic_search" in tool_names
         assert "web_search" in tool_names
-        assert "code_interpreter" in tool_names
+        assert "code_interpreter" not in tool_names
 
     def test_tool_names_are_strings(self, tool_registry):
         """Test that all tool names are strings."""
@@ -81,6 +81,7 @@ class TestToolLookup:
     def test_get_tool_code_interpreter(self, tool_registry):
         """Test retrieving code interpreter tool."""
         tool_registry.register_tools()
+        tool_registry._register_code_interpreter_tool()
         tool = tool_registry.get_tool("code_interpreter")
 
         assert tool is not None
@@ -171,6 +172,7 @@ class TestToolInputValidation:
     def test_validate_code_interpreter_valid_input(self, tool_registry):
         """Test validating valid code interpreter input."""
         tool_registry.register_tools()
+        tool_registry._register_code_interpreter_tool()
 
         input_data = {"code": "print('hello')"}
         result = tool_registry.validate_tool_input("code_interpreter", input_data)
@@ -180,6 +182,7 @@ class TestToolInputValidation:
     def test_validate_code_interpreter_with_language(self, tool_registry):
         """Test code interpreter with language parameter."""
         tool_registry.register_tools()
+        tool_registry._register_code_interpreter_tool()
 
         input_data = {
             "code": "console.log('hello')",
@@ -264,7 +267,7 @@ class TestListTools:
 
         assert "semantic_search" in tool_names
         assert "web_search" in tool_names
-        assert "code_interpreter" in tool_names
+        assert "code_interpreter" not in tool_names
 
     def test_list_tools_item_structure(self, tool_registry):
         """Test that each tool item has required fields."""
@@ -298,7 +301,7 @@ class TestGetSessionTools:
 
         assert "semantic_search" in tools
         assert "web_search" in tools
-        assert "code_interpreter" in tools
+        assert "code_interpreter" not in tools
 
     def test_get_session_tools_for_different_sessions(self, tool_registry):
         """Test that different sessions get the same tools."""
@@ -390,6 +393,7 @@ class TestCodeInterpreterTool:
     def test_code_interpreter_tool_has_handler(self, tool_registry):
         """Test that code interpreter tool has handler."""
         tool_registry.register_tools()
+        tool_registry._register_code_interpreter_tool()
         tool = tool_registry.get_tool("code_interpreter")
 
         assert tool is not None
@@ -399,6 +403,7 @@ class TestCodeInterpreterTool:
     def test_code_interpreter_tool_has_error_handler(self, tool_registry):
         """Test that code interpreter tool has error handler."""
         tool_registry.register_tools()
+        tool_registry._register_code_interpreter_tool()
         tool = tool_registry.get_tool("code_interpreter")
 
         assert tool is not None
@@ -407,6 +412,7 @@ class TestCodeInterpreterTool:
     def test_code_interpreter_input_schema_structure(self, tool_registry):
         """Test that code interpreter input schema is properly structured."""
         tool_registry.register_tools()
+        tool_registry._register_code_interpreter_tool()
         tool = tool_registry.get_tool("code_interpreter")
 
         schema = tool.input_schema

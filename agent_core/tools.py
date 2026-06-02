@@ -510,5 +510,7 @@ def get_tools(settings: Settings) -> list:
     return [
         _make_search_tool(settings),
         _make_browser_tool(settings),
-        _make_code_interpreter_tool(settings),
+        # Code Interpreter is intentionally parked for now. Keep the
+        # implementation above so it can be restored quickly when needed.
+        # _make_code_interpreter_tool(settings),
     ]

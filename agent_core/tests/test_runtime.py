@@ -31,7 +31,7 @@ def test_tools_registered():
     names = [t.name for t in tools]
     assert "semantic_search" in names
     assert "browse_web" in names
-    assert "execute_code" in names
+    assert "execute_code" not in names
 
 
 def test_memory_disabled_without_memory_id():

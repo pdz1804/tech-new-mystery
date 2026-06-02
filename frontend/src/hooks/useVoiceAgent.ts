@@ -90,6 +90,7 @@ export function useVoiceAgent(
 ) {
   const [enabled, setEnabled] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -119,6 +120,7 @@ export function useVoiceAgent(
       audioRef.current.src = '';
       audioRef.current = null;
     }
+    setIsSpeaking(false);
   }, []);
 
   const cleanupAudioPipeline = useCallback(() => {
@@ -184,7 +186,18 @@ export function useVoiceAgent(
   const startListening = useCallback(async () => {
     if (!isSupported || isListening) return;
 
+    const interruptedPlayback = Boolean(audioRef.current || abortRef.current);
     stopPlayback();
+    if (interruptedPlayback) {
+      void recordVoiceEvent({
+        session_id: sessionId,
+        phase: 'voice_interrupted',
+        provider: 'elevenlabs',
+        transport: 'livekit',
+        livekit_room: livekitSessionRef.current?.room ?? null,
+        latency_ms: turnStartedAtRef.current ? Math.round(performance.now() - turnStartedAtRef.current) : undefined,
+      });
+    }
     finalTranscriptRef.current = '';
     submittedTranscriptRef.current = false;
     turnStartedAtRef.current = performance.now();
@@ -370,7 +383,19 @@ export function useVoiceAgent(
         audioRef.current = audio;
         audio.onended = () => {
           URL.revokeObjectURL(audioUrl);
+          audioRef.current = null;
+          abortRef.current = null;
+          setIsSpeaking(false);
           setStatus('Voice mode ready');
+          void recordVoiceEvent({
+            session_id: sessionId,
+            phase: 'tts_playback_ended',
+            provider: 'elevenlabs',
+            transport: 'livekit',
+            livekit_room: livekitSessionRef.current?.room ?? null,
+            output_chars: speakable.length,
+            latency_ms: turnStartedAtRef.current ? Math.round(performance.now() - turnStartedAtRef.current) : undefined,
+          });
           if (enabledRef.current) {
             window.setTimeout(() => {
               void startListening();
@@ -379,9 +404,13 @@ export function useVoiceAgent(
         };
         audio.onerror = () => {
           URL.revokeObjectURL(audioUrl);
+          audioRef.current = null;
+          abortRef.current = null;
+          setIsSpeaking(false);
           setStatus('ElevenLabs voice playback failed');
         };
         setStatus('Speaking with ElevenLabs...');
+        setIsSpeaking(true);
         void recordVoiceEvent({
           session_id: sessionId,
           phase: 'tts_playback_started',
@@ -393,6 +422,7 @@ export function useVoiceAgent(
         });
         await audio.play();
       } catch {
+        setIsSpeaking(false);
         if (abortController.signal.aborted) return;
         setStatus('ElevenLabs voice playback is unavailable');
         void recordVoiceEvent({
@@ -420,6 +450,7 @@ export function useVoiceAgent(
   return {
     enabled,
     isListening,
+    isSpeaking,
     isSupported,
     status,
     toggleVoice,

@@ -23,6 +23,7 @@ from app.api.v1.chat.schemas import (
     CreateSessionRequest,
     SessionResponse,
     MessageRequest,
+    VoiceMessageRequest,
     VoiceSpeechRequest,
     VoiceLiveKitSessionRequest,
     VoiceEventRequest,
@@ -411,6 +412,151 @@ async def create_voice_stt_token(
             "token": token,
             "model_id": settings.elevenlabs_stt_model_id,
             "audio_format": settings.elevenlabs_stt_audio_format,
+        },
+    }
+
+
+@router.post("/voice/message")
+async def send_voice_message(
+    payload: VoiceMessageRequest,
+    current_user: dict = Depends(get_chat_auth_user),
+    req_memory: RequestAgentMemory = Depends(get_request_agent_memory),
+) -> dict:
+    """Send one voice turn and return a single final answer.
+
+    Voice mode deliberately avoids frontend SSE rendering. The AgentCore runtime
+    receives mode=voice, uses a short spoken-answer prompt, and returns one
+    answer optimized for TTS latency.
+    """
+    error_handler = ErrorHandler()
+    service = ChatService()
+    user_id = current_user["sub"]
+    started_at = time.perf_counter()
+
+    try:
+        InputValidator.validate_session_id(payload.session_id)
+        InputValidator.validate_message_request(payload.content)
+    except InvalidInputError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.user_message)
+
+    session = await service.get_session(payload.session_id, user_id)
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Voice session not found")
+
+    messages_result = await service.get_messages(payload.session_id, user_id, page_size=6)
+    recent_events = [
+        {
+            "role": m["role"],
+            "content": m["content"],
+            "timestamp": m["timestamp"],
+            "event_id": m["message_id"],
+        }
+        for m in messages_result["messages"]
+    ]
+
+    await req_memory.initialize(
+        session_id=payload.session_id,
+        user_id=user_id,
+        recent_events=recent_events,
+    )
+
+    await error_handler.retry_with_backoff(
+        service.add_message,
+        "save_voice_user_message",
+        session_id=payload.session_id,
+        user_id=user_id,
+        role="user",
+        content=payload.content,
+    )
+    await req_memory.log_message(
+        session_id=payload.session_id,
+        role="user",
+        content=payload.content,
+    )
+
+    assistant_content = ""
+    agent_core: AgentCoreClient | None = None
+    try:
+        agent_core = AgentCoreClient()
+        async for event in _iterate_with_timeout(
+            agent_core.invoke_agent(
+                session_id=payload.session_id,
+                user_message=payload.content,
+                context={
+                    "recent_events": recent_events,
+                    "request_scope": "voice",
+                    "agent_mode": "voice",
+                    "response_style": "one_spoken_paragraph",
+                    "latency_priority": "high",
+                },
+                user_id=user_id,
+                mode="voice",
+            ),
+            timeout=90.0,
+        ):
+            event_type = event.get("type")
+            if event_type == "token":
+                assistant_content += event.get("content", "")
+            elif event_type == "error":
+                raise RuntimeError(event.get("message") or "Voice agent response failed")
+
+        assistant_content = assistant_content.strip()
+        if not assistant_content:
+            raise RuntimeError("Voice agent returned an empty response")
+
+        await error_handler.retry_with_backoff(
+            service.add_message,
+            "save_voice_assistant_message",
+            session_id=payload.session_id,
+            user_id=user_id,
+            role="assistant",
+            content=assistant_content,
+        )
+        await req_memory.log_message(
+            session_id=payload.session_id,
+            role="assistant",
+            content=assistant_content,
+        )
+
+    except asyncio.TimeoutError:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Voice agent took too long, please try again.",
+        )
+    except Exception as exc:
+        logger.error("[VOICE] Voice message failed: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Voice agent response failed",
+        )
+    finally:
+        if agent_core is not None:
+            await agent_core.close()
+        await req_memory.cleanup()
+
+    latency_ms = int((time.perf_counter() - started_at) * 1000)
+    await _trace_voice_event(
+        name="voice.agent_turn.completed",
+        user_id=user_id,
+        inputs={"session_id": payload.session_id, "transcript_chars": len(payload.content)},
+        metadata={
+            "phase": "agent_turn_completed",
+            "provider": "agentcore",
+            "transport": "livekit",
+            "output_chars": len(assistant_content),
+            "latency_ms": latency_ms,
+            "agent_mode": "voice",
+            "streaming_disabled_for_latency": True,
+        },
+    )
+
+    return {
+        "success": True,
+        "data": {
+            "content": assistant_content,
+            "latency_ms": latency_ms,
+            "input_chars": len(payload.content),
+            "output_chars": len(assistant_content),
         },
     }
 

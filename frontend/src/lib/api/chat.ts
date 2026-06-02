@@ -285,6 +285,25 @@ export async function createVoiceLiveKitSession(sessionId: string): Promise<{
   return response.data.data;
 }
 
+export async function sendVoiceAgentMessage(request: {
+  session_id: string;
+  content: string;
+}): Promise<{
+  content: string;
+  latency_ms: number;
+  input_chars: number;
+  output_chars: number;
+}> {
+  const response = await apiClient.post<ApiResponse<{
+    content: string;
+    latency_ms: number;
+    input_chars: number;
+    output_chars: number;
+  }>>('/chat/voice/message', request);
+
+  return response.data.data;
+}
+
 export async function recordVoiceEvent(event: {
   session_id: string;
   phase: string;

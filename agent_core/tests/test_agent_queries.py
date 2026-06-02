@@ -154,7 +154,7 @@ class TestToolRegistration:
     def test_tool_names(self):
         tools = get_tools(_settings())
         names = {t.name for t in tools}
-        assert names == {"semantic_search", "browse_web", "execute_code"}
+        assert names == {"semantic_search", "browse_web"}
 
     def test_semantic_search_is_async(self):
         tools = get_tools(_settings())
@@ -183,8 +183,9 @@ class TestToolRegistration:
         assert "task" in props
 
     def test_execute_code_args_schema(self):
-        tools = get_tools(_settings())
-        code = next(t for t in tools if t.name == "execute_code")
+        from agent_core.tools import _make_code_interpreter_tool
+
+        code = _make_code_interpreter_tool(_settings())
         schema = code.args_schema.schema() if code.args_schema else {}
         props = schema.get("properties", {})
         assert "code" in props
@@ -456,7 +457,7 @@ QUERY_CASES = [
     ("trending AI news", "What are the top AI stories this week?", ["AI"], "semantic_search"),
     ("specific article search", "Find articles about GPT-5", ["GPT"], "semantic_search"),
     ("tech company news", "What's happening with Apple?", ["Apple"], "semantic_search"),
-    ("code calculation", "Calculate the compound interest on $10000 at 5% for 10 years", ["compound"], "execute_code"),
+    ("code calculation", "Calculate the compound interest on $10000 at 5% for 10 years", ["compound"], None),
     ("web lookup", "Browse https://openai.com and tell me the latest news", ["latest"], "browse_web"),
     ("general factual", "What is a transformer neural network?", ["transformer"], None),
     ("follow-up with context", "What about its limitations?", ["limitations"], None),
@@ -653,7 +654,8 @@ class TestGraphStructure:
         from agent_core.graph import SYSTEM_PROMPT
         assert "semantic_search" in SYSTEM_PROMPT
         assert "browse_web" in SYSTEM_PROMPT
-        assert "execute_code" in SYSTEM_PROMPT
+        assert "execute_code" not in SYSTEM_PROMPT
+        assert "Code Interpreter tool is currently disabled" in SYSTEM_PROMPT
         assert "Tech News Mystery" in SYSTEM_PROMPT
 
     def test_runtime_settings_accessible(self, runtime):

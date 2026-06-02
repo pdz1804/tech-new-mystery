@@ -107,11 +107,23 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
         continue;
       }
 
-      // Unordered lists
+      // Unordered lists. Allow "loose" markdown lists where blank lines appear
+      // between items, instead of splitting them into separate lists.
       if (trimmed.startsWith('- ')) {
         const listItems: React.ReactNode[] = [];
-        while (i < lines.length && lines[i].trim().startsWith('- ')) {
-          const itemText = lines[i].trim().slice(2);
+        while (i < lines.length) {
+          const currentTrimmed = lines[i].trim();
+          if (!currentTrimmed) {
+            const nextTrimmed = lines[i + 1]?.trim() ?? '';
+            if (nextTrimmed.startsWith('- ')) {
+              i++;
+              continue;
+            }
+            break;
+          }
+          if (!currentTrimmed.startsWith('- ')) break;
+
+          const itemText = currentTrimmed.slice(2);
           listItems.push(
             <li key={`li-${i}`} className="mb-2 text-slate-800 leading-relaxed text-sm sm:text-base">
               {renderInlineMarkdown(itemText)}
@@ -120,18 +132,31 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
           i++;
         }
         elements.push(
-          <ul key={`ul-${i}`} className="mb-6 ml-4 sm:ml-6 list-disc space-y-2">
+          <ul key={`ul-${i}`} className="mb-6 ml-5 sm:ml-6 list-disc space-y-3 marker:text-slate-400">
             {listItems}
           </ul>
         );
         continue;
       }
 
-      // Ordered lists
+      // Ordered lists. Keep loose lists in one <ol> so browser counters render
+      // 1, 2, 3 even when the model emits blank lines between items.
       if (/^\d+\. /.test(trimmed)) {
         const listItems: React.ReactNode[] = [];
-        while (i < lines.length && /^\d+\. /.test(lines[i].trim())) {
-          const itemText = lines[i].trim().replace(/^\d+\. /, '');
+        const firstNumber = Number(trimmed.match(/^(\d+)\. /)?.[1] ?? 1);
+        while (i < lines.length) {
+          const currentTrimmed = lines[i].trim();
+          if (!currentTrimmed) {
+            const nextTrimmed = lines[i + 1]?.trim() ?? '';
+            if (/^\d+\. /.test(nextTrimmed)) {
+              i++;
+              continue;
+            }
+            break;
+          }
+          if (!/^\d+\. /.test(currentTrimmed)) break;
+
+          const itemText = currentTrimmed.replace(/^\d+\. /, '');
           listItems.push(
             <li key={`oli-${i}`} className="mb-2 text-slate-800 leading-relaxed text-sm sm:text-base">
               {renderInlineMarkdown(itemText)}
@@ -140,7 +165,7 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
           i++;
         }
         elements.push(
-          <ol key={`ol-${i}`} className="mb-6 ml-4 sm:ml-6 list-decimal space-y-2">
+          <ol key={`ol-${i}`} start={firstNumber} className="mb-6 ml-5 sm:ml-6 list-decimal space-y-3 marker:text-slate-400 marker:font-semibold">
             {listItems}
           </ol>
         );
@@ -357,4 +382,3 @@ export function MarkdownContent({ content, className = '' }: MarkdownContentProp
     </div>
   );
 }
-

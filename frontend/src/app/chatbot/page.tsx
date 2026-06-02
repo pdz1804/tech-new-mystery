@@ -1,19 +1,27 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useRouter } from 'next/navigation';
 import { AlertCircle, MessageCircle, MoreHorizontal, Plus, Search, Menu, X } from 'lucide-react';
-import { ChatInterface } from '@/components/chat';
+import { ChatInterface, type AgentMode } from '@/components/chat';
 import { createSession, deleteSession, listSessions, renameSession } from '@/lib/api/chat';
 import { useAuthStore } from '@/lib/stores/authStore';
 import type { ChatSession } from '@/types/chat';
+
+const VOICE_SESSION_DESCRIPTION = 'Dedicated voice-agent testing session';
+
+function isVoiceSession(session: ChatSession): boolean {
+  return session.description === VOICE_SESSION_DESCRIPTION;
+}
 
 export default function ChatbotPage() {
   const router = useRouter();
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isHydrated = useAuthStore((s) => s.isHydrated);
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [agentMode, setAgentMode] = useState<AgentMode>('chat');
+  const [currentChatSessionId, setCurrentChatSessionId] = useState<string | null>(null);
+  const [currentVoiceSessionId, setCurrentVoiceSessionId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -35,33 +43,71 @@ export default function ChatbotPage() {
   });
 
   const sessions = useMemo(() => sessionsResponse?.sessions ?? [], [sessionsResponse?.sessions]);
-  const currentSession = sessions.find((session) => session.id === currentSessionId) ?? sessions[0] ?? null;
+  const chatSessions = useMemo(() => sessions.filter((session) => !isVoiceSession(session)), [sessions]);
+  const voiceSessions = useMemo(() => sessions.filter(isVoiceSession), [sessions]);
+  const visibleModeSessions = agentMode === 'chat' ? chatSessions : voiceSessions;
+  const currentSessionId = agentMode === 'chat' ? currentChatSessionId : currentVoiceSessionId;
+  const currentSession =
+    visibleModeSessions.find((session) => session.id === currentSessionId) ??
+    visibleModeSessions[0] ??
+    null;
 
   useEffect(() => {
-    if (!currentSessionId && sessions.length > 0) {
-      setCurrentSessionId(sessions[0].id);
+    if (!currentChatSessionId && chatSessions.length > 0) {
+      setCurrentChatSessionId(chatSessions[0].id);
     }
-  }, [currentSessionId, sessions]);
+  }, [chatSessions, currentChatSessionId]);
+
+  useEffect(() => {
+    if (!currentVoiceSessionId && voiceSessions.length > 0) {
+      setCurrentVoiceSessionId(voiceSessions[0].id);
+    }
+  }, [currentVoiceSessionId, voiceSessions]);
 
   const createSessionMutation = useMutation({
-    mutationFn: () => createSession({ title: 'New conversation' }),
+    mutationFn: (mode: AgentMode = agentMode) =>
+      createSession(
+        mode === 'voice'
+          ? { title: 'Voice agent session', description: VOICE_SESSION_DESCRIPTION }
+          : { title: 'New conversation' }
+      ),
     onSuccess: (session) => {
-      setCurrentSessionId(session.id);
+      if (isVoiceSession(session)) {
+        setCurrentVoiceSessionId(session.id);
+        setAgentMode('voice');
+      } else {
+        setCurrentChatSessionId(session.id);
+        setAgentMode('chat');
+      }
       refetchSessions();
     },
   });
 
+  const handleModeChange = useCallback(
+    (nextMode: AgentMode) => {
+      setAgentMode(nextMode);
+      setSearchQuery('');
+      if (nextMode === 'voice' && voiceSessions.length === 0 && !createSessionMutation.isPending) {
+        createSessionMutation.mutate('voice');
+      }
+      if (nextMode === 'chat' && chatSessions.length === 0 && !createSessionMutation.isPending) {
+        createSessionMutation.mutate('chat');
+      }
+    },
+    [chatSessions.length, createSessionMutation, voiceSessions.length]
+  );
+
   const filteredSessions = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    if (!query) return sessions;
+    if (!query) return visibleModeSessions;
 
-    return sessions.filter((session) => {
+    return visibleModeSessions.filter((session) => {
       return (
         session.title.toLowerCase().includes(query) ||
         session.preview.toLowerCase().includes(query)
       );
     });
-  }, [searchQuery, sessions]);
+  }, [searchQuery, visibleModeSessions]);
 
   if (!isHydrated || !isAuthenticated) {
     return null;
@@ -81,15 +127,17 @@ export default function ChatbotPage() {
           <div className="border-b border-white/55 p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
-                <h1 className="font-sans text-[18px] font-bold text-slate-950">Chats</h1>
-                <p className="text-xs font-medium text-slate-500">Recent conversations</p>
+                <h1 className="font-sans text-[18px] font-bold text-slate-950">Agent</h1>
+                <p className="text-xs font-medium text-slate-500">
+                  {agentMode === 'chat' ? 'Chat sessions' : 'Voice test sessions'}
+                </p>
               </div>
               <button
                 type="button"
-                onClick={() => createSessionMutation.mutate()}
+                onClick={() => createSessionMutation.mutate(agentMode)}
                 disabled={createSessionMutation.isPending}
                 className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-950 text-white shadow-[0_14px_26px_rgba(15,23,42,0.20)] transition-all hover:bg-slate-800 active:scale-95 disabled:opacity-50"
-                aria-label="Create chat"
+                aria-label={agentMode === 'chat' ? 'Create chat' : 'Create voice session'}
               >
                 <Plus className="h-4 w-4" aria-hidden="true" />
               </button>
@@ -110,15 +158,26 @@ export default function ChatbotPage() {
 
           <SessionRail
             sessions={filteredSessions}
+            mode={agentMode}
             activeSessionId={currentSession?.id ?? null}
             isLoading={isLoadingSessions}
             error={sessionsError instanceof Error ? sessionsError.message : null}
-            onSelectSession={setCurrentSessionId}
+            onSelectSession={(sessionId) => {
+              if (agentMode === 'chat') {
+                setCurrentChatSessionId(sessionId);
+              } else {
+                setCurrentVoiceSessionId(sessionId);
+              }
+            }}
             onRefetch={refetchSessions}
             onSessionDeleted={(deletedId) => {
-              if (currentSessionId === deletedId) {
-                const next = sessions.find((s) => s.id !== deletedId);
-                setCurrentSessionId(next?.id ?? null);
+              if (agentMode === 'chat' && currentChatSessionId === deletedId) {
+                const next = chatSessions.find((s) => s.id !== deletedId);
+                setCurrentChatSessionId(next?.id ?? null);
+              }
+              if (agentMode === 'voice' && currentVoiceSessionId === deletedId) {
+                const next = voiceSessions.find((s) => s.id !== deletedId);
+                setCurrentVoiceSessionId(next?.id ?? null);
               }
               refetchSessions();
             }}
@@ -144,19 +203,22 @@ export default function ChatbotPage() {
             >
               {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
-            <span className="text-sm font-semibold text-slate-800">Chats</span>
+            <span className="text-sm font-semibold text-slate-800">Agent</span>
           </div>
           {currentSession ? (
             <ChatInterface
               session={currentSession}
               onSessionUpdate={() => refetchSessions()}
               onCloseSidebar={() => setSidebarOpen(false)}
+              mode={agentMode}
+              onModeChange={handleModeChange}
             />
           ) : (
             <EmptyChatState
               isLoading={isLoadingSessions || createSessionMutation.isPending}
               error={sessionsError instanceof Error ? sessionsError.message : null}
-              onCreate={() => createSessionMutation.mutate()}
+              mode={agentMode}
+              onCreate={() => createSessionMutation.mutate(agentMode)}
             />
           )}
         </main>
@@ -167,6 +229,7 @@ export default function ChatbotPage() {
 
 function SessionRail({
   sessions,
+  mode,
   activeSessionId,
   isLoading,
   error,
@@ -175,6 +238,7 @@ function SessionRail({
   onSessionDeleted,
 }: {
   sessions: ChatSession[];
+  mode: AgentMode;
   activeSessionId: string | null;
   isLoading: boolean;
   error: string | null;
@@ -225,7 +289,7 @@ function SessionRail({
   };
 
   if (isLoading) {
-    return <div className="p-4 text-sm text-slate-500">Loading chats...</div>;
+    return <div className="p-4 text-sm text-slate-500">Loading {mode === 'chat' ? 'chats' : 'voice sessions'}...</div>;
   }
 
   if (error) {
@@ -238,7 +302,7 @@ function SessionRail({
   }
 
   if (sessions.length === 0) {
-    return <div className="p-4 text-sm text-slate-500">No chats yet.</div>;
+    return <div className="p-4 text-sm text-slate-500">No {mode === 'chat' ? 'chats' : 'voice sessions'} yet.</div>;
   }
 
   return (
@@ -339,21 +403,29 @@ function SessionRail({
 function EmptyChatState({
   isLoading,
   error,
+  mode,
   onCreate,
 }: {
   isLoading: boolean;
   error: string | null;
+  mode: AgentMode;
   onCreate: () => void;
 }) {
+  const isVoice = mode === 'voice';
+
   return (
     <div className="flex h-full flex-col items-center justify-center gap-5 bg-transparent p-6 text-center">
       <div className="flex h-14 w-14 items-center justify-center rounded-[22px] border border-black/5 border-t-white/70 bg-white/70 text-[#007AFF] shadow-[inset_0_1px_0_rgba(255,255,255,0.74),0_18px_42px_rgba(15,23,42,0.1)] backdrop-blur-2xl">
         <MessageCircle className="h-7 w-7" aria-hidden="true" />
       </div>
       <div>
-        <h2 className="font-sans text-2xl font-semibold text-slate-950">Start a chat</h2>
+        <h2 className="font-sans text-2xl font-semibold text-slate-950">
+          {isVoice ? 'Start a voice test' : 'Start a chat'}
+        </h2>
         <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
-          Ask about the article corpus, recent topics, or anything you want the agent to investigate.
+          {isVoice
+            ? 'Use a dedicated voice-agent session so spoken tests stay separate from chat conversations.'
+            : 'Ask about the article corpus, recent topics, or anything you want the agent to investigate.'}
         </p>
       </div>
       {error && <p className="max-w-md text-sm text-red-700">{error}</p>}
@@ -364,7 +436,7 @@ function EmptyChatState({
         className="inline-flex items-center rounded-full bg-[#007AFF] px-4 py-2 text-sm font-semibold text-white shadow-[0_12px_26px_rgba(0,122,255,0.26)] transition-all hover:bg-[#0A84FF] active:scale-95 disabled:opacity-50"
       >
         <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-        {isLoading ? 'Starting...' : 'New chat'}
+        {isLoading ? 'Starting...' : isVoice ? 'New voice test' : 'New chat'}
       </button>
     </div>
   );

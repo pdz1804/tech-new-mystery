@@ -94,3 +94,15 @@ See also the application-specific implementation and edge-case notes in [`VOICE_
 * **ElevenLabs Streaming TTS API:** https://elevenlabs.io/docs/api-reference/text-to-speech/stream
 * **ElevenLabs Agents Overview:** https://elevenlabs.io/docs/eleven-agents/overview
 * **ElevenLabs Custom LLM Architecture:** https://elevenlabs.io/docs/eleven-agents/customization/llm
+## Current Application Alignment
+
+The app now separates chat and voice agent behavior:
+
+* Chat mode keeps the existing streaming text UI and composer microphone.
+* Voice mode uses dedicated voice sessions tagged with `Dedicated voice-agent testing session`, `POST /v1/chat/voice/message`, and a separate AgentCore `mode=voice`.
+* The voice graph disables model streaming, uses a shorter max-token budget, and applies a one-paragraph spoken-answer prompt for lower latency.
+* STT is implemented with ElevenLabs Realtime Scribe over WebSocket. The current turn detector is ElevenLabs VAD commit strategy, not a separate LiveKit Agent worker. Current VAD parameters are documented in [`VOICE_AGENT_IMPLEMENTATION.md`](VOICE_AGENT_IMPLEMENTATION.md).
+* LiveKit is currently used for room/token transport, microphone publication, connection lifecycle, and metadata/tracing context. A full LiveKit Agent worker owning STT/LLM/TTS is a future upgrade, not the current implementation.
+* TTS interruption is handled by exposing an active `isSpeaking` state, showing an `Interrupt` control, aborting active ElevenLabs playback when the user barges in, starting a fresh STT turn, and recording `voice_interrupted`.
+* The backend proxies ElevenLabs streaming TTS, while the current browser playback path buffers the response as a Blob before playing it through an audio element.
+* Code Interpreter is intentionally parked, not deleted. It remains in implementation files but is commented out of active tool registration.

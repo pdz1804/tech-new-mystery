@@ -144,6 +144,7 @@ class AgentCoreClient:
         user_message: str,
         context: Dict[str, Any] | None = None,
         user_id: str | None = None,
+        mode: str = "chat",
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """Stream events from the AgentCore Runtime."""
         if not _circuit_breaker.allow_request():
@@ -152,10 +153,10 @@ class AgentCoreClient:
 
         try:
             if self._runtime_arn:
-                async for event in self._invoke_via_boto3(session_id, user_message, context, user_id):
+                async for event in self._invoke_via_boto3(session_id, user_message, context, user_id, mode):
                     yield event
             elif self._base_url:
-                async for event in self._invoke_via_http(session_id, user_message, context, user_id):
+                async for event in self._invoke_via_http(session_id, user_message, context, user_id, mode):
                     yield event
             else:
                 yield {"type": "error", "message": "Agent Core not configured", "recoverable": False}
@@ -179,12 +180,14 @@ class AgentCoreClient:
         user_message: str,
         context: Dict[str, Any] | None,
         user_id: str | None,
+        mode: str,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         payload = json.dumps({
             "prompt": user_message,
             "session_id": session_id,
             "user_id": user_id or "anonymous",
             "context": context or {},
+            "mode": mode,
         }).encode()
 
         # boto3 call is synchronous — run in thread pool
@@ -193,6 +196,7 @@ class AgentCoreClient:
             "session_id": session_id,
             "user_id": user_id or "anonymous",
             "context": context or {},
+            "mode": mode,
         }).encode()
 
         response = await asyncio.to_thread(
@@ -280,6 +284,7 @@ class AgentCoreClient:
         user_message: str,
         context: Dict[str, Any] | None,
         user_id: str | None,
+        mode: str,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         url = f"{self._base_url.rstrip('/')}/invocations"
         headers = {"Content-Type": "application/json", "Accept": "text/event-stream, application/x-ndjson"}
@@ -291,6 +296,7 @@ class AgentCoreClient:
             "session_id": session_id,
             "user_id": user_id or "anonymous",
             "context": context or {},
+            "mode": mode,
         }
 
         async with self._http_client.stream("POST", url, json=payload, headers=headers) as response:

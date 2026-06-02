@@ -210,7 +210,7 @@ export function Header() {
             <NavLink href="/" icon={<Home size={16} />} label="Home" pathname={pathname} />
             <NavLink href="/articles" icon={<List size={16} />} label="Discover" pathname={pathname} />
             <NavLink href="/topics" icon={<Compass size={16} />} label="Topics" pathname={pathname} />
-            <NavLink href="/chatbot" icon={<MessageCircle size={16} />} label="Chat" pathname={pathname} />
+            <NavLink href="/chatbot" icon={<MessageCircle size={16} />} label="Agent" pathname={pathname} />
             {user?.is_admin && (
               <div className="relative ml-auto">
                 <button
@@ -328,7 +328,7 @@ export function Header() {
                 <MobileNavLink href="/" icon={<Home size={18} />} label="Home" pathname={pathname} />
                 <MobileNavLink href="/articles" icon={<List size={18} />} label="Articles" pathname={pathname} />
                 <MobileNavLink href="/topics" icon={<Compass size={18} />} label="Topics" pathname={pathname} />
-                <MobileNavLink href="/chatbot" icon={<MessageCircle size={18} />} label="Chat" pathname={pathname} />
+                <MobileNavLink href="/chatbot" icon={<MessageCircle size={18} />} label="Agent" pathname={pathname} />
                 <MobileNavLink href="/profile?tab=saved" icon={<Bookmark size={18} />} label="Saved" pathname={pathname} />
                 {user?.is_admin && (
                   <>

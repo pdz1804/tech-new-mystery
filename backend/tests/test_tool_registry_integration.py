@@ -42,7 +42,7 @@ class TestToolRegistrationWithAgent:
 
         assert "semantic_search" in tool_names
         assert "web_search" in tool_names
-        assert "code_interpreter" in tool_names
+        assert "code_interpreter" not in tool_names
 
         # Verify each tool has proper callable
         for tool in tools:
@@ -247,6 +247,7 @@ class TestCodeInterpreterIntegration:
     async def test_code_interpreter_handler_callable(self, tool_registry):
         """Test that code interpreter handler is callable."""
         tool_registry.register_tools()
+        tool_registry._register_code_interpreter_tool()
         tool = tool_registry.get_tool("code_interpreter")
 
         assert tool is not None
@@ -255,6 +256,7 @@ class TestCodeInterpreterIntegration:
     async def test_code_interpreter_handler_returns_string(self, tool_registry):
         """Test that code interpreter handler returns a string result."""
         tool_registry.register_tools()
+        tool_registry._register_code_interpreter_tool()
         tool = tool_registry.get_tool("code_interpreter")
 
         code = "x = 1 + 1; print(x)"
@@ -266,6 +268,7 @@ class TestCodeInterpreterIntegration:
     async def test_code_interpreter_with_different_languages(self, tool_registry):
         """Test code interpreter with different languages."""
         tool_registry.register_tools()
+        tool_registry._register_code_interpreter_tool()
         tool = tool_registry.get_tool("code_interpreter")
 
         languages = ["python", "javascript", "typescript"]
@@ -306,6 +309,7 @@ class TestToolInvocationWorkflow:
     async def test_invoke_code_interpreter_through_registry(self, tool_registry):
         """Test invoking code interpreter through registry."""
         tool_registry.register_tools()
+        tool_registry._register_code_interpreter_tool()
 
         result = await tool_registry.invoke_tool(
             "code_interpreter", {"code": "print('hello')"}

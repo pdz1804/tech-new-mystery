@@ -2,19 +2,94 @@
 
 ## Current Pipeline
 
-The app now uses this voice path:
+The app currently uses this voice path:
 
 ```text
 Browser mic
-  -> LiveKit room connection and microphone publish
-  -> ElevenLabs Realtime Scribe STT over WebSocket
-  -> existing chat SSE / LLM agent / tools
-  -> ElevenLabs streaming TTS
-  -> browser audio playback
+  -> LiveKit room connection and browser microphone publish
+  -> ElevenLabs Realtime Scribe STT WebSocket with VAD commit strategy
+  -> dedicated voice session / low-latency AgentCore voice call
+  -> ElevenLabs TTS through backend streaming proxy
+  -> browser audio element playback
   -> LangSmith voice telemetry events
 ```
 
-LiveKit is used as the realtime room/session transport and microphone publication layer. ElevenLabs is used for both STT and TTS. The core LLM agent remains the existing chat streaming path, so search/tools/history behavior is preserved.
+LiveKit is currently used as the realtime room/session transport, short-lived token boundary, microphone publication layer, and room/connection telemetry source. ElevenLabs is used for both STT and TTS. The same AgentCore search/browser capabilities are reused, but voice mode calls a separate low-latency agent path instead of rendering the chat SSE stream.
+
+Important current boundary: this app does not yet run a separate LiveKit Agent worker that owns the whole audio pipeline. The browser joins a LiveKit room and publishes the microphone, while the browser also sends PCM audio directly to the ElevenLabs Realtime STT WebSocket using a single-use token minted by the backend.
+
+Chat mode and voice mode use separate conversation sessions in the Agent page. The sidebar filters sessions by mode:
+
+* Chat sessions are normal conversation sessions.
+* Voice sessions are created with title `Voice agent session` and description `Dedicated voice-agent testing session`.
+
+The chat tab keeps the existing text stream and mic-enabled chat composer. The voice tab sends spoken turns to `POST /v1/chat/voice/message` and receives one final JSON answer rather than rendering SSE tokens. AgentCore receives `mode=voice`, uses a short spoken-answer prompt, disables model streaming for that graph, and caps generation for lower latency.
+
+When an existing voice session is selected, the voice cards hydrate from the latest persisted user and assistant messages in that voice session. Live turns still update the cards immediately from local state.
+
+## Current Voice Turn Details
+
+### STT and VAD
+
+STT is handled by ElevenLabs Realtime Scribe from the browser:
+
+* Backend endpoint: `POST /v1/chat/voice/stt-token`
+* Provider WebSocket: `wss://api.elevenlabs.io/v1/speech-to-text/realtime`
+* Audio sent by browser: PCM 16-bit, downsampled to `16000` Hz
+* Configured model: `ELEVENLABS_STT_MODEL_ID`, currently `scribe_v2_realtime`
+* Configured format: `ELEVENLABS_STT_AUDIO_FORMAT`, currently `pcm_16000`
+
+The current VAD configuration is passed as ElevenLabs STT WebSocket query parameters:
+
+| Parameter | Current value | Purpose |
+| --- | --- | --- |
+| `commit_strategy` | `vad` | Commit a transcript when voice activity ends |
+| `vad_silence_threshold_secs` | `1.2` | Silence window before committing a turn |
+| `vad_threshold` | `0.4` | Voice activity sensitivity |
+| `min_speech_duration_ms` | `100` | Ignore very short non-speech bursts |
+| `min_silence_duration_ms` | `100` | Minimum silence segment considered by VAD |
+| `no_verbatim` | `true` | Prefer cleaner transcription text |
+
+The frontend listens for `partial_transcript` events to update status text and for `committed_transcript` or `committed_transcript_with_timestamps` to finalize the user turn. When a committed transcript arrives, local mic capture and the STT socket are closed, `stt_committed` is recorded, and the text is sent to the voice agent endpoint.
+
+### Browser Audio Capture
+
+The browser captures microphone audio with:
+
+* `echoCancellation: true`
+* `noiseSuppression: true`
+* `autoGainControl: true`
+* `channelCount: 1`
+
+Audio is read through a `ScriptProcessorNode`, downsampled to 16 kHz, converted to 16-bit PCM, base64 encoded, and sent as ElevenLabs `input_audio_chunk` messages.
+
+### Voice Agent LLM Turn
+
+The backend endpoint `POST /v1/chat/voice/message`:
+
+* validates the selected voice session
+* loads the latest six persisted messages for short-term context
+* initializes request-scoped AgentCore memory
+* saves the user transcript as a normal `user` message
+* invokes AgentCore with `mode="voice"` and context flags: `request_scope=voice`, `agent_mode=voice`, `response_style=one_spoken_paragraph`, and `latency_priority=high`
+* saves the final assistant response as a normal `assistant` message
+* records `agent_turn_completed` in LangSmith
+* returns one JSON response with `content`, `latency_ms`, `input_chars`, and `output_chars`
+
+The backend timeout for this voice agent turn is currently 90 seconds. The UI shows this returned `latency_ms` in the voice console. This latency is the backend voice-agent turn duration, not full mouth-to-ear audio latency.
+
+### TTS and Playback
+
+TTS is handled by ElevenLabs through the backend:
+
+* Frontend API: `POST /v1/chat/voice/speech`
+* Provider endpoint: `https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream`
+* Configured model: `ELEVENLABS_TTS_MODEL_ID`, currently `eleven_flash_v2_5`
+* Configured output: `ELEVENLABS_TTS_OUTPUT_FORMAT`, currently `mp3_44100_128`
+
+The backend proxies ElevenLabs streaming bytes with `StreamingResponse`, keeping the long-lived API key server-side. The current frontend implementation calls `response.blob()` and then plays the resulting object URL through an `HTMLAudioElement`. That means the provider/backend path is streaming, but browser playback currently starts after the frontend has received the TTS blob.
+
+Before sending text to TTS, markdown-heavy formatting is stripped and the speech payload is capped to 1200 characters.
 
 ## Deployment Configuration
 
@@ -49,14 +124,9 @@ Production runtime values currently wired by Terraform:
 | `LIVEKIT_AGENT_NAME` | `tech-news-voice-agent` |
 | `LIVEKIT_TOKEN_TTL_SECONDS` | `900` |
 
-Use `infra/terraform/scripts/put-app-secret-from-env.ps1` to sync local `.env`
-values into the app secret without committing raw credentials. The helper strips
-surrounding single or double quotes from `.env` values before uploading them.
+Use `infra/terraform/scripts/put-app-secret-from-env.ps1` to sync local `.env` values into the app secret without committing raw credentials. The helper strips surrounding single or double quotes from `.env` values before uploading them.
 
-The GitHub Actions deploy workflow also syncs these values from GitHub Actions
-secrets before Terraform applies new ECS task definitions. This matters because
-ECS resolves JSON keys from Secrets Manager while placing a task; if a new key is
-missing, the task never starts and the deploy waiter eventually fails.
+The GitHub Actions deploy workflow also syncs these values from GitHub Actions secrets before Terraform applies new ECS task definitions. This matters because ECS resolves JSON keys from Secrets Manager while placing a task; if a new key is missing, the task never starts and the deploy waiter eventually fails.
 
 Required GitHub Actions secrets for the voice feature:
 
@@ -68,9 +138,7 @@ Required GitHub Actions secrets for the voice feature:
 | `LIVEKIT_API_KEY` | LiveKit token signing public key |
 | `LIVEKIT_API_SECRET` | LiveKit token signing secret |
 
-Related existing app secrets such as `SECRET_KEY`, `JWT_SECRET_KEY`,
-`OPENAI_API_KEY`, `QDRANT_URL`, and `QDRANT_API_KEY` must also be present either
-in GitHub Actions secrets or already in the app Secrets Manager JSON payload.
+Related existing app secrets such as `SECRET_KEY`, `JWT_SECRET_KEY`, `OPENAI_API_KEY`, `QDRANT_URL`, and `QDRANT_API_KEY` must also be present either in GitHub Actions secrets or already in the app Secrets Manager JSON payload.
 
 ## LiveKit Capabilities Used
 
@@ -80,6 +148,14 @@ in GitHub Actions secrets or already in the app Secrets Manager JSON payload.
 * Connection lifecycle events such as disconnect and connection quality changes.
 * Room metadata ties each voice session to the chat session, agent name, ElevenLabs model IDs, and LangSmith project.
 
+Currently not implemented:
+
+* A separate LiveKit Agent worker that performs STT, LLM, TTS, turn detection, and audio frame flushing server-side.
+* LiveKit-native automatic barge-in based on continuous remote VAD.
+* LiveKit data-channel transcript streaming between the agent worker and UI.
+
+Those are viable future upgrades, but the present implementation intentionally keeps the voice pipeline in the browser plus backend proxy layer.
+
 ## Critical Voice Metrics
 
 The implementation records these phases through `/v1/chat/voice/events` for LangSmith tracing:
@@ -88,8 +164,13 @@ The implementation records these phases through `/v1/chat/voice/events` for Lang
 * `livekit_connection_quality`
 * `stt_committed`
 * `tts_playback_started`
+* `tts_playback_ended`
+* `voice_interrupted`
 * `tts_playback_failed`
+* `agent_turn_completed`
 * `voice_input_failed`
+
+The voice UI currently shows the backend voice-agent `latency_ms` on the voice console after a completed spoken turn. LangSmith receives additional phase events for STT commit latency, TTS playback start/end, interruption, and failures where available.
 
 The chat UI also shows compact message metrics on hover:
 
@@ -99,14 +180,35 @@ The chat UI also shows compact message metrics on hover:
 * Time to first token.
 * Tool call count.
 
-Cost is marked as estimated because the runtime can use multiple provider/model paths.
+Cost is marked as estimated because the runtime can use multiple provider/model paths. The current voice endpoint returns character counts rather than exact provider token usage or ElevenLabs billing units.
+
+Current metric gaps:
+
+* Full user-finished-speaking to first-audio-playback latency is not yet computed as one unified metric.
+* The frontend does not yet measure first decoded audio frame playback.
+* LiveKit connection quality is traced as an event, but quality values are not yet displayed in the UI.
 
 ## Voice Controls
 
-* The main mic button starts voice mode when off.
-* While voice is enabled, the main mic button starts listening, pauses listening, or interrupts current TTS playback and begins a new turn.
+* Chat mode keeps the original composer mic behavior.
+* Voice mode has its own large `Start voice` / `Speak now` control and dedicated voice session list.
+* While TTS is speaking, the main control changes to `Interrupt`.
+* Pressing `Interrupt` stops current ElevenLabs playback, records `voice_interrupted`, and starts a fresh STT turn.
+* While listening, the main control shows `Finish turn`; this stops listening and lets the committed transcript flow continue.
 * The `End voice` control fully turns voice mode off, closes STT, stops playback, and disconnects LiveKit.
 * After a TTS response finishes, voice mode automatically re-arms listening for the next conversational turn.
+
+## Agent Prompt and Tool Mode
+
+The standard chat agent keeps the full analyst prompt and streaming response path. The voice agent uses a separate prompt:
+
+* one natural spoken paragraph
+* direct answer first
+* no markdown, headings, bullets, emojis, or tool explanations
+* compact spoken citations
+* short generation cap for latency
+
+Code Interpreter is parked for now. The implementation remains in the codebase, but it is commented out of active tool registration in `agent_core/tools.py` and the backend tool registry. A deployment or AgentCore runtime restart is required after prompt/tool changes; otherwise the running runtime may still serve the old prompt and mention Code Interpreter.
 
 ## Edge Cases and Handling
 
@@ -116,12 +218,15 @@ Risk: the user starts a new query while TTS is still playing.
 
 Current handling:
 
-* Pressing the mic while voice mode is enabled stops current playback and starts a fresh STT turn.
+* While TTS is active, the UI shows an `Interrupt` button.
+* Pressing `Interrupt` stops current playback and starts a fresh STT turn.
 * `stopPlayback()` aborts the active TTS request/audio element before starting STT.
+* `voice_interrupted` is recorded for observability.
 
 Future improvement:
 
 * A production LiveKit Agent worker can keep turn detection active continuously and perform automatic barge-in without requiring a click.
+* If the frontend keeps the current browser-owned pipeline, add client-side continuous VAD during TTS to trigger interruption automatically.
 
 ### No Speech Detected
 
@@ -180,9 +285,15 @@ Risk: latency feels unnatural after the user finishes speaking.
 
 Current handling:
 
-* Existing chat SSE stream keeps visual output moving.
-* Message metrics display TTFT and total latency.
-* Backend stream timeout and error handling remain active.
+* Voice mode avoids frontend SSE rendering and returns a single short answer.
+* AgentCore voice graph disables model streaming and uses a lower max-token cap.
+* The voice endpoint returns `latency_ms` for the backend voice turn.
+* The backend voice endpoint times out after 90 seconds.
+
+Future improvement:
+
+* Compute a unified voice latency metric from VAD commit to first playable audio.
+* Start browser playback from a streaming source instead of waiting for `response.blob()`.
 
 ### Markdown Sounds Bad When Spoken
 
@@ -236,18 +347,13 @@ ResourceInitializationError: unable to retrieve secret from asm:
 retrieved secret from Secrets Manager did not contain json key LANGSMITH_API_KEY
 ```
 
-Meaning: Terraform registered new task definitions that reference the voice-agent
-secret keys, but the production app secret did not yet contain those JSON keys.
-The old tasks stayed running, while the new `api`, `worker`, `beat`, and
-`clustering` deployments remained in progress with failed task placements.
+Meaning: Terraform registered new task definitions that reference the voice-agent secret keys, but the production app secret did not yet contain those JSON keys. The old tasks stayed running, while the new `api`, `worker`, `beat`, and `clustering` deployments remained in progress with failed task placements.
 
 Fix path:
 
 1. Add the required voice secrets to GitHub Actions secrets.
-2. Re-run the deploy workflow so `Sync production app secret` updates
-   `tech-news-mystery-prod/app` before Terraform applies ECS task definitions.
-3. If fixing manually, run `infra/terraform/scripts/put-app-secret-from-env.ps1`
-   from a trusted local machine with the complete `.env`.
+2. Re-run the deploy workflow so `Sync production app secret` updates `tech-news-mystery-prod/app` before Terraform applies ECS task definitions.
+3. If fixing manually, run `infra/terraform/scripts/put-app-secret-from-env.ps1` from a trusted local machine with the complete `.env`.
 
 Useful diagnostic command:
 

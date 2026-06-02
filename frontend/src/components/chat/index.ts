@@ -7,6 +7,7 @@ export { ChatInput } from './ChatInput';
 export { ToolIndicator } from './ToolIndicator';
 export { MessageList } from './MessageList';
 export { ChatInterface } from './ChatInterface';
+export type { AgentMode } from './ChatInterface';
 
 export type { ChatMessage as ChatMessageType } from '@/types/chat';
 export type {

@@ -57,6 +57,17 @@ def _extract_text(content) -> str:
     return ""
 
 
+def _extract_final_answer(result: dict) -> str:
+    """Extract the last assistant message from a LangGraph invoke result."""
+    messages = result.get("messages", []) if isinstance(result, dict) else []
+    for message in reversed(messages):
+        if message.__class__.__name__ == "AIMessage":
+            text = _extract_text(getattr(message, "content", ""))
+            if text.strip():
+                return text.strip()
+    return ""
+
+
 async def _emit_text_chunks(text: str) -> AsyncGenerator[dict, None]:
     """Emit visible text in small chunks when LangChain only exposes model-end text."""
     import asyncio
@@ -164,12 +175,13 @@ async def agent_invocation(
     session_id: str = context.session_id or payload.get("session_id", "default")
     user_id: str = payload.get("user_id", "anonymous")
     ctx: dict = payload.get("context", {})
+    agent_mode = payload.get("mode") or ctx.get("agent_mode") or "chat"
 
     if not user_message:
         yield {"type": "error", "message": "Empty prompt", "recoverable": False}
         return
 
-    logger.info("[AGENT] session=%s user=%s len=%d", session_id, user_id, len(user_message))
+    logger.info("[AGENT] session=%s user=%s mode=%s len=%d", session_id, user_id, agent_mode, len(user_message))
     trace_metadata = {
         "session_id": session_id,
         "user_id": user_id,
@@ -191,6 +203,78 @@ async def agent_invocation(
         history=history,
         context=ctx,
     )
+
+    if agent_mode == "voice":
+        assistant_response = ""
+        error_occurred = False
+        try:
+            with langfuse_observer.trace_context(
+                session_id=session_id,
+                user_id=user_id,
+                input_text=user_message,
+                metadata={
+                    **trace_metadata,
+                    "agent_mode": "voice",
+                    "memory_history_count": len(history),
+                    "streaming_disabled_for_latency": True,
+                },
+            ):
+                langgraph_config = langfuse_observer.langgraph_config(
+                    session_id=session_id,
+                    user_id=user_id,
+                    metadata={
+                        **trace_metadata,
+                        "agent_mode": "voice",
+                        "memory_history_count": len(history),
+                    },
+                )
+                result = await runtime.voice_graph.ainvoke(
+                    agent_input,
+                    config=langgraph_config,
+                )
+                assistant_response = _extract_final_answer(result)
+                if not assistant_response:
+                    raise RuntimeError("Voice agent completed without text")
+                yield {"type": "token", "content": assistant_response}
+                langfuse_observer.update_trace(
+                    output=assistant_response,
+                    metadata={
+                        **trace_metadata,
+                        "agent_mode": "voice",
+                        "assistant_chars": len(assistant_response),
+                        "streaming_disabled_for_latency": True,
+                    },
+                )
+        except Exception as exc:
+            logger.error("[AGENT] Voice invocation error: %s", exc, exc_info=True)
+            error_occurred = True
+            yield {
+                "type": "error",
+                "message": f"Voice agent error ({type(exc).__name__}): {str(exc)[:300]}",
+                "error_type": type(exc).__name__,
+                "recoverable": True,
+            }
+
+        if assistant_response and not error_occurred:
+            await memory.save_turn(
+                actor_id=user_id,
+                session_id=session_id,
+                user_message=user_message,
+                assistant_message=assistant_response,
+            )
+
+        langfuse_observer.flush()
+        yield {
+            "type": "stream_diagnostic",
+            "phase": "complete",
+            "agent_mode": "voice",
+            "real_streaming_used": False,
+            "fallback_blocked": False,
+            "stream_chunk_events": 0,
+            "stream_text_events": 0,
+        }
+        yield {"type": "done"}
+        return
 
     assistant_response = ""
     error_occurred = False
