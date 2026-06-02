@@ -440,7 +440,7 @@ function VoiceAgentConsole({
               <span className="truncate">{voiceStatus || (voiceSupported ? 'Voice session ready for testing' : 'Voice is not supported in this browser')}</span>
               {voiceSpeaking && (
                 <span className="ml-auto hidden rounded-full border border-amber-200/70 bg-amber-50/70 px-2 py-0.5 text-[11px] font-semibold text-amber-700 sm:inline-flex">
-                  Press Interrupt to barge in
+                  Speak or press Interrupt to barge in
                 </span>
               )}
               {latencyMs !== null && (

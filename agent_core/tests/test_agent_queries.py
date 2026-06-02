@@ -147,9 +147,9 @@ class TestBuildInput:
 # ---------------------------------------------------------------------------
 
 class TestToolRegistration:
-    def test_three_tools_registered(self):
+    def test_two_active_tools_registered(self):
         tools = get_tools(_settings())
-        assert len(tools) == 3
+        assert len(tools) == 2
 
     def test_tool_names(self):
         tools = get_tools(_settings())

@@ -11,6 +11,9 @@ import type { Room as LiveKitRoom } from 'livekit-client';
 
 const STT_SAMPLE_RATE = 16000;
 const ELEVENLABS_STT_WS_URL = 'wss://api.elevenlabs.io/v1/speech-to-text/realtime';
+const BARGE_IN_GRACE_MS = 700;
+const BARGE_IN_RMS_THRESHOLD = 0.06;
+const BARGE_IN_HOT_FRAMES = 5;
 
 type ElevenLabsRealtimeEvent = {
   message_type?: string;
@@ -24,6 +27,14 @@ type AudioPipeline = {
   source: MediaStreamAudioSourceNode;
   processor: ScriptProcessorNode;
   stream: MediaStream;
+};
+
+type BargeInMonitor = {
+  context: AudioContext;
+  source: MediaStreamAudioSourceNode;
+  analyser: AnalyserNode;
+  stream: MediaStream;
+  frameId: number;
 };
 
 type LiveKitVoiceSession = {
@@ -96,12 +107,14 @@ export function useVoiceAgent(
   const abortRef = useRef<AbortController | null>(null);
   const socketRef = useRef<WebSocket | null>(null);
   const pipelineRef = useRef<AudioPipeline | null>(null);
+  const bargeInMonitorRef = useRef<BargeInMonitor | null>(null);
   const livekitRoomRef = useRef<LiveKitRoom | null>(null);
   const livekitSessionRef = useRef<LiveKitVoiceSession | null>(null);
   const turnStartedAtRef = useRef<number | null>(null);
   const finalTranscriptRef = useRef('');
   const submittedTranscriptRef = useRef(false);
   const enabledRef = useRef(false);
+  const startListeningRef = useRef<(() => Promise<void>) | null>(null);
 
   const isSupported = useMemo(() => {
     if (typeof window === 'undefined') return false;
@@ -112,7 +125,19 @@ export function useVoiceAgent(
     );
   }, []);
 
+  const cleanupBargeInMonitor = useCallback(() => {
+    const monitor = bargeInMonitorRef.current;
+    if (!monitor) return;
+
+    window.cancelAnimationFrame(monitor.frameId);
+    monitor.source.disconnect();
+    monitor.stream.getTracks().forEach((track) => track.stop());
+    void monitor.context.close();
+    bargeInMonitorRef.current = null;
+  }, []);
+
   const stopPlayback = useCallback(() => {
+    cleanupBargeInMonitor();
     abortRef.current?.abort();
     abortRef.current = null;
     if (audioRef.current) {
@@ -121,7 +146,7 @@ export function useVoiceAgent(
       audioRef.current = null;
     }
     setIsSpeaking(false);
-  }, []);
+  }, [cleanupBargeInMonitor]);
 
   const cleanupAudioPipeline = useCallback(() => {
     const pipeline = pipelineRef.current;
@@ -149,17 +174,78 @@ export function useVoiceAgent(
     setIsListening(false);
   }, [cleanupAudioPipeline]);
 
+  const startBargeInMonitor = useCallback(async () => {
+    if (!isSupported || bargeInMonitorRef.current || !enabledRef.current) return;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+        },
+      });
+      const context = new window.AudioContext();
+      const source = context.createMediaStreamSource(stream);
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 1024;
+      source.connect(analyser);
+
+      const samples = new Float32Array(analyser.fftSize);
+      const startedAt = performance.now();
+      let hotFrames = 0;
+      let triggered = false;
+
+      const tick = () => {
+        const monitor = bargeInMonitorRef.current;
+        if (!monitor || triggered) return;
+
+        if (!enabledRef.current || !audioRef.current) {
+          cleanupBargeInMonitor();
+          return;
+        }
+
+        if (performance.now() - startedAt > BARGE_IN_GRACE_MS) {
+          analyser.getFloatTimeDomainData(samples);
+          let sum = 0;
+          for (let index = 0; index < samples.length; index += 1) {
+            sum += samples[index] * samples[index];
+          }
+          const rms = Math.sqrt(sum / samples.length);
+          hotFrames = rms >= BARGE_IN_RMS_THRESHOLD ? hotFrames + 1 : Math.max(0, hotFrames - 1);
+
+          if (hotFrames >= BARGE_IN_HOT_FRAMES) {
+            triggered = true;
+            setStatus('Interrupt detected. Listening...');
+            cleanupBargeInMonitor();
+            void startListeningRef.current?.();
+            return;
+          }
+        }
+
+        monitor.frameId = window.requestAnimationFrame(tick);
+      };
+
+      const frameId = window.requestAnimationFrame(tick);
+      bargeInMonitorRef.current = { context, source, analyser, stream, frameId };
+    } catch {
+      // Manual interrupt still works if the browser cannot open a second mic monitor.
+    }
+  }, [cleanupBargeInMonitor, isSupported]);
+
   const shutdownVoice = useCallback(() => {
     enabledRef.current = false;
     socketRef.current?.close();
     socketRef.current = null;
     cleanupAudioPipeline();
+    cleanupBargeInMonitor();
     disconnectLiveKit();
     livekitSessionRef.current = null;
     stopPlayback();
     setIsListening(false);
     setStatus(null);
-  }, [cleanupAudioPipeline, disconnectLiveKit, stopPlayback]);
+  }, [cleanupAudioPipeline, cleanupBargeInMonitor, disconnectLiveKit, stopPlayback]);
 
   const submitTranscript = useCallback(() => {
     if (submittedTranscriptRef.current) return;
@@ -346,6 +432,10 @@ export function useVoiceAgent(
     }
   }, [cleanupAudioPipeline, isListening, isSupported, sessionId, stopListening, stopPlayback, submitTranscript]);
 
+  useEffect(() => {
+    startListeningRef.current = startListening;
+  }, [startListening]);
+
   const toggleVoice = useCallback(() => {
     if (!isSupported) {
       setStatus('ElevenLabs voice mode needs microphone and WebSocket support');
@@ -383,6 +473,7 @@ export function useVoiceAgent(
         audioRef.current = audio;
         audio.onended = () => {
           URL.revokeObjectURL(audioUrl);
+          cleanupBargeInMonitor();
           audioRef.current = null;
           abortRef.current = null;
           setIsSpeaking(false);
@@ -404,6 +495,7 @@ export function useVoiceAgent(
         };
         audio.onerror = () => {
           URL.revokeObjectURL(audioUrl);
+          cleanupBargeInMonitor();
           audioRef.current = null;
           abortRef.current = null;
           setIsSpeaking(false);
@@ -421,7 +513,9 @@ export function useVoiceAgent(
           latency_ms: turnStartedAtRef.current ? Math.round(performance.now() - turnStartedAtRef.current) : undefined,
         });
         await audio.play();
+        void startBargeInMonitor();
       } catch {
+        cleanupBargeInMonitor();
         setIsSpeaking(false);
         if (abortController.signal.aborted) return;
         setStatus('ElevenLabs voice playback is unavailable');
@@ -435,17 +529,18 @@ export function useVoiceAgent(
         });
       }
     },
-    [enabled, sessionId, startListening, stopPlayback]
+    [cleanupBargeInMonitor, enabled, sessionId, startBargeInMonitor, startListening, stopPlayback]
   );
 
   useEffect(() => {
     return () => {
       socketRef.current?.close();
       cleanupAudioPipeline();
+      cleanupBargeInMonitor();
       disconnectLiveKit();
       stopPlayback();
     };
-  }, [cleanupAudioPipeline, disconnectLiveKit, stopPlayback]);
+  }, [cleanupAudioPipeline, cleanupBargeInMonitor, disconnectLiveKit, stopPlayback]);
 
   return {
     enabled,

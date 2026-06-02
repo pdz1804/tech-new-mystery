@@ -194,6 +194,7 @@ Current metric gaps:
 * Voice mode has its own large `Start voice` / `Speak now` control and dedicated voice session list.
 * While TTS is speaking, the main control changes to `Interrupt`.
 * Pressing `Interrupt` stops current ElevenLabs playback, records `voice_interrupted`, and starts a fresh STT turn.
+* Talking over the agent during TTS also attempts to interrupt playback automatically through a browser-side barge-in monitor.
 * While listening, the main control shows `Finish turn`; this stops listening and lets the committed transcript flow continue.
 * The `End voice` control fully turns voice mode off, closes STT, stops playback, and disconnects LiveKit.
 * After a TTS response finishes, voice mode automatically re-arms listening for the next conversational turn.
@@ -220,13 +221,15 @@ Current handling:
 
 * While TTS is active, the UI shows an `Interrupt` button.
 * Pressing `Interrupt` stops current playback and starts a fresh STT turn.
+* While TTS is active, the frontend opens a lightweight echo-cancelled microphone monitor and detects sustained speech energy after a short grace period.
+* If the talk-over detector fires, it stops TTS playback and starts the normal ElevenLabs STT turn without requiring a click.
 * `stopPlayback()` aborts the active TTS request/audio element before starting STT.
 * `voice_interrupted` is recorded for observability.
 
 Future improvement:
 
 * A production LiveKit Agent worker can keep turn detection active continuously and perform automatic barge-in without requiring a click.
-* If the frontend keeps the current browser-owned pipeline, add client-side continuous VAD during TTS to trigger interruption automatically.
+* Replace the energy-based frontend barge-in monitor with model-backed VAD so loud speaker leakage is less likely to cause false interrupts.
 
 ### No Speech Detected
 
@@ -312,6 +315,7 @@ Current handling:
 
 * Browser mic capture requests echo cancellation, noise suppression, and auto gain control.
 * Starting a new STT turn stops current TTS playback first.
+* The talk-over monitor uses a short startup grace period and requires multiple loud frames before interrupting.
 
 Future improvement:
 
