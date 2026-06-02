@@ -2,7 +2,9 @@
 
 ## Overview
 
-The chatbot feature provides real-time AI conversations powered by Amazon Bedrock AgentCore with LangGraph orchestration. Users interact with an intelligent agent that can search the article corpus and provide contextual answers using streaming Server-Sent Events (SSE).
+The chatbot feature provides real-time text conversations powered by Amazon Bedrock AgentCore with LangGraph orchestration. Users interact with an intelligent agent that can search the article corpus and provide contextual answers using streaming Server-Sent Events (SSE).
+
+The `/chatbot` page is now the Agent workspace. Text chat and voice-test mode live in the same page shell, but they intentionally use separate sessions and different runtime behavior. This guide covers the text-chat/SSE path; the voice path, LiveKit room setup, ElevenLabs STT/TTS, VAD, LangSmith telemetry, and talk-over interruption handling are documented in [Voice Agent Implementation](VOICE_AGENT_IMPLEMENTATION.md).
 
 ## Architecture
 

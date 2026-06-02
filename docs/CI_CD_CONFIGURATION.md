@@ -15,7 +15,7 @@ CI/CD Pipeline (.github/workflows/deploy.yml)
          ├─ Build & push Backend image → ECR
          ├─ Build & push Frontend image → ECR
          ├─ Build Agent Core (CodeBuild) → ECR
-         └─ Rollout: api, frontend, worker, beat services
+         └─ Rollout: api, frontend, worker, beat, clustering services
 ```
 
 ## GitHub Actions Workflow
@@ -31,6 +31,16 @@ CI/CD Pipeline (.github/workflows/deploy.yml)
 
 ```
 AWS_ROLE_TO_ASSUME          # ARN of IAM role for OIDC assume-role
+SECRET_KEY                  # FastAPI session secret synced to Secrets Manager
+JWT_SECRET_KEY              # JWT signing secret synced to Secrets Manager
+OPENAI_API_KEY              # Embeddings and fallback LLM
+QDRANT_URL                  # Qdrant Cloud endpoint
+QDRANT_API_KEY              # Qdrant Cloud API key
+LANGSMITH_API_KEY           # Voice-agent telemetry
+ELEVENLABS_API_KEY          # ElevenLabs STT/TTS
+ELEVENLABS_VOICE_ID         # ElevenLabs voice used by TTS
+LIVEKIT_API_KEY             # LiveKit token signing key
+LIVEKIT_API_SECRET          # LiveKit token signing secret
 ```
 
 ### Required Variables in GitHub
@@ -95,6 +105,19 @@ REFRESH_TOKEN_EXPIRE_DAYS=7
 # Agent Core
 AGENT_CORE_BASE_URL=http://agent-core.internal:8080
 AGENT_CORE_TIMEOUT=300
+
+# Voice Agent
+LANGSMITH_TRACING=true
+LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+LANGSMITH_PROJECT=tech-news-voice
+ELEVENLABS_STT_MODEL_ID=scribe_v2_realtime
+ELEVENLABS_STT_AUDIO_FORMAT=pcm_16000
+ELEVENLABS_TTS_MODEL_ID=eleven_flash_v2_5
+ELEVENLABS_TTS_OUTPUT_FORMAT=mp3_44100_128
+ELEVENLABS_TIMEOUT=45
+LIVEKIT_URL=wss://virtual-interview-191g0s6f.livekit.cloud
+LIVEKIT_AGENT_NAME=tech-news-voice-agent
+LIVEKIT_TOKEN_TTL_SECONDS=900
 ```
 
 ### ECS Task Definition
@@ -215,7 +238,7 @@ AGENT_MODEL=us.anthropic.claude-haiku-4-5-20251001-v1:0
 # AWS AgentCore Resources (set by Terraform)
 MEMORY_ID=<from-bedrock-agentcore-memory>
 BROWSER_ID=<from-bedrock-agentcore-browser>
-CODE_INTERPRETER_ID=<from-bedrock-agentcore-code-interpreter>
+CODE_INTERPRETER_ID=<optional-parked-bedrock-agentcore-code-interpreter>
 
 # Secrets Manager ARN (for loading secrets at runtime)
 APP_SECRET_ARN=arn:aws:secretsmanager:us-west-2:{ACCOUNT_ID}:secret:tech-news-mystery-prod-agentcore
@@ -233,9 +256,10 @@ QDRANT_COLLECTION_NAME=articles
 # Tool Config
 TOOL_TIMEOUT=30
 BROWSER_TIMEOUT=60
-CODE_INTERPRETER_TIMEOUT=60
 MAX_SEARCH_RESULTS=8
 ```
+
+The active Agent Core tools are currently `semantic_search` and `browse_web`. Code Interpreter is parked: the helper remains in code, but `execute_code` is not registered by the runtime and should not be exposed in prompts or docs as an active capability.
 
 ### ECS Task Definition
 
@@ -306,7 +330,12 @@ Agent Core service runs on port 8080:
 {
   "OPENAI_API_KEY": "sk-...",
   "QDRANT_URL": "https://...",
-  "QDRANT_API_KEY": "..."
+  "QDRANT_API_KEY": "...",
+  "LANGSMITH_API_KEY": "...",
+  "ELEVENLABS_API_KEY": "...",
+  "ELEVENLABS_VOICE_ID": "...",
+  "LIVEKIT_API_KEY": "...",
+  "LIVEKIT_API_SECRET": "..."
 }
 ```
 
@@ -340,7 +369,7 @@ Loaded at runtime by:
    - Frontend: `docker build --build-arg NEXT_PUBLIC_API_URL=/v1` → push ECR
    - Agent Core: `git archive` → S3 → CodeBuild (ARM64) → ECR
 4. **ECS rollout**:
-   - `force-new-deployment` on api, frontend, worker, beat
+   - `force-new-deployment` on api, frontend, worker, beat, clustering
    - `wait services-stable` (max 10 minutes)
 5. **Monitoring**:
    - CloudWatch Logs in `/ecs/tech-news-mystery-prod/{service}`
@@ -352,6 +381,11 @@ Loaded at runtime by:
 1. Check CloudWatch Logs: `/ecs/tech-news-mystery-prod/{service}`
 2. Check ECS task for error messages
 3. Verify environment variables in task definition
+
+### ECS waiter times out after voice secret changes
+1. Run `aws ecs describe-services --cluster tech-news-mystery-prod --services api frontend worker beat clustering` and inspect `events`.
+2. If task placement reports `ResourceInitializationError` for missing JSON keys, add the missing voice keys to GitHub Actions secrets and re-run the deploy workflow so `tech-news-mystery-prod/app` is synced before task definition registration.
+3. Confirm the task definition secret mappings include `LANGSMITH_API_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET`.
 
 ### Agent Core connection fails
 1. Verify `AGENT_CORE_BASE_URL` in api task definition
@@ -373,7 +407,7 @@ Loaded at runtime by:
 - [ ] Redis service running in VPC
 - [ ] DynamoDB tables created
 - [ ] Qdrant service accessible (cloud or self-hosted)
-- [ ] Secrets Manager secret created with OPENAI_API_KEY, QDRANT_URL, QDRANT_API_KEY
+- [ ] Secrets Manager secret created with OPENAI_API_KEY, QDRANT_URL, QDRANT_API_KEY, LANGSMITH_API_KEY, ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, LIVEKIT_API_KEY, LIVEKIT_API_SECRET
 - [ ] IAM role for ECS task execution has permissions for SecretsManager
 
 ## Testing Deployment
@@ -391,9 +425,7 @@ aws logs tail /ecs/tech-news-mystery-prod/api --follow
 aws logs tail /ecs/tech-news-mystery-prod/agent-core --follow
 
 # 4. Test API
-curl -X POST https://<api-domain>/v1/chat/send \
-  -H "Content-Type: application/json" \
-  -d '{"session_id": "test", "message": "Hello"}'
+curl https://<api-domain>/health
 
 # 5. Test Frontend
 open https://<frontend-domain>

@@ -1,6 +1,6 @@
 # Frontend Documentation Index
 
-The frontend is a Next.js application that implements article discovery, topic exploration, chat, profile, and admin workflows.
+The frontend is a Next.js application that implements article discovery, topic exploration, the Agent workspace, profile, and admin workflows.
 
 ## Current References
 
@@ -10,7 +10,8 @@ The frontend is a Next.js application that implements article discovery, topic e
 | [Project Architecture](../ARCHITECTURE.md) | Service boundaries and frontend/backend integration points. |
 | [API Reference](../API_REFERENCE.md) | HTTP endpoints used by frontend pages and hooks. |
 | [Clustering PCA Map](../CLUSTERING_PCA_MAP.md) | Article embedding map data flow and UI behavior. |
-| [Chatbot Guide](../CHATBOT_GUIDE.md) | Chat UI, SSE streaming, and session behavior. |
+| [Chatbot Guide](../CHATBOT_GUIDE.md) | Text-chat UI, SSE streaming, and session behavior. |
+| [Voice Agent Implementation](../VOICE_AGENT_IMPLEMENTATION.md) | Voice-test UI, LiveKit room setup, ElevenLabs STT/TTS, VAD, and interruption behavior. |
 
 ## Important Routes
 
@@ -21,7 +22,7 @@ The frontend is a Next.js application that implements article discovery, topic e
 | `/articles/[slug]` | Article detail page. |
 | `/topics` | Topic list, search/sort controls, and Neo4j-style article embedding map. |
 | `/topics/[slug]` | Cluster detail and articles in topic. |
-| `/chatbot` | Chat sessions and streaming assistant UI. |
+| `/chatbot` | Agent workspace with separate text-chat sessions and voice-test sessions. |
 | `/profile` | User settings, preferences, and saved content. |
 | `/admin/*` | Admin queue, users, articles, search, and clustering controls. |
 

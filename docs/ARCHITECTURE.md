@@ -6,7 +6,7 @@
 
 ## 1. High-Level System Overview
 
-The system is composed of five runtime services, four data stores, and four categories of external integrations.
+The system is composed of five runtime services, four data stores, and external integrations for ingestion, search, LLM execution, observability, and voice transport.
 
 ```mermaid
 graph TB
@@ -16,8 +16,8 @@ graph TB
 
     subgraph AppTier["Application Tier"]
         FE["Frontend\nNext.js 14 · React 18 · TypeScript\nTailwind CSS · Zustand · React Query\nPort 3000"]
-        API["Backend API\nFastAPI · Python 3.11 · Uvicorn ASGI\n19 REST + SSE endpoints  ·  /v1/*\nPort 8000"]
-        AC["Agent Core\nLangGraph ReAct Agent\nBedrockAgentCoreApp · Port 8080\nModel: Claude Haiku 4.5 (Bedrock)"]
+        API["Backend API\nFastAPI · Python 3.11 · Uvicorn ASGI\nREST + SSE endpoints  ·  /v1/*\nPort 8000"]
+        AC["Agent Core\nLangGraph ReAct Agent\nChat graph + voice graph\nBedrockAgentCoreApp · Port 8080\nModel: Claude Haiku 4.5 (Bedrock)"]
     end
 
     subgraph WorkerTier["Worker Tier"]
@@ -36,7 +36,7 @@ graph TB
         CLA["Claude Haiku 4.5\nus.anthropic.claude-haiku-4-5-20251001-v1:0\nConverse API · streaming enabled"]
         ACM["AgentCore Memory\nCross-session long-term memory\n90-day event retention"]
         ACB["AgentCore Browser\nManaged Chrome · Playwright/CDP\ntool ID: tech_news_mystery_prod_browser"]
-        ACCX["AgentCore Code Interpreter\nManaged Python 3.x sandbox\nArtifact download support"]
+        ACCX["AgentCore Code Interpreter\nParked optional capability\nHelper retained, not registered as active tool"]
     end
 
     subgraph ExternalTier["External Services"]
@@ -44,6 +44,9 @@ graph TB
         TAV["Tavily Search API\nArticle discovery · 6-hour schedule"]
         NAPI["NewsAPI\nHeadline ingestion · on-demand + scheduled"]
         LFU["Langfuse  ·  cloud.langfuse.com\nLLM observability — traces · spans · scores"]
+        LSM["LangSmith\nVoice-agent telemetry\nSTT · LLM · TTS latency events"]
+        ELS["ElevenLabs\nRealtime Scribe STT WebSocket\nStreaming TTS voice model"]
+        LK["LiveKit Cloud\nVoice room transport\nMic publish + tokenized rooms"]
         DDG["DuckDuckGo HTML\nhtml.duckduckgo.com/html/?q=\nWeb search fallback for Agent"]
         SMTP["Email Service\nWeekly digest delivery"]
     end
@@ -54,15 +57,21 @@ graph TB
     %% ── Frontend → Backend ────────────────────────────────
     FE -->|"REST  /v1/articles  /v1/search\n/v1/clusters  /v1/auth  /v1/user"| API
     FE -->|"SSE  /v1/chat/sessions/{id}/stream"| API
+    FE -->|"REST  /v1/chat/voice/*"| API
+    FE -->|"STT WebSocket PCM16\nsingle-use token"| ELS
+    FE -->|"join room + publish mic"| LK
 
     %% ── Backend → Agent Core ──────────────────────────────
-    API -->|"prod: boto3 invoke_agent_runtime\ndev:  HTTP POST /invocations\nSSE event stream back"| AC
+    API -->|"prod: boto3 invoke_agent_runtime\ndev:  HTTP POST /invocations\nchat: SSE events\nvoice: final JSON answer"| AC
 
     %% ── Backend → Data Stores ─────────────────────────────
     API <-->|"boto3 DynamoDB SDK\nCRUD · conditional writes"| DDB
     API <-->|"aioredis  ·  cache + sessions"| REDIS
     API <-->|"qdrant-client  ·  dense search + keyword merge"| QDR
     API -->|"boto3 S3  ·  generate_presigned_url"| S3
+    API -->|"STT token mint + TTS proxy"| ELS
+    API -->|"room token mint"| LK
+    API -->|"voice telemetry events"| LSM
 
     %% ── Backend → LLM fallback ────────────────────────────
     API -->|"openai-python  ·  gpt-4o-mini\n(LLM provider fallback chain)"| OAI
@@ -71,7 +80,7 @@ graph TB
     AC <-->|"Converse API  ·  streaming tokens\nToolUse / ToolResult messages"| CLA
     AC <-->|"MemoryClient.load_session\nMemoryClient.save_event"| ACM
     AC -->|"browser_session CDP\nbrowse_web tool"| ACB
-    AC -->|"code_session executeCode\nexecute_code tool"| ACCX
+    AC -.->|"optional restore path\nnot active today"| ACCX
     AC <-->|"qdrant-client\nsemantic_search tool"| QDR
     ACB -->|"Playwright page.goto()\nDDG HTML results page"| DDG
 
@@ -89,6 +98,7 @@ graph TB
     %% ── Observability ─────────────────────────────────────
     AC -->|"LangfuseCallbackHandler\ntraces · tool spans · token counts"| LFU
     API -->|"trace chat sessions\nembedding latency"| LFU
+    API -->|"voice phase spans\nlatency · chars · transport metadata"| LSM
 ```
 
 ---
@@ -114,7 +124,7 @@ graph TB
 | `/discover` | Full article discovery with semantic search |
 | `/topics` | Cluster overview with PCA scatter map |
 | `/topics/[slug]` | Cluster detail — article list |
-| `/chat` | Streaming chat interface — session list + message thread |
+| `/chatbot` | Agent workspace with separate chat and voice-test sessions |
 | `/admin` | Clustering config, trigger, evaluation history |
 
 ---
@@ -143,6 +153,11 @@ graph TB
 | `/chat/sessions` | create · list | Chat session management |
 | `/chat/sessions/{id}/messages` | list | Persisted message history |
 | `/chat/sessions/{id}/stream` | SSE stream | Live agent response |
+| `/chat/voice/stt-token` | create | Single-use ElevenLabs Realtime Scribe token and STT config |
+| `/chat/voice/livekit-session` | create | LiveKit room name, participant token, agent name, and TTL |
+| `/chat/voice/message` | create | Non-streaming voice-agent turn optimized for short spoken answers |
+| `/chat/voice/speech` | create | ElevenLabs TTS proxy returning audio for playback |
+| `/chat/voice/events` | create | LangSmith voice telemetry event sink |
 | `/admin/clustering` | config · trigger · evaluations | Admin-only |
 | `/digest` | trigger | Email digest |
 
@@ -154,15 +169,16 @@ graph TB
 | Framework | BedrockAgentCoreApp · Port 8080 |
 | Agent | LangGraph `create_react_agent` · ReAct pattern |
 | LLM | Claude Haiku 4.5 via `ChatBedrockConverse` |
-| Streaming | `astream_events` → SSE → Backend → Frontend |
-| Observability | Langfuse `LangfuseCallbackHandler` |
+| Streaming | Chat graph: `astream_events` → SSE → Backend → Frontend |
+| Voice mode | Voice graph: short max tokens, no text stream, one final answer for TTS |
+| Observability | Langfuse `LangfuseCallbackHandler` for agent traces; LangSmith for voice-phase telemetry |
 
 **Agent decision logic (system prompt):**
 
 1. Always call `semantic_search` first for news/trend questions.
 2. If result is empty or fewer than 2 articles → call `browse_web` with DuckDuckGo HTML.
 3. For specific URLs provided by user → call `browse_web` directly.
-4. For calculations or data processing → call `execute_code`.
+4. For calculations or data processing → answer directly when simple, or explain the limitation while Code Interpreter is parked.
 
 **Tools:**
 
@@ -170,7 +186,8 @@ graph TB
 |---|---|---|---|
 | `semantic_search` | Qdrant vector DB | `query`, `top_k` | Ranked article list with title, summary, URL, score |
 | `browse_web` | AgentCore Browser (Playwright/CDP) | `url`, `task` | Page title + extracted body text (6 000 char cap) |
-| `execute_code` | AgentCore Code Interpreter | `code`, `language` | stdout, stderr, exit code, downloaded artifacts |
+
+The Code Interpreter helper is still present in the codebase as an optional restore path, but it is not returned by `get_tools()` and should not be advertised by the agent today.
 
 **Circuit breaker** (backend-side):  threshold 5 failures · 30-second recovery · state exposed at `GET /health/agent-core`.
 
@@ -311,7 +328,50 @@ sequenceDiagram
 
 ---
 
-## 4. Article Ingestion Pipeline
+## 4. Voice Agent Request Flow
+
+The voice test mode uses the same durable session/message tables as chat, but it keeps voice-test sessions separate in the frontend and runs a short, non-streaming agent path so spoken answers stay fast and conversational.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant FE as Frontend<br/>(Voice tab)
+    participant API as Backend API<br/>(FastAPI)
+    participant LK as LiveKit Cloud
+    participant EL as ElevenLabs
+    participant AC as Agent Core<br/>(voice graph)
+    participant BED as AWS Bedrock<br/>(Claude Haiku 4.5)
+    participant DDB as DynamoDB
+    participant LS as LangSmith
+
+    User->>FE: Click Speak now and talk
+    FE->>API: POST /v1/chat/voice/livekit-session
+    API-->>FE: room, participant_token, agent_name, expires_in
+    FE->>LK: Join room and publish mic track
+    FE->>API: POST /v1/chat/voice/stt-token
+    API-->>FE: single-use STT token, model_id, audio_format
+    FE->>EL: Realtime Scribe WebSocket<br/>PCM16 16 kHz audio + VAD config
+    EL-->>FE: committed transcript after VAD endpointing
+    FE->>API: POST /v1/chat/voice/message<br/>{session_id, content}
+    API->>DDB: Save user voice message
+    API->>AC: invoke voice mode<br/>short max tokens, disable text streaming
+    AC->>BED: Converse request
+    BED-->>AC: final spoken-style answer
+    AC-->>API: final content + latency metadata
+    API->>DDB: Save assistant voice message
+    API-->>FE: answer JSON
+    FE->>API: POST /v1/chat/voice/speech
+    API->>EL: Streaming TTS request
+    EL-->>API: audio stream
+    API-->>FE: audio/mpeg blob
+    FE-->>User: Play spoken reply
+    FE->>LS: POST /v1/chat/voice/events<br/>STT, LLM, TTS, LiveKit metadata
+    Note over FE,User: During playback, browser-side echo-cancelled mic monitoring can detect sustained talk-over, stop TTS, and reopen STT for barge-in.
+```
+
+---
+
+## 5. Article Ingestion Pipeline
 
 ```mermaid
 graph LR
@@ -374,7 +434,7 @@ graph LR
 
 ---
 
-## 5. Clustering Quality Evaluation
+## 6. Clustering Quality Evaluation
 
 After each HDBSCAN run, three quality metrics are computed and stored in `tech-news-clustering_evaluation` (30-day TTL):
 
@@ -395,7 +455,7 @@ Runs below `CLUSTERING_QUALITY_THRESHOLD` (default `0.6`) are flagged in the adm
 
 ---
 
-## 6. LLM Provider Fallback Chain
+## 7. LLM Provider Fallback Chain
 
 The backend maintains a configurable fallback chain (`LLM_PROVIDER=bedrock,openai`):
 
@@ -414,13 +474,14 @@ The Agent Core always uses Bedrock directly (no fallback chain in the agent).
 
 ---
 
-## 7. Observability
+## 8. Observability
 
 | Signal | Tool | Captured by |
 |---|---|---|
 | LLM traces (prompts, completions, tool calls) | Langfuse | Agent Core (`LangfuseCallbackHandler`) |
 | Embedding latency | Langfuse | Backend API |
 | Chat session spans | Langfuse | Backend API |
+| Voice phase latency and transport metadata | LangSmith | Backend voice endpoints and frontend event sink |
 | ECS task logs | AWS CloudWatch `/ecs/tech-news-prod` | All ECS tasks (30-day retention) |
 | Worker memory / CPU alarms | AWS CloudWatch Alarms | Worker ECS service |
 | Circuit breaker state | `GET /health/agent-core` | Backend API in-process |

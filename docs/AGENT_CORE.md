@@ -1,6 +1,6 @@
 # Agent Core
 
-`agent_core/` is the standalone AI runtime behind the chatbot. The backend owns users, sessions, message persistence, and SSE delivery to the browser. Agent Core owns the model call, tool execution, streaming events, and optional long-term conversational memory.
+`agent_core/` is the standalone AI runtime behind the Agent workspace. The backend owns users, sessions, message persistence, text-chat SSE delivery, and voice endpoint orchestration. Agent Core owns the model call, active tool execution, chat streaming events, the short voice-answer graph, and optional long-term conversational memory.
 
 ## Purpose
 
@@ -9,9 +9,11 @@ Agent Core turns a user message into an answer grounded in the Tech News Mystery
 - answer questions about indexed technology news;
 - search semantically across stored articles;
 - browse a live URL when the user asks for current or page-specific information;
-- run sandboxed code for calculations or lightweight analysis;
-- stream tokens and tool events back to the backend;
+- stream text-chat tokens and tool events back to the backend;
+- produce short non-streaming voice answers for ElevenLabs TTS;
 - optionally save and retrieve recent turns through AWS Bedrock AgentCore Memory.
+
+Code Interpreter support is parked for now. The helper remains in `agent_core/tools.py`, but it is not returned by `get_tools()` and should not be advertised as an available capability.
 
 ## Runtime Shape
 
@@ -25,6 +27,19 @@ frontend /chatbot
   -> Agent Core streams token/tool events
   -> backend forwards SSE to browser
   -> backend saves assistant message in DynamoDB
+```
+
+Voice mode uses the same runtime service but a different backend endpoint and graph configuration:
+
+```text
+frontend /chatbot voice tab
+  -> backend POST /v1/chat/voice/message
+  -> backend validates auth + voice session ownership
+  -> backend invokes Agent Core with mode=voice
+  -> LangGraph voice graph uses a concise spoken-answer prompt
+  -> Agent Core returns one final answer instead of a text stream
+  -> backend saves messages in DynamoDB
+  -> frontend asks /v1/chat/voice/speech for ElevenLabs TTS playback
 ```
 
 ## Main Files
@@ -62,7 +77,7 @@ The graph is intentionally small. We let LangGraph manage the agent loop instead
 
 ## Current ReAct Agent Shape
 
-The current agent is built in `agent_core/graph.py` like this:
+The current text-chat graph is built in `agent_core/graph.py` like this:
 
 ```python
 llm = ChatBedrockConverse(
@@ -76,6 +91,23 @@ llm = ChatBedrockConverse(
 tools = get_tools(settings)
 llm_with_prompt = llm.bind(system=SYSTEM_PROMPT)
 graph = create_react_agent(llm_with_prompt, tools)
+```
+
+The voice graph uses the same active tools but a different prompt and model configuration:
+
+```python
+voice_llm = ChatBedrockConverse(
+    model=settings.agent_model,
+    region_name=settings.bedrock_region,
+    temperature=0.2,
+    max_tokens=420,
+    disable_streaming=True,
+)
+
+voice_graph = create_react_agent(
+    voice_llm.bind(system=VOICE_SYSTEM_PROMPT),
+    get_tools(settings),
+)
 ```
 
 Conceptually, the compiled graph behaves like this:
@@ -116,7 +148,6 @@ The tools available to the graph are:
 ```text
 semantic_search(query: str, top_k: int = 5)
 browse_web(url: str, task: str)
-execute_code(code: str, language: str = "python")
 ```
 
 During execution, `server.py` listens to LangGraph `astream_events(version="v2")` and maps internal events into our public stream:
@@ -182,11 +213,13 @@ It frames the assistant as a technology news analyst and gives tool policy:
 
 - use `semantic_search` first for questions about articles, trends, or recent news;
 - use `browse_web` for live web pages, URLs, or real-time information;
-- use `execute_code` for calculations, data processing, and code-based analysis;
+- do not claim Code Interpreter access while that tool is parked;
 - cite article titles and sources when possible;
 - say when there is not enough information.
 
 This keeps the assistant grounded in the app's article corpus by default, while still allowing external lookup or computation when the user asks for it.
+
+`VOICE_SYSTEM_PROMPT` is intentionally more conversational: it asks for a direct one-paragraph answer, avoids markdown-heavy structure, and favors low latency over long explanations. That response is then sent to ElevenLabs TTS.
 
 ## Tools
 
@@ -240,28 +273,9 @@ Requirements:
 - AWS credentials in the runtime environment;
 - `BROWSER_ID` from Terraform, or the default AWS browser identifier.
 
-### `execute_code`
+### Parked: `execute_code`
 
-Defined in `agent_core/tools.py`.
-
-Uses AWS Bedrock AgentCore Code Interpreter. It executes Python or JavaScript and returns output, errors, stdout, and stderr.
-
-When code creates files and prints their paths, the tool attempts to download up
-to five generated artifacts. Small images are returned as data URLs so the chat
-UI can preview them in the tool details panel. Larger files are listed as
-generated but not inlined.
-
-Use cases:
-
-- calculations;
-- summarizing structured values;
-- simple data processing;
-- quick analysis over tool results.
-
-Requirements:
-
-- AWS credentials in the runtime environment;
-- `CODE_INTERPRETER_ID` from Terraform, or the default AWS code interpreter identifier.
+The Code Interpreter helper remains in `agent_core/tools.py` so it can be restored later without rebuilding the design from scratch. Today it is intentionally not included in `get_tools()`, the prompts tell the model not to claim it, and tests expect two active tools: `semantic_search` and `browse_web`.
 
 ## Request Flow
 
@@ -349,7 +363,7 @@ Why this helps:
 
 - failed browser CDP handshakes show up as tool errors with region/browser metadata;
 - semantic search queries and result summaries can be inspected inside the same trace;
-- code interpreter errors and generated artifacts are visible as tool observations;
+- parked Code Interpreter restore work can be traced again if the tool is deliberately re-enabled later;
 - multi-turn chat can be grouped by session for debugging.
 
 ## Browser Automation Troubleshooting
@@ -400,8 +414,8 @@ The agent can support:
 - finding articles by semantic meaning;
 - citing article titles and slugs returned by Qdrant;
 - browsing specific live web pages when browser tooling is configured;
-- running small calculations or analysis snippets when code interpreter is configured;
 - streaming long answers and tool status to the UI;
+- returning concise non-streaming voice answers for TTS;
 - preserving chat sessions through backend DynamoDB.
 
 The agent should not be treated as:
@@ -461,10 +475,10 @@ $body = '{"prompt":"Use browse_web to summarize https://example.com in two bulle
 curl.exe -N http://localhost:8080/invocations -H "Content-Type: application/json" -d $body
 ```
 
-Code artifact smoke test:
+Voice-mode smoke test:
 
 ```powershell
-$body = '{"prompt":"Use execute_code to create a simple matplotlib line chart, save it to /tmp/agent_test_plot.png, print the path, and explain the chart.","session_id":"local-code-test","user_id":"local-dev","context":{"recent_events":[]}}'
+$body = '{"prompt":"Briefly tell me what you can help with.","session_id":"local-voice-test","user_id":"local-dev","context":{"recent_events":[]},"mode":"voice"}'
 curl.exe -N http://localhost:8080/invocations -H "Content-Type: application/json" -d $body
 ```
 
@@ -474,7 +488,7 @@ Local Docker environment notes:
 - If keys live only in `backend/.env`, the `agent-core` container will not see them.
 - Rebuild the image after changing `agent_core/requirements.txt`; mounted source code updates live, installed packages do not.
 - AWS credentials are mounted from `~/.aws` into the container.
-- Managed Browser and Code Interpreter tools still call AWS AgentCore resources; local Docker only runs our runtime process.
+- Managed Browser still calls AWS AgentCore resources; local Docker only runs our runtime process. Code Interpreter is currently parked and not registered as an active tool.
 
 For backend-to-Agent-Core local testing:
 
@@ -494,7 +508,7 @@ AGENT_CORE_BASE_URL=http://agent-core:8080
 - Keep heavy article processing in backend workers, not Agent Core.
 - Keep the system prompt short and operational. Tool descriptions already tell the model when each tool is useful.
 - Prefer adding focused tools with clear argument schemas over broad tools that can do anything.
-- Treat browser and code interpreter tools as optional production capabilities; semantic search is the core product tool.
+- Treat browser as an optional production capability; semantic search is the core product tool. Code Interpreter is parked until deliberately restored.
 - Do not log secrets, raw API keys, or full private user context.
 - Use `stream_diagnostic` events for troubleshooting streaming behavior without exposing diagnostics in the UI.
 

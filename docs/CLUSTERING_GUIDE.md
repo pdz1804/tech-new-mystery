@@ -79,6 +79,12 @@ tasks.cluster_articles
 
 Manual evaluation can also queue clustering with the selected k-value. After the cluster metadata is saved, PCA map refresh is queued so the UI can serve a fresh cached visualization.
 
+## Cluster Label Quality
+
+Cluster labels are generated during metadata persistence, not at read time in `GET /v1/clusters`. The worker now tracks labels already generated in the same clustering run, sends those labels to the LLM prompt, and applies a deterministic similarity guard that ignores generic words such as `AI`, `technology`, `platform`, `systems`, and `solutions`. If the model returns an exact or near-duplicate label, the worker builds a fallback label from distinctive keywords and article-title terms such as company names, product names, threat types, markets, or research areas.
+
+If retriggered clustering still shows very similar labels, inspect the cluster top articles first. Very similar labels can mean the selected k-value split one real topic into multiple neighboring clusters; in that case prefer improving the evaluation-selected k-value or clustering inputs rather than only changing display copy.
+
 ## Configuration
 
 Important environment variables:

@@ -105,4 +105,4 @@ The app now separates chat and voice agent behavior:
 * LiveKit is currently used for room/token transport, microphone publication, connection lifecycle, and metadata/tracing context. A full LiveKit Agent worker owning STT/LLM/TTS is a future upgrade, not the current implementation.
 * TTS interruption is handled by exposing an active `isSpeaking` state, showing an `Interrupt` control, running a browser-side talk-over monitor during playback, aborting active ElevenLabs playback when the user barges in, starting a fresh STT turn, and recording `voice_interrupted`.
 * The backend proxies ElevenLabs streaming TTS, while the current browser playback path buffers the response as a Blob before playing it through an audio element.
-* Code Interpreter is intentionally parked, not deleted. It remains in implementation files but is commented out of active tool registration.
+* Code Interpreter is intentionally parked, not deleted. It remains in implementation files but is not included in active tool registration.

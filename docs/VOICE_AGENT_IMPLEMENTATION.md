@@ -209,7 +209,7 @@ The standard chat agent keeps the full analyst prompt and streaming response pat
 * compact spoken citations
 * short generation cap for latency
 
-Code Interpreter is parked for now. The implementation remains in the codebase, but it is commented out of active tool registration in `agent_core/tools.py` and the backend tool registry. A deployment or AgentCore runtime restart is required after prompt/tool changes; otherwise the running runtime may still serve the old prompt and mention Code Interpreter.
+Code Interpreter is parked for now. The implementation remains in the codebase, but it is not included in active tool registration in `agent_core/tools.py` or the backend tool registry. A deployment or AgentCore runtime restart is required after prompt/tool changes; otherwise the running runtime may still serve the old prompt and mention Code Interpreter.
 
 ## Edge Cases and Handling
 

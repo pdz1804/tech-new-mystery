@@ -12,6 +12,8 @@ from app.workers.tasks.clustering_tasks import (
     _extract_keywords_tfidf,
     _generate_cluster_label,
     _generate_cluster_description,
+    _labels_too_similar,
+    _fallback_distinct_label,
     _calculate_diversity_score,
     _calculate_centroid_embedding,
     _get_top_articles,
@@ -217,6 +219,47 @@ class TestGenerateClusterLabel:
             # Should fallback to keyword combination
             assert "AI" in label or "Tech" in label
 
+    def test_labels_too_similar_ignores_generic_ai_words(self):
+        """Near-duplicate labels should be caught even with generic AI wording."""
+        existing = ["AI Safety and Governance Debate"]
+
+        assert _labels_too_similar("AI Governance and Safety", existing) is True
+        assert _labels_too_similar("Google Gemini Video Creation", existing) is False
+
+    def test_fallback_distinct_label_avoids_existing_label(self, sample_articles):
+        """Fallback labels should use concrete terms when generated labels collide."""
+        sample_articles[0].title = "Gemini Enterprise: Autonomous Agents for Secure Business Automation"
+        sample_articles[1].title = "Google Integrates CodeMender Into Enterprise AI Agent Platform"
+
+        label = _fallback_distinct_label(
+            ["Ai", "Enterprise", "Platform", "Google", "Gemini"],
+            sample_articles,
+            ["Enterprise AI Platform"],
+        )
+
+        assert label
+        assert not _labels_too_similar(label, ["Enterprise AI Platform"])
+
+    @pytest.mark.asyncio
+    async def test_generate_label_uses_distinct_fallback_for_duplicate(self, sample_articles):
+        """Model labels that are too close to existing labels should be replaced."""
+        keywords = ["Google", "Gemini", "Enterprise", "Platform"]
+        sample_articles[0].title = "Gemini Enterprise: Autonomous Agents for Secure Business Automation"
+
+        with patch("app.integrations.llm_client.get_llm_client") as mock_get_llm:
+            mock_llm = AsyncMock()
+            mock_get_llm.return_value = mock_llm
+            mock_llm.generate.return_value = "Enterprise AI Platform"
+
+            label = await _generate_cluster_label(
+                keywords,
+                sample_articles,
+                existing_labels=["Enterprise AI Platform"],
+            )
+
+            assert label != "Enterprise AI Platform"
+            assert not _labels_too_similar(label, ["Enterprise AI Platform"])
+
 
 class TestGenerateClusterDescription:
     """Tests for _generate_cluster_description function."""
@@ -398,8 +441,22 @@ class TestClusterArticlesAsync:
     @pytest.mark.asyncio
     async def test_cluster_articles_success(self, sample_articles, sample_embeddings):
         """Test successful clustering pipeline."""
+        many_articles = []
+        for i in range(30):
+            article = MagicMock()
+            article.article_id = f"article-{i}"
+            article.title = f"Test Article {i}: AI and Technology"
+            article.summary = "This article discusses AI, machine learning, and technology trends."
+            article.engagement_score = float(i)
+            article.quality_score = float(i) / 10
+            many_articles.append(article)
+
+        np.random.seed(42)
+        many_embeddings = np.random.randn(30, 1536).astype(np.float32)
+        many_embeddings = many_embeddings / np.linalg.norm(many_embeddings, axis=1, keepdims=True)
+
         article_repo = AsyncMock()
-        article_repo.list_all.return_value = (sample_articles, None)
+        article_repo.list_all.return_value = (many_articles, None)
 
         with patch(
             "app.workers.tasks.clustering_tasks.ArticleRepository",
@@ -412,9 +469,9 @@ class TestClusterArticlesAsync:
             "app.workers.tasks.clustering_tasks._save_clustering_results"
         ) as mock_save:
 
-            article_ids = [f"article-{i}" for i in range(10)]
+            article_ids = [f"article-{i}" for i in range(30)]
             mock_get_embeddings.return_value = (
-                sample_embeddings.tolist(),
+                many_embeddings.tolist(),
                 article_ids,
             )
 
@@ -425,13 +482,13 @@ class TestClusterArticlesAsync:
                 {"num_clusters": 2, "num_noise": 0, "noise_percent": 0.0},
             )
 
-            mock_save.return_value = 10
+            mock_save.return_value = 30
 
             result = await _cluster_articles_async()
 
             assert result["success"] is True
             assert result["clusters_count"] == 2
-            assert result["articles_count"] == 10
+            assert result["articles_count"] == 30
 
     @pytest.mark.asyncio
     async def test_cluster_articles_no_articles(self):

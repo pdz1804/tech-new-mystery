@@ -2,6 +2,7 @@
 
 import logging
 import asyncio
+import re
 import numpy as np
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
@@ -21,6 +22,45 @@ from app.models.clustering import (
 from app.utils.time import now_timestamp
 
 logger = logging.getLogger(__name__)
+
+LABEL_SIMILARITY_THRESHOLD = 0.56
+GENERIC_LABEL_TOKENS = {
+    "ai",
+    "artificial",
+    "intelligence",
+    "powered",
+    "technology",
+    "technologies",
+    "tech",
+    "system",
+    "systems",
+    "solution",
+    "solutions",
+    "platform",
+    "platforms",
+    "application",
+    "applications",
+    "industry",
+    "business",
+    "enterprise",
+    "operation",
+    "operations",
+    "data",
+    "digital",
+    "news",
+    "trend",
+    "trends",
+    "development",
+    "developments",
+    "and",
+    "or",
+    "the",
+    "of",
+    "for",
+    "in",
+    "with",
+    "to",
+}
 
 
 @celery_app.task(
@@ -157,7 +197,6 @@ async def _cluster_articles_async(embeddings=None, article_ids=None, k_value=Non
         if k_value is not None:
             # Use K-means with specified K from evaluation
             from sklearn.cluster import KMeans
-            import numpy as np
 
             embeddings_array = np.array(embeddings_list, dtype=np.float32)
             kmeans = KMeans(n_clusters=k_value, random_state=42, n_init=10)
@@ -224,7 +263,7 @@ async def _cluster_articles_async(embeddings=None, article_ids=None, k_value=Non
         result = {
             "success": True,
             "articles_count": len(articles),
-            "embeddings_count": len(embeddings),
+            "embeddings_count": len(embeddings_list),
             "clusters_count": stats["num_clusters"],
             "noise_count": stats["num_noise"],
             "noise_percent": stats["noise_percent"],
@@ -241,8 +280,8 @@ async def _cluster_articles_async(embeddings=None, article_ids=None, k_value=Non
                 from app.workers.tasks.evaluation_tasks import evaluate_clustering_quality
 
                 evaluate_clustering_quality.delay(
-                    embeddings=[e for e in embeddings],
-                    article_ids=article_ids,
+                    embeddings=[e for e in embeddings_list],
+                    article_ids=article_ids_list,
                     num_articles=len(articles),
                 )
                 result["evaluation_triggered"] = True
@@ -435,6 +474,7 @@ async def _save_clustering_results(
 
     # Generate and save cluster metadata
     logger.info(f"Generating metadata for {len(clusters_metadata)} clusters")
+    used_labels: List[str] = []
     for cluster_label, cluster_data in clusters_metadata.items():
         try:
             await _generate_and_save_cluster_metadata(
@@ -446,6 +486,7 @@ async def _save_clustering_results(
                 now,
                 ttl,
                 evaluation_id=evaluation_id,
+                used_labels=used_labels,
             )
         except Exception as e:
             logger.error(f"Failed to generate metadata for {cluster_label}: {e}")
@@ -520,6 +561,7 @@ async def _generate_and_save_cluster_metadata(
     now: int,
     ttl: int,
     evaluation_id: Optional[str] = None,
+    used_labels: Optional[List[str]] = None,
 ) -> None:
     """
     Generate metadata for a cluster and save to DynamoDB.
@@ -552,8 +594,14 @@ async def _generate_and_save_cluster_metadata(
     keywords = await _extract_keywords_tfidf(cluster_articles)
     logger.debug(f"Keywords for {cluster_label}: {keywords}")
 
-    # Generate label via Claude Bedrock
-    label = await _generate_cluster_label(keywords, cluster_articles)
+    # Generate label via Claude Bedrock, then enforce run-level distinctness.
+    label = await _generate_cluster_label(
+        keywords,
+        cluster_articles,
+        existing_labels=used_labels or [],
+    )
+    if used_labels is not None:
+        used_labels.append(label)
     description = await _generate_cluster_description(label, keywords, cluster_articles)
 
     # Calculate diversity score (average pairwise cosine distance)
@@ -658,7 +706,124 @@ async def _extract_keywords_tfidf(articles: List) -> List[str]:
         return ["Technology", "News", "Article", "Content", "Topic"]
 
 
-async def _generate_cluster_label(keywords: List[str], articles: List) -> str:
+def _clean_cluster_label(label: str) -> str:
+    """Normalize model output into a compact display label."""
+    label = (label or "").strip().strip('"').strip("'")
+    label = re.sub(r"^(label|cluster label|topic)\s*:\s*", "", label, flags=re.IGNORECASE)
+    label = re.sub(r"^[\-\*\d\.\)\s]+", "", label)
+    label = re.sub(r"\s+", " ", label).strip(" .,:;")
+    return label[:100]
+
+
+def _label_tokens(label: str) -> set[str]:
+    """Return meaningful lowercase tokens for duplicate label checks."""
+    tokens = re.findall(r"[a-zA-Z][a-zA-Z0-9]+", label.lower())
+    normalized = set()
+    for token in tokens:
+        if token.endswith("ies") and len(token) > 4:
+            token = f"{token[:-3]}y"
+        elif token.endswith("s") and len(token) > 4:
+            token = token[:-1]
+        if token not in GENERIC_LABEL_TOKENS and len(token) > 2:
+            normalized.add(token)
+    return normalized
+
+
+def _labels_too_similar(candidate: str, existing_labels: List[str]) -> bool:
+    """Detect exact or near-duplicate labels after removing generic AI wording."""
+    candidate_clean = _clean_cluster_label(candidate).lower()
+    candidate_tokens = _label_tokens(candidate)
+    for existing in existing_labels:
+        existing_clean = _clean_cluster_label(existing).lower()
+        if candidate_clean == existing_clean:
+            return True
+
+        existing_tokens = _label_tokens(existing)
+        if not candidate_tokens or not existing_tokens:
+            continue
+
+        overlap = len(candidate_tokens & existing_tokens)
+        smaller = min(len(candidate_tokens), len(existing_tokens))
+        jaccard = overlap / len(candidate_tokens | existing_tokens)
+        containment = overlap / smaller if smaller else 0.0
+        if jaccard >= LABEL_SIMILARITY_THRESHOLD or (overlap >= 2 and containment >= 0.67):
+            return True
+
+    return False
+
+
+def _title_terms(articles: List) -> List[str]:
+    """Extract distinctive terms from article titles while preserving order."""
+    terms: List[str] = []
+    seen: set[str] = set()
+    for article in articles[:8]:
+        title = getattr(article, "title", "") or ""
+        for token in re.findall(r"[A-Za-z][A-Za-z0-9]+", title):
+            key = token.lower()
+            if key in GENERIC_LABEL_TOKENS or len(key) <= 2 or key in seen:
+                continue
+            seen.add(key)
+            terms.append(token)
+    return terms
+
+
+def _format_label_terms(terms: List[str]) -> str:
+    """Format fallback label terms without flattening known acronyms."""
+    formatted = []
+    for term in terms:
+        if term.isupper() or term.lower() in {"ai", "aws", "api", "llm", "xdr"}:
+            formatted.append(term.upper())
+        else:
+            formatted.append(term[:1].upper() + term[1:])
+    return " ".join(formatted)
+
+
+def _fallback_distinct_label(keywords: List[str], articles: List, existing_labels: List[str]) -> str:
+    """Build a deterministic label from distinctive keyword/title terms."""
+    candidates: List[str] = []
+    if not existing_labels:
+        return _format_label_terms((keywords or ["Tech", "News"])[:3])[:100]
+
+    keyword_terms = [
+        keyword
+        for keyword in keywords
+        if keyword and keyword.lower() not in GENERIC_LABEL_TOKENS
+    ]
+    title_terms = _title_terms(articles)
+
+    term_sets = [
+        keyword_terms[:4],
+        title_terms[:4],
+        (keyword_terms[:2] + title_terms[:2]),
+        (title_terms[:2] + keyword_terms[:2]),
+    ]
+
+    for terms in term_sets:
+        deduped: List[str] = []
+        seen: set[str] = set()
+        for term in terms:
+            key = term.lower()
+            if key not in seen:
+                seen.add(key)
+                deduped.append(term)
+        if len(deduped) >= 2:
+            candidates.append(_format_label_terms(deduped[:4]))
+
+    for candidate in candidates:
+        if not _labels_too_similar(candidate, existing_labels):
+            return candidate[:100]
+
+    fallback = _format_label_terms((keyword_terms or title_terms or ["Tech", "News"])[:3])
+    if _labels_too_similar(fallback, existing_labels) and title_terms:
+        fallback = _format_label_terms((title_terms[-3:] or title_terms[:3]))
+    return fallback[:100]
+
+
+async def _generate_cluster_label(
+    keywords: List[str],
+    articles: List,
+    existing_labels: Optional[List[str]] = None,
+) -> str:
     """
     Generate cluster label using Claude Bedrock.
 
@@ -672,15 +837,24 @@ async def _generate_cluster_label(keywords: List[str], articles: List) -> str:
     try:
         from app.integrations.llm_client import get_llm_client
 
+        existing_labels = existing_labels or []
+
         # Build prompt
         sample_titles = " | ".join([a.title or "" for a in articles[:3]])
+        used_label_text = "\n".join(f"- {label}" for label in existing_labels[-12:]) or "- None"
 
         prompt = f"""Generate a concise, professional cluster label (3-6 words) for news articles with these characteristics:
 
 Keywords: {", ".join(keywords)}
 Sample titles: {sample_titles}
+Already used labels in this clustering run:
+{used_label_text}
 
-Return ONLY the label text, no quotes or explanation."""
+Rules:
+- Return ONLY the label text, no quotes or explanation.
+- Make the label meaningfully distinct from every already used label.
+- Prefer the concrete differentiator: company, product, domain, threat type, market, or research area.
+- Avoid generic labels that only say AI, AI-powered, enterprise AI, business operations, technology, systems, platform, or solutions."""
 
         llm_client = await get_llm_client()
 
@@ -690,17 +864,19 @@ Return ONLY the label text, no quotes or explanation."""
             temperature=0.7,
         )
 
-        label = label.strip().strip('"').strip("'")
+        label = _clean_cluster_label(label)
         if not label:
-            label = " & ".join(keywords[:2])
+            label = _fallback_distinct_label(keywords, articles, existing_labels)
+        elif _labels_too_similar(label, existing_labels):
+            logger.info("Generated cluster label '%s' is too similar to an existing label; using fallback", label)
+            label = _fallback_distinct_label(keywords, articles, existing_labels)
 
         logger.debug(f"Generated label: {label}")
-        return label[:100]  # Truncate to 100 chars
+        return _clean_cluster_label(label)
 
     except Exception as e:
         logger.error(f"Failed to generate cluster label: {e}")
-        # Fallback: combine top 2 keywords
-        return " & ".join(keywords[:2])
+        return _fallback_distinct_label(keywords, articles, existing_labels or [])
 
 
 async def _generate_cluster_description(label: str, keywords: List[str], articles: List) -> str:

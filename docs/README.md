@@ -6,9 +6,9 @@ This folder contains the durable engineering references for Tech News Mystery. T
 
 | Document | What It Covers |
 | --- | --- |
-| [Architecture](ARCHITECTURE.md) | Full system architecture — all services, data stores, request flows, and Mermaid diagrams for the chat pipeline, ingestion pipeline, and LLM fallback chain. |
-| [Deployment Architecture](DEPLOYMENT_ARCHITECTURE.md) | AWS infrastructure topology, VPC/network design, ECS service config, Secrets Manager, CI/CD pipeline, and local dev environment — all with Mermaid diagrams. |
-| [API Reference](API_REFERENCE.md) | Current HTTP endpoints and response behavior. |
+| [Architecture](ARCHITECTURE.md) | Full system architecture — services, data stores, chat and voice request flows, ingestion pipeline, observability, and Mermaid diagrams. |
+| [Deployment Architecture](DEPLOYMENT_ARCHITECTURE.md) | AWS infrastructure topology, VPC/network design, ECS service config, voice-provider secrets, CI/CD pipeline, and local dev environment. |
+| [API Reference](API_REFERENCE.md) | Current HTTP endpoints and response behavior, including chat SSE and voice-agent endpoints. |
 | [Manual Startup](MANUAL_STARTUP.md) | Local service startup, ports, and health checks. |
 | [CI/CD Configuration](CI_CD_CONFIGURATION.md) | GitHub Actions, ECS deployment variables, secrets, and troubleshooting. |
 
@@ -16,9 +16,9 @@ This folder contains the durable engineering references for Tech News Mystery. T
 
 | Document | What It Covers |
 | --- | --- |
-| [Chatbot Guide](CHATBOT_GUIDE.md) | Chat sessions, streaming, Agent Core integration, persistence, and troubleshooting. |
-| [Agent Core](AGENT_CORE.md) | LangGraph agent runtime, tools, memory, prompts, streaming, and current scope. |
-| [Voice Agent Implementation](VOICE_AGENT_IMPLEMENTATION.md) | LiveKit + ElevenLabs STT/TTS voice path, LangSmith telemetry, voice UX, metrics, and edge-case handling. |
+| [Chatbot Guide](CHATBOT_GUIDE.md) | Chat sessions, streaming, Agent Core integration, persistence, and troubleshooting for the text-chat mode. |
+| [Agent Core](AGENT_CORE.md) | LangGraph chat and voice runtimes, active tools, memory, prompts, streaming, and current scope. |
+| [Voice Agent Implementation](VOICE_AGENT_IMPLEMENTATION.md) | LiveKit + ElevenLabs STT/TTS voice path, LangSmith telemetry, VAD, talk-over interruption, voice UX, metrics, and edge-case handling. |
 | [Clustering Guide](CLUSTERING_GUIDE.md) | Topic clustering, evaluations, worker flow, tables, and operations. |
 | [Clustering PCA Map](CLUSTERING_PCA_MAP.md) | Worker-backed article embedding projection and Neo4j-style map behavior. |
 | [Crawl4AI Guide](CRAWL4AI_GUIDE.md) | Article crawling and extraction behavior. |
