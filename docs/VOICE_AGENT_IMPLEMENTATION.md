@@ -52,6 +52,25 @@ Production runtime values currently wired by Terraform:
 Use `infra/terraform/scripts/put-app-secret-from-env.ps1` to sync local `.env`
 values into the app secret without committing raw credentials.
 
+The GitHub Actions deploy workflow also syncs these values from GitHub Actions
+secrets before Terraform applies new ECS task definitions. This matters because
+ECS resolves JSON keys from Secrets Manager while placing a task; if a new key is
+missing, the task never starts and the deploy waiter eventually fails.
+
+Required GitHub Actions secrets for the voice feature:
+
+| Secret | Purpose |
+| --- | --- |
+| `LANGSMITH_API_KEY` | LangSmith trace ingestion |
+| `ELEVENLABS_API_KEY` | ElevenLabs STT/TTS API access |
+| `ELEVENLABS_VOICE_ID` | ElevenLabs TTS voice |
+| `LIVEKIT_API_KEY` | LiveKit token signing public key |
+| `LIVEKIT_API_SECRET` | LiveKit token signing secret |
+
+Related existing app secrets such as `SECRET_KEY`, `JWT_SECRET_KEY`,
+`OPENAI_API_KEY`, `QDRANT_URL`, and `QDRANT_API_KEY` must also be present either
+in GitHub Actions secrets or already in the app Secrets Manager JSON payload.
+
 ## LiveKit Capabilities Used
 
 * Tokenized room access with short-lived JWTs from `/v1/chat/voice/livekit-session`.
@@ -197,3 +216,44 @@ Future improvement:
 * ElevenLabs realtime STT: https://elevenlabs.io/docs/api-reference/speech-to-text/v-1-speech-to-text-realtime
 * ElevenLabs STT commit strategies: https://elevenlabs.io/docs/eleven-api/guides/how-to/speech-to-text/realtime/transcripts-and-commit-strategies
 * ElevenLabs streaming TTS: https://elevenlabs.io/docs/api-reference/text-to-speech/stream
+
+## Deployment Troubleshooting Notes
+
+### ECS Waiter: `ServicesStable` Max Attempts Exceeded
+
+Observed failure:
+
+```text
+aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services api frontend worker beat clustering
+Waiter ServicesStable failed: Max attempts exceeded
+```
+
+Root cause found in ECS service events:
+
+```text
+ResourceInitializationError: unable to retrieve secret from asm:
+retrieved secret from Secrets Manager did not contain json key LANGSMITH_API_KEY
+```
+
+Meaning: Terraform registered new task definitions that reference the voice-agent
+secret keys, but the production app secret did not yet contain those JSON keys.
+The old tasks stayed running, while the new `api`, `worker`, `beat`, and
+`clustering` deployments remained in progress with failed task placements.
+
+Fix path:
+
+1. Add the required voice secrets to GitHub Actions secrets.
+2. Re-run the deploy workflow so `Sync production app secret` updates
+   `tech-news-mystery-prod/app` before Terraform applies ECS task definitions.
+3. If fixing manually, run `infra/terraform/scripts/put-app-secret-from-env.ps1`
+   from a trusted local machine with the complete `.env`.
+
+Useful diagnostic command:
+
+```bash
+aws ecs describe-services \
+  --cluster tech-news-mystery-prod \
+  --services api frontend worker beat clustering \
+  --region us-west-2 \
+  --query 'services[].{service:serviceName,desired:desiredCount,running:runningCount,deployments:deployments[].{status:status,rolloutState:rolloutState,failed:failedTasks,taskDef:taskDefinition},events:events[0:5].message}'
+```

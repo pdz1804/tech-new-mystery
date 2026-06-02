@@ -35,6 +35,7 @@ env:
   AGENT_CORE_CODEBUILD_PROJECT: ${{ vars.AGENT_CORE_CODEBUILD_PROJECT || 'tech-news-mystery-prod-agent-core-arm64-image' }}
   AGENT_CORE_CODEBUILD_SOURCE_BUCKET: ${{ vars.AGENT_CORE_CODEBUILD_SOURCE_BUCKET || 'tech-news-mystery-prod-codebuild-sources-381492273521' }}
   NEXT_PUBLIC_API_URL: ${{ vars.NEXT_PUBLIC_API_URL || '/v1' }}
+  APP_SECRET_NAME: ${{ vars.APP_SECRET_NAME || 'tech-news-mystery-prod/app' }}
 
 jobs:
   backend-checks:
@@ -224,6 +225,126 @@ jobs:
           NAME_PREFIX: ${{ vars.TF_NAME_PREFIX || 'tech-news-mystery-prod' }}
           CODEBUILD_SOURCE_BUCKET: ${{ env.AGENT_CORE_CODEBUILD_SOURCE_BUCKET }}
         run: bash scripts/import-existing.sh
+
+      - name: Sync production app secret
+        env:
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          NEWSAPI_KEY: ${{ secrets.NEWSAPI_KEY }}
+          QDRANT_URL: ${{ secrets.QDRANT_URL }}
+          QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_BASE_URL: ${{ secrets.LANGFUSE_BASE_URL }}
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
+          LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
+          LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+
+          secret_id = os.environ["APP_SECRET_NAME"]
+          region = os.environ["AWS_REGION"]
+          keys = [
+              "SECRET_KEY",
+              "JWT_SECRET_KEY",
+              "OPENAI_API_KEY",
+              "TAVILY_API_KEY",
+              "NEWSAPI_KEY",
+              "QDRANT_URL",
+              "QDRANT_API_KEY",
+              "GEMINI_API_KEY",
+              "ANTHROPIC_API_KEY",
+              "LANGFUSE_SECRET_KEY",
+              "LANGFUSE_PUBLIC_KEY",
+              "LANGFUSE_BASE_URL",
+              "LANGSMITH_API_KEY",
+              "ELEVENLABS_API_KEY",
+              "ELEVENLABS_VOICE_ID",
+              "LIVEKIT_API_KEY",
+              "LIVEKIT_API_SECRET",
+          ]
+          required = [
+              "SECRET_KEY",
+              "JWT_SECRET_KEY",
+              "OPENAI_API_KEY",
+              "QDRANT_URL",
+              "QDRANT_API_KEY",
+              "LANGSMITH_API_KEY",
+              "ELEVENLABS_API_KEY",
+              "ELEVENLABS_VOICE_ID",
+              "LIVEKIT_API_KEY",
+              "LIVEKIT_API_SECRET",
+          ]
+
+          current = "{}"
+          try:
+              current = subprocess.check_output(
+                  [
+                      "aws",
+                      "secretsmanager",
+                      "get-secret-value",
+                      "--region",
+                      region,
+                      "--secret-id",
+                      secret_id,
+                      "--query",
+                      "SecretString",
+                      "--output",
+                      "text",
+                  ],
+                  text=True,
+              )
+          except subprocess.CalledProcessError as exc:
+              print(f"::error::Unable to read app secret {secret_id}: {exc}", file=sys.stderr)
+              raise
+
+          payload = json.loads(current or "{}")
+          if not isinstance(payload, dict):
+              print("::error::App secret must be a JSON object.", file=sys.stderr)
+              sys.exit(1)
+
+          updated = []
+          for key in keys:
+              value = os.environ.get(key, "")
+              if value:
+                  payload[key] = value
+                  updated.append(key)
+
+          missing = [key for key in required if not payload.get(key)]
+          if missing:
+              print(
+                  "::error::App secret is missing required JSON keys: "
+                  + ", ".join(missing)
+                  + ". Add them as GitHub Actions secrets or update Secrets Manager before deploy.",
+                  file=sys.stderr,
+              )
+              sys.exit(1)
+
+          subprocess.check_call(
+              [
+                  "aws",
+                  "secretsmanager",
+                  "put-secret-value",
+                  "--region",
+                  region,
+                  "--secret-id",
+                  secret_id,
+                  "--secret-string",
+                  json.dumps(payload, separators=(",", ":")),
+              ]
+          )
+          print("Synced app secret keys: " + ", ".join(updated or ["no GitHub secret overrides"]))
+          PY
 
       - name: Deploy image tags with Terraform
         working-directory: infra/terraform

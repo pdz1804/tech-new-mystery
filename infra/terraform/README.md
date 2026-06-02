@@ -105,5 +105,29 @@ Required GitHub secrets/variables:
 - `TF_STATE_LOCK_TABLE`: DynamoDB table for Terraform state locking
 - `TF_STATE_KEY`: optional, defaults to `tech-news-mystery/prod/terraform.tfstate`
 
+Application runtime secrets are stored as JSON in the app Secrets Manager secret
+(`tech-news-mystery-prod/app` by default). The deploy workflow syncs non-empty
+GitHub Actions secrets into that JSON before Terraform applies task definitions.
+
+Required app secrets for ECS startup:
+
+- `SECRET_KEY`
+- `JWT_SECRET_KEY`
+- `OPENAI_API_KEY`
+- `QDRANT_URL`
+- `QDRANT_API_KEY`
+
+Required app secrets for the LiveKit + ElevenLabs voice agent:
+
+- `LANGSMITH_API_KEY`
+- `ELEVENLABS_API_KEY`
+- `ELEVENLABS_VOICE_ID`
+- `LIVEKIT_API_KEY`
+- `LIVEKIT_API_SECRET`
+
+If these JSON keys are absent, ECS reports `ResourceInitializationError` in
+service events and `aws ecs wait services-stable` fails with max attempts
+exceeded.
+
 Create the backend state bucket/lock table once with `scripts/bootstrap-state.ps1`
 or `scripts/bootstrap-state.sh`. Keep application resources in this stack.

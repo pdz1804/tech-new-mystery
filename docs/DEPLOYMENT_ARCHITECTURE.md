@@ -291,6 +291,23 @@ graph LR
 | `BACKEND_ECR_REPOSITORY` | Variable | Backend ECR repository URI |
 | `FRONTEND_ECR_REPOSITORY` | Variable | Frontend ECR repository URI |
 | `AGENT_CORE_ECR_REPOSITORY` | Variable | Agent Core ECR repository URI |
+| `SECRET_KEY` | Secret | FastAPI session secret synced into app Secrets Manager JSON |
+| `JWT_SECRET_KEY` | Secret | JWT signing key synced into app Secrets Manager JSON |
+| `OPENAI_API_KEY` | Secret | OpenAI API key synced into app Secrets Manager JSON |
+| `QDRANT_URL` | Secret | Qdrant Cloud URL synced into app Secrets Manager JSON |
+| `QDRANT_API_KEY` | Secret | Qdrant API key synced into app Secrets Manager JSON |
+| `LANGSMITH_API_KEY` | Secret | LangSmith API key synced into app Secrets Manager JSON |
+| `ELEVENLABS_API_KEY` | Secret | ElevenLabs API key synced into app Secrets Manager JSON |
+| `ELEVENLABS_VOICE_ID` | Secret | ElevenLabs voice ID synced into app Secrets Manager JSON |
+| `LIVEKIT_API_KEY` | Secret | LiveKit API key synced into app Secrets Manager JSON |
+| `LIVEKIT_API_SECRET` | Secret | LiveKit API secret synced into app Secrets Manager JSON |
+
+The deploy workflow runs `Sync production app secret` before Terraform applies.
+That step merges non-empty GitHub Actions secrets into
+`tech-news-mystery-prod/app` and fails early when required ECS startup keys are
+missing. Without this guard, ECS task placement fails with
+`ResourceInitializationError` and the final `aws ecs wait services-stable`
+command eventually times out.
 
 ---
 
