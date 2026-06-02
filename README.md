@@ -108,6 +108,26 @@ npm run dev
 
 For the full startup sequence, ports, and health checks, see [Manual Startup](docs/MANUAL_STARTUP.md).
 
+## System Diagrams
+
+<details>
+<summary><b>High-Level System Architecture</b> — All services, data stores, and integrations</summary>
+
+![High-Level Architecture Diagram](docs/imgs/High-level-Architecture-Diagram.png)
+
+See full details in [System Architecture](docs/ARCHITECTURE.md).
+
+</details>
+
+<details>
+<summary><b>Deployment Architecture</b> — AWS infrastructure, VPC, ECS, networking, and CI/CD</summary>
+
+![Deployment Architecture Diagram](docs/imgs/Deployment-Architecture-Diagram.png)
+
+See full details in [Deployment Architecture](docs/DEPLOYMENT_ARCHITECTURE.md).
+
+</details>
+
 ## Documentation
 
 For architecture, APIs, deployment, and operational details, start with the [documentation index](docs/README.md).
