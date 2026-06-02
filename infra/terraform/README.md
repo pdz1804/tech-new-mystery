@@ -62,6 +62,10 @@ cd infra/terraform
 .\scripts\put-app-secret-from-env.ps1 -EnvFile ..\..\backend\.env -Region us-west-2
 ```
 
+If the canonical production values are in the repository root `.env`, pass
+`-EnvFile ..\..\.env` instead. The helper strips surrounding single or double
+quotes before uploading values to Secrets Manager.
+
 The voice agent also injects these non-secret ECS environment values from Terraform:
 
 | Variable | Production value |

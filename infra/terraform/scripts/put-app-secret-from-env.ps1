@@ -29,6 +29,12 @@ Get-Content -LiteralPath $EnvFile | ForEach-Object {
 
   $key = $line.Substring(0, $separatorIndex).Trim()
   $value = $line.Substring($separatorIndex + 1).Trim()
+  if (
+    $value.Length -ge 2 -and
+    (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'")))
+  ) {
+    $value = $value.Substring(1, $value.Length - 2)
+  }
   $envValues[$key] = $value
 }
 

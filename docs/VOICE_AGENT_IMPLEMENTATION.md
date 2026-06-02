@@ -50,7 +50,8 @@ Production runtime values currently wired by Terraform:
 | `LIVEKIT_TOKEN_TTL_SECONDS` | `900` |
 
 Use `infra/terraform/scripts/put-app-secret-from-env.ps1` to sync local `.env`
-values into the app secret without committing raw credentials.
+values into the app secret without committing raw credentials. The helper strips
+surrounding single or double quotes from `.env` values before uploading them.
 
 The GitHub Actions deploy workflow also syncs these values from GitHub Actions
 secrets before Terraform applies new ECS task definitions. This matters because
