@@ -2,11 +2,19 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { getSessionMessages, readChatMessageStream } from '@/lib/api/chat';
-import type { ChatMessage, MessageSegment, ToolCall } from '@/types/chat';
+import type { ChatMessage, ChatMessageMetrics, MessageSegment, ToolCall } from '@/types/chat';
 
 function logRenderedStreamEvent(type: string, detail?: unknown) {
   if (process.env.NODE_ENV !== 'development') return;
   console.debug('[chat-render]', type, detail);
+}
+
+function estimateTokens(text: string): number {
+  return Math.max(1, Math.ceil(text.trim().length / 4));
+}
+
+function estimateCostUsd(inputTokens: number, outputTokens: number): number {
+  return (inputTokens / 1_000_000) * 0.15 + (outputTokens / 1_000_000) * 0.6;
 }
 
 export interface UseStreamChatReturn {
@@ -81,6 +89,9 @@ export function useStreamChat(sessionId?: string, onError?: (error: string) => v
 
       const now = Date.now();
       const assistantMessageId = `local-assistant-${now}`;
+      const inputTokensEst = estimateTokens(userMessage);
+      const streamStartedAt = performance.now();
+      let firstTokenAt: number | null = null;
 
       setMessages((prev) => [
         ...prev,
@@ -91,6 +102,10 @@ export function useStreamChat(sessionId?: string, onError?: (error: string) => v
           role: 'user',
           content: userMessage,
           timestamp: now,
+          metrics: {
+            input_tokens_est: inputTokensEst,
+            total_tokens_est: inputTokensEst,
+          },
         },
         {
           id: assistantMessageId,
@@ -101,6 +116,10 @@ export function useStreamChat(sessionId?: string, onError?: (error: string) => v
           timestamp: now,
           tool_calls: [],
           segments: [],
+          metrics: {
+            input_tokens_est: inputTokensEst,
+            tool_calls: 0,
+          },
         },
       ]);
 
@@ -168,6 +187,7 @@ export function useStreamChat(sessionId?: string, onError?: (error: string) => v
 
             if (event.type === 'token') {
               const chunk = event.content ?? '';
+              firstTokenAt = firstTokenAt ?? performance.now();
               assistantContent += chunk;
               if (currentTextSegIdx >= 0) {
                 segments[currentTextSegIdx] = {
@@ -216,11 +236,24 @@ export function useStreamChat(sessionId?: string, onError?: (error: string) => v
               flush({ tool_calls: Array.from(toolCalls.values()), segments: [...segments] });
               logRenderedStreamEvent('tool_result', { tool: event.tool_name, toolId, status: event.status });
             } else if (event.type === 'done') {
+              const outputTokens = event.tokens ?? estimateTokens(assistantContent);
+              const metrics: ChatMessageMetrics = {
+                input_tokens_est: inputTokensEst,
+                output_tokens: outputTokens,
+                total_tokens_est: inputTokensEst + outputTokens,
+                estimated_cost_usd: estimateCostUsd(inputTokensEst, outputTokens),
+                latency_ms: Math.round(performance.now() - streamStartedAt),
+                time_to_first_token_ms: firstTokenAt
+                  ? Math.round(firstTokenAt - streamStartedAt)
+                  : undefined,
+                tool_calls: toolCalls.size,
+              };
               flush({
                 content: assistantContent,
-                tokens: event.tokens,
+                tokens: outputTokens,
                 tool_calls: Array.from(toolCalls.values()),
                 segments: [...segments],
+                metrics,
               });
             } else if (event.type === 'error') {
               streamError = new Error(event.error ?? event.message ?? 'Stream error');

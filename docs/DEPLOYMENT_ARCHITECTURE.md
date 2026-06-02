@@ -215,6 +215,27 @@ graph TB
 | `LANGFUSE_SECRET_KEY` | Langfuse API secret |
 | `LANGFUSE_PUBLIC_KEY` | Langfuse public key |
 | `LANGFUSE_BASE_URL` | Langfuse endpoint (default: `https://cloud.langfuse.com`) |
+| `LANGSMITH_API_KEY` | LangSmith API key for voice-agent telemetry |
+| `ELEVENLABS_API_KEY` | ElevenLabs API key for realtime STT and streaming TTS |
+| `ELEVENLABS_VOICE_ID` | ElevenLabs voice ID used by the voice agent |
+| `LIVEKIT_API_KEY` | LiveKit API key for minting room tokens |
+| `LIVEKIT_API_SECRET` | LiveKit API secret for signing room tokens |
+
+Voice-agent runtime flags are injected as ECS task environment variables:
+
+| Variable | Value |
+|---|---|
+| `LANGSMITH_TRACING` | `true` |
+| `LANGSMITH_ENDPOINT` | `https://api.smith.langchain.com` |
+| `LANGSMITH_PROJECT` | `tech-news-voice` |
+| `ELEVENLABS_STT_MODEL_ID` | `scribe_v2_realtime` |
+| `ELEVENLABS_STT_AUDIO_FORMAT` | `pcm_16000` |
+| `ELEVENLABS_TTS_MODEL_ID` | `eleven_flash_v2_5` |
+| `ELEVENLABS_TTS_OUTPUT_FORMAT` | `mp3_44100_128` |
+| `ELEVENLABS_TIMEOUT` | `45` |
+| `LIVEKIT_URL` | `wss://virtual-interview-191g0s6f.livekit.cloud` |
+| `LIVEKIT_AGENT_NAME` | `tech-news-voice-agent` |
+| `LIVEKIT_TOKEN_TTL_SECONDS` | `900` |
 
 ---
 

@@ -18,6 +18,7 @@ This folder contains the durable engineering references for Tech News Mystery. T
 | --- | --- |
 | [Chatbot Guide](CHATBOT_GUIDE.md) | Chat sessions, streaming, Agent Core integration, persistence, and troubleshooting. |
 | [Agent Core](AGENT_CORE.md) | LangGraph agent runtime, tools, memory, prompts, streaming, and current scope. |
+| [Voice Agent Implementation](VOICE_AGENT_IMPLEMENTATION.md) | LiveKit + ElevenLabs STT/TTS voice path, LangSmith telemetry, voice UX, metrics, and edge-case handling. |
 | [Clustering Guide](CLUSTERING_GUIDE.md) | Topic clustering, evaluations, worker flow, tables, and operations. |
 | [Clustering PCA Map](CLUSTERING_PCA_MAP.md) | Worker-backed article embedding projection and Neo4j-style map behavior. |
 | [Crawl4AI Guide](CRAWL4AI_GUIDE.md) | Article crawling and extraction behavior. |

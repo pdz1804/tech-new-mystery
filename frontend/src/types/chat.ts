@@ -22,6 +22,19 @@ export interface ChatMessage {
   /** Ordered segments preserving the interleaved token/tool sequence during streaming. */
   segments?: MessageSegment[];
   tokens?: number;
+  metrics?: ChatMessageMetrics;
+}
+
+export interface ChatMessageMetrics {
+  input_tokens_est?: number;
+  output_tokens?: number;
+  total_tokens_est?: number;
+  estimated_cost_usd?: number;
+  latency_ms?: number;
+  time_to_first_token_ms?: number;
+  tool_calls?: number;
+  voice_turn?: boolean;
+  livekit_room?: string | null;
 }
 
 export interface ToolCall {
@@ -174,6 +187,13 @@ export interface ChatInputProps {
   disabled?: boolean;
   placeholder?: string;
   onCancel?: () => void;
+  voiceEnabled?: boolean;
+  voiceListening?: boolean;
+  voiceSupported?: boolean;
+  voiceStatus?: string | null;
+  voiceTransport?: string | null;
+  onToggleVoice?: () => void;
+  onEndVoice?: () => void;
 }
 
 export interface ToolIndicatorProps {

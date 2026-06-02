@@ -230,6 +230,79 @@ export async function readChatMessageStream(
   return readChatMessageStreamWithFetch(request, onEvent, signal);
 }
 
+export async function synthesizeVoiceSpeech(text: string, signal?: AbortSignal): Promise<Blob> {
+  const response = await fetch(`${getApiBaseUrl()}/chat/voice/speech`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeader(),
+    },
+    body: JSON.stringify({ text }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(error || `HTTP ${response.status}: ${response.statusText}`);
+  }
+
+  return response.blob();
+}
+
+export async function createVoiceSttToken(): Promise<{
+  token: string;
+  model_id: string;
+  audio_format: string;
+}> {
+  const response = await apiClient.post<ApiResponse<{
+    token: string;
+    model_id: string;
+    audio_format: string;
+  }>>('/chat/voice/stt-token');
+
+  return response.data.data;
+}
+
+export async function createVoiceLiveKitSession(sessionId: string): Promise<{
+  transport: 'livekit';
+  server_url: string;
+  room: string;
+  participant_token: string;
+  agent_name: string;
+  trace_id?: string | null;
+  expires_in: number;
+}> {
+  const response = await apiClient.post<ApiResponse<{
+    transport: 'livekit';
+    server_url: string;
+    room: string;
+    participant_token: string;
+    agent_name: string;
+    trace_id?: string | null;
+    expires_in: number;
+  }>>('/chat/voice/livekit-session', { session_id: sessionId });
+
+  return response.data.data;
+}
+
+export async function recordVoiceEvent(event: {
+  session_id: string;
+  phase: string;
+  provider?: string;
+  transport?: string;
+  livekit_room?: string | null;
+  transcript_chars?: number;
+  output_chars?: number;
+  latency_ms?: number;
+}): Promise<{ trace_id?: string | null; tracing_enabled: boolean }> {
+  const response = await apiClient.post<ApiResponse<{
+    trace_id?: string | null;
+    tracing_enabled: boolean;
+  }>>('/chat/voice/events', event);
+
+  return response.data.data;
+}
+
 function makeAbortError(): Error {
   const error = new Error('Aborted');
   error.name = 'AbortError';

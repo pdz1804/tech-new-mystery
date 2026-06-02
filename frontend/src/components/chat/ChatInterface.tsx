@@ -1,9 +1,10 @@
 'use client';
 
-import React, { memo, useEffect } from 'react';
+import React, { memo, useCallback, useEffect, useRef } from 'react';
 import { Bot, PanelLeftClose } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useStreamChat } from '@/hooks/useStreamChat';
+import { useVoiceAgent } from '@/hooks/useVoiceAgent';
 import type { ChatSession } from '@/types/chat';
 import { MessageList } from './MessageList';
 import { ChatInput } from './ChatInput';
@@ -32,12 +33,48 @@ export const ChatInterface = memo(function ChatInterface({
     deleteMessage,
     clearError,
   } = useStreamChat(session.id);
+  const spokenMessageIdRef = useRef<string | null>(null);
+  const awaitingVoiceReplyRef = useRef(false);
+
+  const handleVoiceTranscript = useCallback(
+    (text: string) => {
+      awaitingVoiceReplyRef.current = true;
+      void sendMessage(text);
+    },
+    [sendMessage]
+  );
+
+  const voice = useVoiceAgent(handleVoiceTranscript, session.id);
+  const {
+    enabled: voiceEnabled,
+    isListening: voiceListening,
+    isSupported: voiceSupported,
+    status: voiceStatus,
+    toggleVoice,
+    startListening,
+    stopListening,
+    speak,
+  } = voice;
 
   useEffect(() => {
     if (!isLoading) {
       onSessionUpdate?.();
     }
   }, [isLoading, onSessionUpdate]);
+
+  useEffect(() => {
+    if (!voiceEnabled || !awaitingVoiceReplyRef.current || isLoading || isLoadingHistory) return;
+
+    const latestAssistant = [...messages]
+      .reverse()
+      .find((message) => message.role === 'assistant' && message.content.trim());
+
+    if (!latestAssistant || spokenMessageIdRef.current === latestAssistant.id) return;
+
+    spokenMessageIdRef.current = latestAssistant.id;
+    awaitingVoiceReplyRef.current = false;
+    void speak(latestAssistant.content);
+  }, [isLoading, isLoadingHistory, messages, speak, voiceEnabled]);
 
   const visibleCount = messages.filter((message) => message.role === 'user' || message.role === 'assistant').length;
 
@@ -105,6 +142,24 @@ export const ChatInterface = memo(function ChatInterface({
             disabled={isLoadingHistory}
             onCancel={cancelMessage}
             placeholder="Message Tech News Mystery"
+            voiceEnabled={voiceEnabled}
+            voiceListening={voiceListening}
+            voiceSupported={voiceSupported}
+            voiceStatus={voiceStatus}
+            voiceTransport={voiceEnabled ? 'LiveKit' : null}
+            onToggleVoice={() => {
+              if (!voiceEnabled) {
+                toggleVoice();
+                window.setTimeout(() => startListening(), 120);
+                return;
+              }
+              if (voiceListening) {
+                stopListening();
+                return;
+              }
+              void startListening();
+            }}
+            onEndVoice={toggleVoice}
           />
         </div>
       </div>

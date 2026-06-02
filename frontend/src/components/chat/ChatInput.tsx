@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback, memo } from 'react';
-import { Send, Square } from 'lucide-react';
+import { Mic, MicOff, Send, Square } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ChatInputProps } from '@/types/chat';
 
@@ -11,6 +11,13 @@ export const ChatInput = memo(function ChatInput({
   disabled = false,
   placeholder = 'Message Tech News Mystery',
   onCancel,
+  voiceEnabled = false,
+  voiceListening = false,
+  voiceSupported = false,
+  voiceStatus,
+  voiceTransport,
+  onToggleVoice,
+  onEndVoice,
 }: ChatInputProps) {
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -61,6 +68,22 @@ export const ChatInput = memo(function ChatInput({
     <div className="w-full">
       <div className="rounded-[24px] border border-white/60 border-t-white/90 bg-white/72 p-2 shadow-[0_18px_44px_rgba(15,23,42,0.12),inset_0_1px_0_rgba(255,255,255,0.88)] backdrop-blur-3xl transition-all focus-within:border-blue-400/60 focus-within:bg-white/86 focus-within:shadow-[0_20px_52px_rgba(15,23,42,0.14),0_0_0_4px_rgba(37,99,235,0.12),inset_0_1px_0_rgba(255,255,255,0.9)]">
         <div className="flex items-end gap-2">
+          <button
+            type="button"
+            onClick={onToggleVoice}
+            disabled={!voiceSupported || disabled}
+            className={cn(
+              'mb-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-45',
+              voiceEnabled
+                ? 'border-emerald-300/70 bg-emerald-50 text-emerald-700 shadow-[0_10px_22px_rgba(16,185,129,0.16)]'
+                : 'border-white/70 bg-white/66 text-slate-500 hover:bg-white/90 hover:text-slate-900'
+            )}
+            title={voiceSupported ? (voiceEnabled ? 'Talk or interrupt' : 'Start voice mode') : 'Voice input is not supported'}
+            aria-label={voiceEnabled ? 'Talk or interrupt' : 'Start voice mode'}
+          >
+            {voiceEnabled ? <Mic className="h-4 w-4" aria-hidden="true" /> : <MicOff className="h-4 w-4" aria-hidden="true" />}
+          </button>
+
           <textarea
             ref={textareaRef}
             value={value}
@@ -104,6 +127,32 @@ export const ChatInput = memo(function ChatInput({
           )}
         </div>
       </div>
+      {(voiceStatus || voiceListening) && (
+        <div className="mt-2 flex items-center gap-2 px-2 text-xs font-medium text-slate-500">
+          <span
+            className={cn(
+              'h-2 w-2 rounded-full',
+              voiceListening ? 'animate-pulse bg-emerald-500' : 'bg-slate-300'
+            )}
+            aria-hidden="true"
+          />
+          {voiceTransport && (
+            <span className="rounded-full border border-white/70 bg-white/62 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-slate-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]">
+              {voiceTransport}
+            </span>
+          )}
+          <span>{voiceListening ? 'Listening...' : voiceStatus}</span>
+          {voiceEnabled && onEndVoice && (
+            <button
+              type="button"
+              onClick={onEndVoice}
+              className="ml-auto rounded-full border border-white/70 bg-white/62 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)] transition-colors hover:bg-white/88 hover:text-slate-950"
+            >
+              End voice
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 });

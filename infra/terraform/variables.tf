@@ -216,6 +216,11 @@ variable "secret_json_keys" {
     langfuse_secret_key = optional(string, "LANGFUSE_SECRET_KEY")
     langfuse_public_key = optional(string, "LANGFUSE_PUBLIC_KEY")
     langfuse_base_url   = optional(string, "LANGFUSE_BASE_URL")
+    langsmith_api_key   = optional(string, "LANGSMITH_API_KEY")
+    elevenlabs_api_key  = optional(string, "ELEVENLABS_API_KEY")
+    elevenlabs_voice_id = optional(string, "ELEVENLABS_VOICE_ID")
+    livekit_api_key     = optional(string, "LIVEKIT_API_KEY")
+    livekit_api_secret  = optional(string, "LIVEKIT_API_SECRET")
   })
   default = {
     secret_key          = "SECRET_KEY"
@@ -230,6 +235,11 @@ variable "secret_json_keys" {
     langfuse_secret_key = "LANGFUSE_SECRET_KEY"
     langfuse_public_key = "LANGFUSE_PUBLIC_KEY"
     langfuse_base_url   = "LANGFUSE_BASE_URL"
+    langsmith_api_key   = "LANGSMITH_API_KEY"
+    elevenlabs_api_key  = "ELEVENLABS_API_KEY"
+    elevenlabs_voice_id = "ELEVENLABS_VOICE_ID"
+    livekit_api_key     = "LIVEKIT_API_KEY"
+    livekit_api_secret  = "LIVEKIT_API_SECRET"
   }
 }
 

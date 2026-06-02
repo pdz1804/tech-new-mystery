@@ -1,6 +1,9 @@
 """Application configuration via environment variables."""
 
 from functools import lru_cache
+from typing import Any
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -114,11 +117,41 @@ class Settings(BaseSettings):
     agent_core_timeout: int = 60
     agent_core_require_true_streaming: bool = True
 
+    # Voice assistant / ElevenLabs STT + TTS
+    elevenlabs_api_key: str | None = None
+    elevenlabs_voice_id: str = "JBFqnCBsd6RMkjVDRZzb"
+    elevenlabs_tts_model_id: str = "eleven_flash_v2_5"
+    elevenlabs_stt_model_id: str = "scribe_v2_realtime"
+    elevenlabs_tts_output_format: str = "mp3_44100_128"
+    elevenlabs_stt_audio_format: str = "pcm_16000"
+    elevenlabs_timeout: int = 45
+
+    # LiveKit voice transport
+    livekit_url: str | None = None
+    livekit_api_key: str | None = None
+    livekit_api_secret: str | None = None
+    livekit_agent_name: str = "tech-news-voice-agent"
+    livekit_token_ttl_seconds: int = 900
+
+    # LangSmith voice tracing
+    langsmith_tracing: bool = False
+    langsmith_api_key: str | None = None
+    langsmith_endpoint: str = "https://api.smith.langchain.com"
+    langsmith_project: str = "tech-news-voice"
+
     # JWT
     jwt_secret_key: str
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 1440  # 24 hours (1 day)
     refresh_token_expire_days: int = 30
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def parse_debug_flag(cls, value: Any) -> Any:
+        """Accept common deployment mode strings from inherited environments."""
+        if isinstance(value, str) and value.lower() in {"release", "prod", "production"}:
+            return False
+        return value
 
 
 @lru_cache

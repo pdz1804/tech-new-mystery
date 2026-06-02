@@ -52,8 +52,31 @@ Before ECS tasks can run, put required secret values in the app secret:
 aws secretsmanager put-secret-value `
   --region us-west-2 `
   --secret-id <app_secret_arn_from_output> `
-  --secret-string '{ "SECRET_KEY": "...", "JWT_SECRET_KEY": "...", "OPENAI_API_KEY": "", "TAVILY_API_KEY": "", "NEWSAPI_KEY": "", "QDRANT_URL": "", "QDRANT_API_KEY": "", "GEMINI_API_KEY": "", "ANTHROPIC_API_KEY": "" }'
+  --secret-string '{ "SECRET_KEY": "...", "JWT_SECRET_KEY": "...", "OPENAI_API_KEY": "", "TAVILY_API_KEY": "", "NEWSAPI_KEY": "", "QDRANT_URL": "", "QDRANT_API_KEY": "", "GEMINI_API_KEY": "", "ANTHROPIC_API_KEY": "", "LANGFUSE_SECRET_KEY": "", "LANGFUSE_PUBLIC_KEY": "", "LANGFUSE_BASE_URL": "https://us.cloud.langfuse.com", "LANGSMITH_API_KEY": "", "ELEVENLABS_API_KEY": "", "ELEVENLABS_VOICE_ID": "", "LIVEKIT_API_KEY": "", "LIVEKIT_API_SECRET": "" }'
 ```
+
+For local-to-AWS secret sync, you can use:
+
+```powershell
+cd infra/terraform
+.\scripts\put-app-secret-from-env.ps1 -EnvFile ..\..\backend\.env -Region us-west-2
+```
+
+The voice agent also injects these non-secret ECS environment values from Terraform:
+
+| Variable | Production value |
+| --- | --- |
+| `LANGSMITH_TRACING` | `true` |
+| `LANGSMITH_ENDPOINT` | `https://api.smith.langchain.com` |
+| `LANGSMITH_PROJECT` | `tech-news-voice` |
+| `ELEVENLABS_STT_MODEL_ID` | `scribe_v2_realtime` |
+| `ELEVENLABS_STT_AUDIO_FORMAT` | `pcm_16000` |
+| `ELEVENLABS_TTS_MODEL_ID` | `eleven_flash_v2_5` |
+| `ELEVENLABS_TTS_OUTPUT_FORMAT` | `mp3_44100_128` |
+| `ELEVENLABS_TIMEOUT` | `45` |
+| `LIVEKIT_URL` | `wss://virtual-interview-191g0s6f.livekit.cloud` |
+| `LIVEKIT_AGENT_NAME` | `tech-news-voice-agent` |
+| `LIVEKIT_TOKEN_TTL_SECONDS` | `900` |
 
 ## Import Existing DynamoDB/S3
 

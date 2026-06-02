@@ -48,6 +48,57 @@ const SegmentedContent = memo(function SegmentedContent({
   );
 });
 
+function formatUsd(value?: number): string {
+  if (value === undefined) return 'Cost pending';
+  if (value < 0.0001) return '<$0.0001 est';
+  return `$${value.toFixed(4)} est`;
+}
+
+function formatMs(value?: number): string {
+  if (value === undefined) return 'Latency pending';
+  if (value >= 1000) return `${(value / 1000).toFixed(1)}s`;
+  return `${value}ms`;
+}
+
+const MessageMetrics = memo(function MessageMetrics({
+  message,
+}: {
+  message: ChatMessageType;
+}) {
+  const metrics = message.metrics;
+  const outputTokens = metrics?.output_tokens ?? message.tokens;
+  const totalTokens = metrics?.total_tokens_est ?? outputTokens;
+
+  if (!metrics && !message.tokens) return null;
+
+  return (
+    <div className="ml-1 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+      {totalTokens !== undefined && (
+        <span className="rounded-full border border-white/70 bg-white/70 px-2 py-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]">
+          {metrics?.input_tokens_est ? `${metrics.input_tokens_est} in / ` : ''}
+          {outputTokens ?? 0} out tok
+        </span>
+      )}
+      <span className="rounded-full border border-white/70 bg-white/70 px-2 py-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]">
+        {formatUsd(metrics?.estimated_cost_usd)}
+      </span>
+      <span className="rounded-full border border-white/70 bg-white/70 px-2 py-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]">
+        Total {formatMs(metrics?.latency_ms)}
+      </span>
+      {metrics?.time_to_first_token_ms !== undefined && (
+        <span className="rounded-full border border-white/70 bg-white/70 px-2 py-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]">
+          TTFT {formatMs(metrics.time_to_first_token_ms)}
+        </span>
+      )}
+      {metrics?.tool_calls !== undefined && metrics.tool_calls > 0 && (
+        <span className="rounded-full border border-white/70 bg-white/70 px-2 py-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.82)]">
+          {metrics.tool_calls} tools
+        </span>
+      )}
+    </div>
+  );
+});
+
 /**
  * Main ChatMessage component
  */
@@ -157,6 +208,8 @@ export const ChatMessage = memo(function ChatMessage({
                 <Copy className="h-4 w-4 text-slate-500 hover:text-slate-700" />
               )}
             </button>
+
+            <MessageMetrics message={message} />
 
             {!isUser && onRegenerate && (
               <button

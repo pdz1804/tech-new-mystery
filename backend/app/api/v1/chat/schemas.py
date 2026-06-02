@@ -32,6 +32,31 @@ class MessageRequest(BaseModel):
     content: str = Field(..., min_length=1, max_length=4000)
 
 
+class VoiceSpeechRequest(BaseModel):
+    """Convert assistant text to speech."""
+
+    text: str = Field(..., min_length=1, max_length=1200)
+
+
+class VoiceLiveKitSessionRequest(BaseModel):
+    """Create a LiveKit voice transport session."""
+
+    session_id: str = Field(..., min_length=1, max_length=255)
+
+
+class VoiceEventRequest(BaseModel):
+    """Record voice pipeline telemetry."""
+
+    session_id: str = Field(..., min_length=1, max_length=255)
+    phase: str = Field(..., min_length=1, max_length=80)
+    provider: str = Field(default="elevenlabs", max_length=80)
+    transport: str = Field(default="livekit", max_length=80)
+    livekit_room: Optional[str] = Field(None, max_length=255)
+    transcript_chars: Optional[int] = Field(None, ge=0)
+    output_chars: Optional[int] = Field(None, ge=0)
+    latency_ms: Optional[int] = Field(None, ge=0)
+
+
 class UpdateSessionRequest(BaseModel):
     """Update session metadata request."""
 

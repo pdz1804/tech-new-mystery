@@ -4,19 +4,28 @@ import asyncio
 import inspect
 import json
 import logging
+from datetime import datetime, timezone
 import time
 import uuid
 from typing import AsyncGenerator
 
+import re
+
+import httpx
+from jose import jwt
 from fastapi import APIRouter, Depends, Query, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
+from app.config import settings
 from app.api.dependencies import get_request_agent_memory
 from app.api.v1.chat.auth import get_chat_auth_user, validate_session_ownership
 from app.api.v1.chat.schemas import (
     CreateSessionRequest,
     SessionResponse,
     MessageRequest,
+    VoiceSpeechRequest,
+    VoiceLiveKitSessionRequest,
+    VoiceEventRequest,
     MessageResponse,
     SessionListResponse,
     MessageListResponse,
@@ -39,6 +48,8 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 # 5ms was too short: multiple events could land in one network packet,
 # causing the browser to see them all at once via a single reader.read().
 SSE_FLUSH_PAUSE_SECONDS = 0.020
+ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream"
+ELEVENLABS_SINGLE_USE_TOKEN_URL = "https://api.elevenlabs.io/v1/single-use-token/realtime_scribe"
 
 
 def _sse(event_type: str, data: dict) -> str:
@@ -48,6 +59,105 @@ def _sse(event_type: str, data: dict) -> str:
         "_server_sent_at_ms": int(time.time() * 1000),
     }
     return f"event: {event_type}\ndata: {json.dumps(payload)}\n\n"
+
+
+def _speech_text(text: str) -> str:
+    """Trim markdown-heavy assistant text into something pleasant to read aloud."""
+    cleaned = re.sub(r"```.*?```", " ", text, flags=re.DOTALL)
+    cleaned = re.sub(r"`([^`]*)`", r"\1", cleaned)
+    cleaned = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", cleaned)
+    cleaned = re.sub(r"[*_#>\-]{1,3}", " ", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned[:1200]
+
+
+def _livekit_configured() -> bool:
+    return bool(settings.livekit_url and settings.livekit_api_key and settings.livekit_api_secret)
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _create_livekit_token(
+    *,
+    room_name: str,
+    user_id: str,
+    session_id: str,
+) -> str:
+    now = int(time.time())
+    metadata = {
+        "app": "tech-news-mystery",
+        "chat_session_id": session_id,
+        "voice_stack": "livekit-elevenlabs-langchain",
+        "agent_name": settings.livekit_agent_name,
+        "stt_model": settings.elevenlabs_stt_model_id,
+        "tts_model": settings.elevenlabs_tts_model_id,
+        "langsmith_project": settings.langsmith_project,
+    }
+    claims = {
+        "iss": settings.livekit_api_key,
+        "sub": user_id,
+        "nbf": now,
+        "exp": now + settings.livekit_token_ttl_seconds,
+        "name": "Tech News voice participant",
+        "metadata": json.dumps(metadata),
+        "video": {
+            "room": room_name,
+            "roomJoin": True,
+            "canPublish": True,
+            "canSubscribe": True,
+            "canPublishData": True,
+        },
+    }
+    return jwt.encode(claims, settings.livekit_api_secret or "", algorithm="HS256")
+
+
+async def _trace_voice_event(
+    *,
+    name: str,
+    user_id: str,
+    inputs: dict,
+    metadata: dict,
+) -> str | None:
+    """Best-effort LangSmith run creation for voice pipeline observability."""
+    if not settings.langsmith_tracing or not settings.langsmith_api_key:
+        return None
+
+    run_id = str(uuid.uuid4())
+    payload = {
+        "id": run_id,
+        "name": name,
+        "run_type": "chain",
+        "inputs": inputs,
+        "start_time": _utc_now_iso(),
+        "session_name": settings.langsmith_project,
+        "extra": {
+            "metadata": {
+                **metadata,
+                "user_id": user_id,
+                "project": settings.langsmith_project,
+                "voice_stack": "livekit-elevenlabs-langchain",
+            },
+        },
+    }
+
+    try:
+        timeout = httpx.Timeout(5.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(
+                f"{settings.langsmith_endpoint.rstrip('/')}/runs",
+                headers={
+                    "x-api-key": settings.langsmith_api_key,
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+            response.raise_for_status()
+        return run_id
+    except Exception as exc:
+        logger.warning("[VOICE] LangSmith trace event failed: %s", exc)
+        return None
 
 
 async def _yield_sse(event_type: str, data: dict) -> AsyncGenerator[str, None]:
@@ -83,6 +193,226 @@ async def _iterate_with_timeout(
             return
 
         yield event
+
+
+@router.post("/voice/speech")
+async def synthesize_voice_speech(
+    payload: VoiceSpeechRequest,
+    current_user: dict = Depends(get_chat_auth_user),
+) -> StreamingResponse:
+    """Proxy ElevenLabs streaming TTS for chat voice mode.
+
+    The API key stays server-side. If the key is not configured, the frontend can
+    fall back to browser speech synthesis without affecting normal chat.
+    """
+    if not settings.elevenlabs_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ElevenLabs TTS is not configured",
+        )
+
+    text = _speech_text(payload.text)
+    if not text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No speakable text provided",
+        )
+
+    url = ELEVENLABS_TTS_URL.format(voice_id=settings.elevenlabs_voice_id)
+    params = {"output_format": settings.elevenlabs_tts_output_format}
+    body = {
+        "text": text,
+        "model_id": settings.elevenlabs_tts_model_id,
+        "voice_settings": {
+            "stability": 0.48,
+            "similarity_boost": 0.78,
+            "style": 0.0,
+            "use_speaker_boost": True,
+        },
+    }
+
+    timeout = httpx.Timeout(settings.elevenlabs_timeout)
+    client = httpx.AsyncClient(timeout=timeout)
+    request = client.build_request(
+        "POST",
+        url,
+        params=params,
+        headers={
+            "xi-api-key": settings.elevenlabs_api_key or "",
+            "Content-Type": "application/json",
+        },
+        json=body,
+    )
+
+    try:
+        response = await client.send(request, stream=True)
+    except Exception as exc:
+        await client.aclose()
+        logger.error("[VOICE] ElevenLabs TTS connection error: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Voice synthesis failed",
+        )
+
+    if response.status_code >= 400:
+        detail = await response.aread()
+        await response.aclose()
+        await client.aclose()
+        logger.warning(
+            "[VOICE] ElevenLabs TTS failed status=%s body=%s",
+            response.status_code,
+            detail[:300],
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Voice synthesis failed",
+        )
+
+    async def audio_stream() -> AsyncGenerator[bytes, None]:
+        try:
+            async for chunk in response.aiter_bytes():
+                if chunk:
+                    yield chunk
+        except Exception as exc:
+            logger.error("[VOICE] ElevenLabs TTS proxy error: %s", exc, exc_info=True)
+            return
+        finally:
+            await response.aclose()
+            await client.aclose()
+
+    return StreamingResponse(
+        audio_stream(),
+        media_type="audio/mpeg",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.post("/voice/livekit-session")
+async def create_voice_livekit_session(
+    payload: VoiceLiveKitSessionRequest,
+    current_user: dict = Depends(get_chat_auth_user),
+) -> dict:
+    """Create a LiveKit room token for the browser voice session."""
+    if not _livekit_configured():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="LiveKit voice transport is not configured",
+        )
+
+    room_name = f"voice-{payload.session_id[:24]}-{uuid.uuid4().hex[:8]}"
+    user_id = current_user["sub"]
+    token = _create_livekit_token(
+        room_name=room_name,
+        user_id=user_id,
+        session_id=payload.session_id,
+    )
+    trace_id = await _trace_voice_event(
+        name="voice.livekit_session.created",
+        user_id=user_id,
+        inputs={"session_id": payload.session_id},
+        metadata={
+            "phase": "livekit_session_created",
+            "transport": "livekit",
+            "livekit_room": room_name,
+            "livekit_agent_name": settings.livekit_agent_name,
+        },
+    )
+
+    return {
+        "success": True,
+        "data": {
+            "transport": "livekit",
+            "server_url": settings.livekit_url,
+            "room": room_name,
+            "participant_token": token,
+            "agent_name": settings.livekit_agent_name,
+            "trace_id": trace_id,
+            "expires_in": settings.livekit_token_ttl_seconds,
+        },
+    }
+
+
+@router.post("/voice/events")
+async def record_voice_event(
+    payload: VoiceEventRequest,
+    current_user: dict = Depends(get_chat_auth_user),
+) -> dict:
+    """Record voice pipeline telemetry in LangSmith when tracing is enabled."""
+    trace_id = await _trace_voice_event(
+        name=f"voice.{payload.phase}",
+        user_id=current_user["sub"],
+        inputs={
+            "session_id": payload.session_id,
+            "phase": payload.phase,
+        },
+        metadata={
+            "phase": payload.phase,
+            "provider": payload.provider,
+            "transport": payload.transport,
+            "livekit_room": payload.livekit_room,
+            "transcript_chars": payload.transcript_chars,
+            "output_chars": payload.output_chars,
+            "latency_ms": payload.latency_ms,
+        },
+    )
+    return {
+        "success": True,
+        "data": {
+            "trace_id": trace_id,
+            "tracing_enabled": bool(settings.langsmith_tracing and settings.langsmith_api_key),
+        },
+    }
+
+
+@router.post("/voice/stt-token")
+async def create_voice_stt_token(
+    current_user: dict = Depends(get_chat_auth_user),
+) -> dict:
+    """Create a single-use ElevenLabs Realtime Scribe token for browser STT.
+
+    The browser needs to open the ElevenLabs WebSocket directly for low-latency
+    microphone streaming, but it must not receive the long-lived API key.
+    """
+    if not settings.elevenlabs_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ElevenLabs STT is not configured",
+        )
+
+    timeout = httpx.Timeout(settings.elevenlabs_timeout)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        try:
+            response = await client.post(
+                ELEVENLABS_SINGLE_USE_TOKEN_URL,
+                headers={"xi-api-key": settings.elevenlabs_api_key},
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as exc:
+            logger.error("[VOICE] ElevenLabs STT token error: %s", exc, exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Voice transcription token failed",
+            )
+
+    data = response.json()
+    token = data.get("token")
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Voice transcription token missing",
+        )
+
+    return {
+        "success": True,
+        "data": {
+            "token": token,
+            "model_id": settings.elevenlabs_stt_model_id,
+            "audio_format": settings.elevenlabs_stt_audio_format,
+        },
+    }
 
 
 @router.post("/sessions", response_model=dict, status_code=201)
