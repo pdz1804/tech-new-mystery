@@ -61,7 +61,7 @@ graph TB
     %% ── Backend → Data Stores ─────────────────────────────
     API <-->|"boto3 DynamoDB SDK\nCRUD · conditional writes"| DDB
     API <-->|"aioredis  ·  cache + sessions"| REDIS
-    API <-->|"qdrant-client  ·  hybrid search"| QDR
+    API <-->|"qdrant-client  ·  dense search + keyword merge"| QDR
     API -->|"boto3 S3  ·  generate_presigned_url"| S3
 
     %% ── Backend → LLM fallback ────────────────────────────
@@ -134,7 +134,7 @@ graph TB
 |---|---|---|
 | `/auth` | register · login · refresh · logout | JWT issue + revoke |
 | `/articles` | list · get · filter · like · save | Paginated, DynamoDB-backed |
-| `/search` | keyword · semantic · hybrid | Qdrant + DynamoDB |
+| `/search` | `GET /search` — hybrid (dense cosine 0.6 + keyword scoring 0.4); falls back to DynamoDB keyword scan when Qdrant unavailable · `POST /search/hybrid` (admin) — same with configurable weights · `GET /search/qdrant/stats` (admin) | Qdrant dense vectors + in-process keyword merge |
 | `/sources` | list · create · toggle | News source management |
 | `/user` | profile · preferences | Per-user settings |
 | `/comments` | list · create · delete | Article discussions |
@@ -238,10 +238,13 @@ graph TB
 | Property | Value |
 |---|---|
 | Collection | `articles` |
-| Vector dimensions | 1 536 (OpenAI `text-embedding-3-small`) |
+| Vector type | Dense only — 1 536-dim (OpenAI `text-embedding-3-small`) |
 | Distance metric | Cosine similarity |
-| Payload fields indexed | `article_id` · `slug` · `title` · `summary` · `category` · `source_id` · `published_at` |
-| Search fetch | top-k × 2 over-fetch, then filter by `min_score` and metadata |
+| Payload stored | `article_id` · `slug` · `title` · `summary` · `content` (first 1 000 chars) · `category` · `author` · `source_id` · `published_at` · `view_count` |
+| Dense search | `query_points` with cosine similarity — top-k × 2 over-fetch, filtered by `min_score` |
+| Keyword scoring | Manual: `client.scroll()` retrieves all points; Python scores each by title/summary keyword frequency; merged with dense scores at runtime |
+| Hybrid merge | `hybrid_score = dense_score × 0.6 + keyword_score_normalised × 0.4` (weights configurable via `/search/hybrid`) |
+| Fallback | When Qdrant unavailable: `SearchService` does a full DynamoDB scan + in-process title/content/summary scoring |
 
 #### AWS S3
 
