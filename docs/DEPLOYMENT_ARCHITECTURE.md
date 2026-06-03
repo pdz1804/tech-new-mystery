@@ -74,6 +74,10 @@ graph TB
     API -->|"voice phase telemetry"| LSM
     FE -->|"STT WebSocket PCM16"| ELS
     FE -->|"join room + publish mic"| LK
+    LK -->|"SIP room dispatch"| LVW
+    LVW -->|"phone turn bridge\n/v1/chat/voice/sip/message"| API
+    LVW -->|"STT + TTS streams"| ELS
+    LVW -->|"GetSecretValue"| SM
 
     AC <-->|"Converse API streaming"| BED
     AC <-->|"MemoryClient"| ACM
@@ -98,11 +102,13 @@ graph TB
     API -.->|"pull image"| ECR
     AC -.->|"pull image"| ECR
     CW2 -.->|"pull image"| ECR
+    LVW -.->|"pull image"| ECR
 
     FE -.->|"awslogs driver"| CW
     API -.->|"awslogs driver"| CW
     AC -.->|"awslogs driver"| CW
     CW2 -.->|"awslogs driver"| CW
+    LVW -.->|"awslogs driver"| CW
 ```
 
 ---
@@ -247,6 +253,8 @@ Voice-agent runtime flags are injected as ECS task environment variables:
 | `LIVEKIT_URL` | `wss://virtual-interview-191g0s6f.livekit.cloud` |
 | `LIVEKIT_AGENT_NAME` | `tech-news-voice-agent` |
 | `LIVEKIT_TOKEN_TTL_SECONDS` | `900` |
+| `LIVEKIT_TURN_DETECTOR_ENABLED` | `false` for local/current ECS worker unless LiveKit inference executor is configured |
+| `VOICE_BACKEND_BASE_URL` | Terraform-generated ALB `/v1` API URL |
 
 ### 4.6 Voice-Agent Runtime Path
 
@@ -327,6 +335,7 @@ graph LR
 | `ELEVENLABS_VOICE_ID` | Secret | ElevenLabs voice ID synced into app Secrets Manager JSON |
 | `LIVEKIT_API_KEY` | Secret | LiveKit API key synced into app Secrets Manager JSON |
 | `LIVEKIT_API_SECRET` | Secret | LiveKit API secret synced into app Secrets Manager JSON |
+| `VOICE_WORKER_SERVICE_TOKEN` | Secret | Shared token synced into app Secrets Manager JSON for LiveKit SIP worker backend calls |
 
 The deploy workflow runs `Sync production app secret` before Terraform applies.
 That step merges non-empty GitHub Actions secrets into

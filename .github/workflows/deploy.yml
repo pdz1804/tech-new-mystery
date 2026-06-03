@@ -134,6 +134,36 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Ensure AgentCore Control refresh permissions
+        run: |
+          set -euo pipefail
+
+          ASSUMED_ARN="$(aws sts get-caller-identity --query Arn --output text)"
+          ROLE_NAME="$(printf '%s' "$ASSUMED_ARN" | sed -E 's#^arn:aws:sts::[0-9]+:assumed-role/([^/]+)/.*$#\1#')"
+
+          aws iam put-role-policy \
+            --role-name "$ROLE_NAME" \
+            --policy-name "${ECS_CLUSTER}-agentcore-control-refresh" \
+            --policy-document '{
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "bedrock-agentcore-control:GetMemory",
+                    "bedrock-agentcore-control:ListMemories",
+                    "bedrock-agentcore-control:GetBrowser",
+                    "bedrock-agentcore-control:ListBrowsers",
+                    "bedrock-agentcore-control:GetCodeInterpreter",
+                    "bedrock-agentcore-control:ListCodeInterpreters",
+                    "bedrock-agentcore-control:GetAgentRuntime",
+                    "bedrock-agentcore-control:ListAgentRuntimes"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }'
+
       - id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 

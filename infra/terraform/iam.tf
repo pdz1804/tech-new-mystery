@@ -178,6 +178,7 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
           "sns:*",
           "application-autoscaling:*",
           "bedrock-agentcore:*",
+          "bedrock-agentcore-control:*",
           "codebuild:*"
         ]
         Resource = "*"

@@ -6,7 +6,7 @@
 
 ## 1. High-Level System Overview
 
-The system is composed of five runtime services, four data stores, and external integrations for ingestion, search, LLM execution, observability, and voice transport.
+The system is composed of the frontend, backend API, Agent Core runtime, Celery workers, a LiveKit SIP voice worker, four data stores, and external integrations for ingestion, search, LLM execution, observability, and voice transport.
 
 ```mermaid
 graph TB
@@ -23,6 +23,7 @@ graph TB
     subgraph WorkerTier["Worker Tier"]
         CW["Celery Worker\n11 task modules · Python 3.11\nPlaywright · Crawl4AI · boto3"]
         CB["Celery Beat\nCron-based task scheduler\n5 recurring schedules"]
+        LVW["LiveKit SIP Voice Worker\nInbound phone calls · Python 3.11\nElevenLabs STT/TTS · Silero VAD\nDTMF · force barge-in"]
     end
 
     subgraph DataTier["Data Stores"]
@@ -46,7 +47,8 @@ graph TB
         LFU["Langfuse  ·  cloud.langfuse.com\nLLM observability — traces · spans · scores"]
         LSM["LangSmith\nVoice-agent telemetry\nSTT · LLM · TTS latency events"]
         ELS["ElevenLabs\nRealtime Scribe STT WebSocket\nStreaming TTS voice model"]
-        LK["LiveKit Cloud\nVoice room transport\nMic publish + tokenized rooms"]
+        LK["LiveKit Cloud\nVoice room transport\nBrowser rooms + SIP rooms"]
+        PSTN["PSTN Caller\nLiveKit Phone Number\n+1 484 270 7189"]
         DDG["DuckDuckGo HTML\nhtml.duckduckgo.com/html/?q=\nWeb search fallback for Agent"]
         SMTP["Email Service\nWeekly digest delivery"]
     end
@@ -60,6 +62,10 @@ graph TB
     FE -->|"REST  /v1/chat/voice/*"| API
     FE -->|"STT WebSocket PCM16\nsingle-use token"| ELS
     FE -->|"join room + publish mic"| LK
+    PSTN -->|"phone call"| LK
+    LK -->|"SIP dispatch\nagent: tech-news-voice-agent"| LVW
+    LVW -->|"POST /v1/chat/voice/sip/message\nservice token"| API
+    LVW -->|"streaming STT + TTS"| ELS
 
     %% ── Backend → Agent Core ──────────────────────────────
     API -->|"prod: boto3 invoke_agent_runtime\ndev:  HTTP POST /invocations\nchat: SSE events\nvoice: final JSON answer"| AC
@@ -156,6 +162,7 @@ graph TB
 | `/chat/voice/stt-token` | create | Single-use ElevenLabs Realtime Scribe token and STT config |
 | `/chat/voice/livekit-session` | create | LiveKit room name, participant token, agent name, and TTL |
 | `/chat/voice/message` | create | Non-streaming voice-agent turn optimized for short spoken answers |
+| `/chat/voice/sip/message` | create | Service-token bridge for LiveKit SIP phone turns, DTMF input, call IDs, and room metadata |
 | `/chat/voice/speech` | create | ElevenLabs TTS proxy returning audio for playback |
 | `/chat/voice/events` | create | LangSmith voice telemetry event sink |
 | `/admin/clustering` | config · trigger · evaluations | Admin-only |
@@ -217,7 +224,23 @@ The Code Interpreter helper is still present in the codebase as an optional rest
 
 ---
 
-### 2.5 Data Stores
+### 2.5 LiveKit SIP Voice Worker (`backend/app/workers/livekit_voice_agent.py`)
+
+The dialable phone agent is a transport worker, not a second agent brain. It joins LiveKit SIP rooms for inbound phone calls, converts caller speech to text with ElevenLabs STT, sends final transcripts to the backend voice bridge, and speaks backend answers with ElevenLabs TTS.
+
+| Responsibility | Implementation |
+|---|---|
+| Phone transport | LiveKit SIP dispatch rule targets `LIVEKIT_AGENT_NAME=tech-news-voice-agent` |
+| STT/TTS | ElevenLabs realtime STT and low-latency TTS plugins |
+| Turn detection | Silero VAD locally; semantic turn detector is disabled unless a LiveKit inference executor is available |
+| Barge-in | `user_state_changed` force-interrupts current playback, cancels superseded response tasks, and speaks only the newest backend answer |
+| DTMF | `sip_dtmf_received` events route keypad input to the backend bridge |
+| Backend bridge | `POST /v1/chat/voice/sip/message` with `X-Voice-Worker-Token` |
+| Production runtime | Dedicated ECS service `livekit-voice-worker` using the backend image |
+
+---
+
+### 2.6 Data Stores
 
 #### AWS DynamoDB (18 tables, prefix `tech-news-`)
 
@@ -328,9 +351,11 @@ sequenceDiagram
 
 ---
 
-## 4. Voice Agent Request Flow
+## 4. Voice Agent Request Flows
 
 The voice test mode uses the same durable session/message tables as chat, but it keeps voice-test sessions separate in the frontend and runs a short, non-streaming agent path so spoken answers stay fast and conversational.
+
+### 4.1 Browser Voice Flow
 
 ```mermaid
 sequenceDiagram
@@ -367,6 +392,46 @@ sequenceDiagram
     FE-->>User: Play spoken reply
     FE->>LS: POST /v1/chat/voice/events<br/>STT, LLM, TTS, LiveKit metadata
     Note over FE,User: During playback, browser-side echo-cancelled mic monitoring can detect sustained talk-over, stop TTS, and reopen STT for barge-in.
+```
+
+### 4.2 Dialable Phone Voice Flow
+
+The phone path uses LiveKit for SIP/WebRTC transport but keeps backend Agent Core as the single reasoning layer.
+
+```mermaid
+sequenceDiagram
+    actor Caller as Phone Caller
+    participant PSTN as PSTN / Carrier
+    participant LK as LiveKit Cloud<br/>(Phone Number + SIP Room)
+    participant LVW as LiveKit SIP Worker<br/>(tech-news-voice-agent)
+    participant EL as ElevenLabs<br/>(STT + TTS)
+    participant API as Backend API<br/>(FastAPI)
+    participant AC as Agent Core<br/>(voice graph)
+    participant DDB as DynamoDB
+
+    Caller->>PSTN: Dial +1 484 270 7189
+    PSTN->>LK: Inbound call
+    LK->>LVW: Dispatch room call-_<caller>_<random>
+    LVW->>Caller: Streaming greeting via ElevenLabs TTS
+    Caller->>LVW: Speaks request
+    LVW->>EL: Stream caller audio for STT
+    EL-->>LVW: Final transcript
+    LVW->>LVW: Interrupt current playback and cancel superseded turn if caller barged in
+    LVW->>API: POST /v1/chat/voice/sip/message<br/>X-Voice-Worker-Token
+    API->>DDB: Save phone voice user message
+    API->>AC: invoke voice mode<br/>short spoken-style answer
+    AC-->>API: final answer
+    API->>DDB: Save assistant voice message
+    API-->>LVW: answer JSON
+    LVW->>EL: Streaming TTS
+    EL-->>LVW: audio stream
+    LVW-->>Caller: Speak newest answer
+
+    opt Caller presses keypad
+        Caller->>LK: DTMF digit
+        LK->>LVW: sip_dtmf_received
+        LVW->>API: POST /v1/chat/voice/sip/message<br/>{dtmf_digit}
+    end
 ```
 
 ---
