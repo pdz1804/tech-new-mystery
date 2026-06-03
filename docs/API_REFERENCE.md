@@ -30,6 +30,7 @@ Voice endpoints use the same JWT bearer auth and base path `/v1`. Voice turns ar
 - `POST /chat/voice/stt-token`: mint a single-use ElevenLabs Realtime Scribe token. Returns `token`, `model_id`, and `audio_format`.
 - `POST /chat/voice/livekit-session`: mint a LiveKit room token for a voice session. Request body includes `session_id`. Returns `transport`, `server_url`, `room`, `participant_token`, `agent_name`, `trace_id`, and `expires_in`.
 - `POST /chat/voice/message`: run one non-streaming voice-agent turn. Request body includes `session_id` and `content`. Returns the assistant `content`, `latency_ms`, `input_chars`, and `output_chars`.
+- `POST /chat/voice/sip/message`: service-token endpoint for the LiveKit SIP worker. Request body can include `session_id`, `call_id`, `content`, `dtmf_digit`, and `livekit_room`; if `session_id` is omitted or unknown, the backend creates a phone voice session for `VOICE_SIP_USER_ID`. Requires `X-Voice-Worker-Token` or bearer token matching `VOICE_WORKER_SERVICE_TOKEN`.
 - `POST /chat/voice/speech`: proxy ElevenLabs TTS for a spoken answer. Request body includes `text`; response is `audio/mpeg`.
 - `POST /chat/voice/events`: record voice telemetry. Request body can include `session_id`, `phase`, `provider`, `transport`, `livekit_room`, `transcript_chars`, `output_chars`, and `latency_ms`. Returns `trace_id` and `tracing_enabled`.
 

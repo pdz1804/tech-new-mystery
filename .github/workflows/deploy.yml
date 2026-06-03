@@ -7,6 +7,8 @@ on:
       - "frontend/**"
       - "agent_core/**"
       - "infra/docker/**"
+      - "infra/livekit/**"
+      - "infra/terraform/**"
       - ".github/workflows/deploy.yml"
   push:
     branches: ["main"]
@@ -15,6 +17,8 @@ on:
       - "frontend/**"
       - "agent_core/**"
       - "infra/docker/**"
+      - "infra/livekit/**"
+      - "infra/terraform/**"
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
@@ -52,7 +56,9 @@ jobs:
           python-version: "3.11"
 
       - name: Install backend dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+          pip install -r requirements-livekit.txt -c constraints.txt
 
       - name: Compile backend
         run: python -m compileall app
@@ -245,6 +251,7 @@ jobs:
           ELEVENLABS_VOICE_ID: ${{ secrets.ELEVENLABS_VOICE_ID }}
           LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
           LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
+          VOICE_WORKER_SERVICE_TOKEN: ${{ secrets.VOICE_WORKER_SERVICE_TOKEN }}
         run: |
           python - <<'PY'
           import json
@@ -272,6 +279,7 @@ jobs:
               "ELEVENLABS_VOICE_ID",
               "LIVEKIT_API_KEY",
               "LIVEKIT_API_SECRET",
+              "VOICE_WORKER_SERVICE_TOKEN",
           ]
           required = [
               "SECRET_KEY",
@@ -284,6 +292,7 @@ jobs:
               "ELEVENLABS_VOICE_ID",
               "LIVEKIT_API_KEY",
               "LIVEKIT_API_SECRET",
+              "VOICE_WORKER_SERVICE_TOKEN",
           ]
 
           current = "{}"
@@ -360,4 +369,4 @@ jobs:
 
       - name: Wait for ECS services
         run: |
-          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services api frontend worker beat clustering
+          aws ecs wait services-stable --cluster "$ECS_CLUSTER" --services api frontend worker beat clustering livekit-voice-worker

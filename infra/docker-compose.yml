@@ -83,6 +83,28 @@ services:
       - redis
     command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=6
 
+  # LiveKit SIP Voice Worker
+  livekit-voice-worker:
+    build:
+      context: ../backend
+      dockerfile: ../infra/docker/backend.Dockerfile
+    container_name: tech-news-livekit-voice-worker
+    volumes:
+      - ../backend:/app
+    env_file:
+      - ../backend/.env
+    environment:
+      AWS_REGION: us-west-2
+      ENVIRONMENT: local
+      VOICE_BACKEND_BASE_URL: http://api:8000/v1
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/1
+      CELERY_RESULT_BACKEND: redis://redis:6379/2
+    depends_on:
+      api:
+        condition: service_healthy
+    command: python -m app.workers.livekit_voice_agent dev
+
   # Celery Beat (Scheduler)
   celery-beat:
     build:

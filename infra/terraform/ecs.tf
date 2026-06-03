@@ -39,7 +39,9 @@ locals {
     { name = "ELEVENLABS_TIMEOUT", value = "45" },
     { name = "LIVEKIT_URL", value = "wss://virtual-interview-191g0s6f.livekit.cloud" },
     { name = "LIVEKIT_AGENT_NAME", value = "tech-news-voice-agent" },
+    { name = "LIVEKIT_TURN_DETECTOR_ENABLED", value = "false" },
     { name = "LIVEKIT_TOKEN_TTL_SECONDS", value = "900" },
+    { name = "VOICE_BACKEND_BASE_URL", value = local.api_url },
     { name = "REDIS_URL", value = "redis://${local.redis_endpoint}:6379/0" },
     { name = "CELERY_BROKER_URL", value = "redis://${local.redis_endpoint}:6379/1" },
     { name = "CELERY_RESULT_BACKEND", value = "redis://${local.redis_endpoint}:6379/2" },
@@ -60,6 +62,7 @@ locals {
     { name = "ELEVENLABS_VOICE_ID", valueFrom = "${local.app_secret_arn}:${var.secret_json_keys.elevenlabs_voice_id}::" },
     { name = "LIVEKIT_API_KEY", valueFrom = "${local.app_secret_arn}:${var.secret_json_keys.livekit_api_key}::" },
     { name = "LIVEKIT_API_SECRET", valueFrom = "${local.app_secret_arn}:${var.secret_json_keys.livekit_api_secret}::" },
+    { name = "VOICE_WORKER_SERVICE_TOKEN", valueFrom = "${local.app_secret_arn}:${var.secret_json_keys.voice_worker_service_token}::" },
   ]
 }
 
@@ -179,6 +182,33 @@ resource "aws_ecs_task_definition" "beat" {
   }])
 }
 
+resource "aws_ecs_task_definition" "livekit_voice_worker" {
+  family                   = "${local.name_prefix}-livekit-voice-worker"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = var.task_cpu
+  memory                   = var.task_memory
+  execution_role_arn       = aws_iam_role.ecs_task_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
+
+  container_definitions = jsonencode([{
+    name        = "livekit-voice-worker"
+    image       = "${aws_ecr_repository.backend.repository_url}:${var.backend_image_tag}"
+    essential   = true
+    command     = ["python", "-m", "app.workers.livekit_voice_agent", "start"]
+    environment = local.backend_environment
+    secrets     = local.backend_secrets
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = aws_cloudwatch_log_group.app.name
+        awslogs-region        = var.aws_region
+        awslogs-stream-prefix = "livekit-voice-worker"
+      }
+    }
+  }])
+}
+
 resource "aws_ecs_service" "api" {
   name            = "api"
   cluster         = aws_ecs_cluster.app.id
@@ -242,6 +272,20 @@ resource "aws_ecs_service" "beat" {
   cluster         = aws_ecs_cluster.app.id
   task_definition = aws_ecs_task_definition.beat.arn
   desired_count   = var.beat_desired_count
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets          = local.public_subnet_ids
+    security_groups  = [aws_security_group.ecs.id]
+    assign_public_ip = true
+  }
+}
+
+resource "aws_ecs_service" "livekit_voice_worker" {
+  name            = "livekit-voice-worker"
+  cluster         = aws_ecs_cluster.app.id
+  task_definition = aws_ecs_task_definition.livekit_voice_worker.arn
+  desired_count   = var.livekit_voice_worker_desired_count
   launch_type     = "FARGATE"
 
   network_configuration {

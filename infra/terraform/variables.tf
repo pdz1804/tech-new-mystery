@@ -204,43 +204,51 @@ variable "secrets_manager_arn" {
 variable "secret_json_keys" {
   description = "JSON keys inside the app Secrets Manager secret."
   type = object({
-    secret_key          = string
-    jwt_secret_key      = string
-    openai_api_key      = string
-    tavily_api_key      = string
-    newsapi_key         = string
-    qdrant_url          = string
-    qdrant_api_key      = string
-    gemini_api_key      = string
-    anthropic_api_key   = string
-    langfuse_secret_key = optional(string, "LANGFUSE_SECRET_KEY")
-    langfuse_public_key = optional(string, "LANGFUSE_PUBLIC_KEY")
-    langfuse_base_url   = optional(string, "LANGFUSE_BASE_URL")
-    langsmith_api_key   = optional(string, "LANGSMITH_API_KEY")
-    elevenlabs_api_key  = optional(string, "ELEVENLABS_API_KEY")
-    elevenlabs_voice_id = optional(string, "ELEVENLABS_VOICE_ID")
-    livekit_api_key     = optional(string, "LIVEKIT_API_KEY")
-    livekit_api_secret  = optional(string, "LIVEKIT_API_SECRET")
+    secret_key                 = string
+    jwt_secret_key             = string
+    openai_api_key             = string
+    tavily_api_key             = string
+    newsapi_key                = string
+    qdrant_url                 = string
+    qdrant_api_key             = string
+    gemini_api_key             = string
+    anthropic_api_key          = string
+    langfuse_secret_key        = optional(string, "LANGFUSE_SECRET_KEY")
+    langfuse_public_key        = optional(string, "LANGFUSE_PUBLIC_KEY")
+    langfuse_base_url          = optional(string, "LANGFUSE_BASE_URL")
+    langsmith_api_key          = optional(string, "LANGSMITH_API_KEY")
+    elevenlabs_api_key         = optional(string, "ELEVENLABS_API_KEY")
+    elevenlabs_voice_id        = optional(string, "ELEVENLABS_VOICE_ID")
+    livekit_api_key            = optional(string, "LIVEKIT_API_KEY")
+    livekit_api_secret         = optional(string, "LIVEKIT_API_SECRET")
+    voice_worker_service_token = optional(string, "VOICE_WORKER_SERVICE_TOKEN")
   })
   default = {
-    secret_key          = "SECRET_KEY"
-    jwt_secret_key      = "JWT_SECRET_KEY"
-    openai_api_key      = "OPENAI_API_KEY"
-    tavily_api_key      = "TAVILY_API_KEY"
-    newsapi_key         = "NEWSAPI_KEY"
-    qdrant_url          = "QDRANT_URL"
-    qdrant_api_key      = "QDRANT_API_KEY"
-    gemini_api_key      = "GEMINI_API_KEY"
-    anthropic_api_key   = "ANTHROPIC_API_KEY"
-    langfuse_secret_key = "LANGFUSE_SECRET_KEY"
-    langfuse_public_key = "LANGFUSE_PUBLIC_KEY"
-    langfuse_base_url   = "LANGFUSE_BASE_URL"
-    langsmith_api_key   = "LANGSMITH_API_KEY"
-    elevenlabs_api_key  = "ELEVENLABS_API_KEY"
-    elevenlabs_voice_id = "ELEVENLABS_VOICE_ID"
-    livekit_api_key     = "LIVEKIT_API_KEY"
-    livekit_api_secret  = "LIVEKIT_API_SECRET"
+    secret_key                 = "SECRET_KEY"
+    jwt_secret_key             = "JWT_SECRET_KEY"
+    openai_api_key             = "OPENAI_API_KEY"
+    tavily_api_key             = "TAVILY_API_KEY"
+    newsapi_key                = "NEWSAPI_KEY"
+    qdrant_url                 = "QDRANT_URL"
+    qdrant_api_key             = "QDRANT_API_KEY"
+    gemini_api_key             = "GEMINI_API_KEY"
+    anthropic_api_key          = "ANTHROPIC_API_KEY"
+    langfuse_secret_key        = "LANGFUSE_SECRET_KEY"
+    langfuse_public_key        = "LANGFUSE_PUBLIC_KEY"
+    langfuse_base_url          = "LANGFUSE_BASE_URL"
+    langsmith_api_key          = "LANGSMITH_API_KEY"
+    elevenlabs_api_key         = "ELEVENLABS_API_KEY"
+    elevenlabs_voice_id        = "ELEVENLABS_VOICE_ID"
+    livekit_api_key            = "LIVEKIT_API_KEY"
+    livekit_api_secret         = "LIVEKIT_API_SECRET"
+    voice_worker_service_token = "VOICE_WORKER_SERVICE_TOKEN"
   }
+}
+
+variable "livekit_voice_worker_desired_count" {
+  description = "Number of LiveKit SIP voice worker ECS tasks."
+  type        = number
+  default     = 1
 }
 
 # ============================================================================

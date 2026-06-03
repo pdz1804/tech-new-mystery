@@ -19,6 +19,8 @@ This folder contains the durable engineering references for Tech News Mystery. T
 | [Chatbot Guide](CHATBOT_GUIDE.md) | Chat sessions, streaming, Agent Core integration, persistence, and troubleshooting for the text-chat mode. |
 | [Agent Core](AGENT_CORE.md) | LangGraph chat and voice runtimes, active tools, memory, prompts, streaming, and current scope. |
 | [Voice Agent Implementation](VOICE_AGENT_IMPLEMENTATION.md) | LiveKit + ElevenLabs STT/TTS voice path, LangSmith telemetry, VAD, talk-over interruption, voice UX, metrics, and edge-case handling. |
+| [Dialable Voice Agent Blueprint](DIALABLE_VOICE_AGENT_BLUEPRINT.md) | Target architecture for a responsive web voice bot and dialable LiveKit SIP voice agent, including turn-taking, interruption, DTMF, noise cancellation, and references. |
+| [LiveKit Voice Worker](../backend/LIVEKIT_VOICE_WORKER.md) | Local and production runbook for the dialable SIP worker, phone-number routing, barge-in behavior, and real-call diagnostics. |
 | [Clustering Guide](CLUSTERING_GUIDE.md) | Topic clustering, evaluations, worker flow, tables, and operations. |
 | [Clustering PCA Map](CLUSTERING_PCA_MAP.md) | Worker-backed article embedding projection and Neo4j-style map behavior. |
 | [Crawl4AI Guide](CRAWL4AI_GUIDE.md) | Article crawling and extraction behavior. |

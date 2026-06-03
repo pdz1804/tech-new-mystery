@@ -97,7 +97,12 @@ function pcmToBase64(pcm: Int16Array): string {
 
 export function useVoiceAgent(
   onTranscript: (text: string) => void,
-  sessionId: string
+  sessionId: string,
+  options: {
+    onPlaybackStarted?: (meta: { outputChars: number; latencyMs?: number }) => void;
+    onPlaybackEnded?: (meta: { outputChars: number; latencyMs?: number }) => void;
+    onInterrupted?: (meta: { latencyMs?: number }) => void;
+  } = {}
 ) {
   const [enabled, setEnabled] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -275,14 +280,16 @@ export function useVoiceAgent(
     const interruptedPlayback = Boolean(audioRef.current || abortRef.current);
     stopPlayback();
     if (interruptedPlayback) {
+      const latencyMs = turnStartedAtRef.current ? Math.round(performance.now() - turnStartedAtRef.current) : undefined;
       void recordVoiceEvent({
         session_id: sessionId,
         phase: 'voice_interrupted',
         provider: 'elevenlabs',
         transport: 'livekit',
         livekit_room: livekitSessionRef.current?.room ?? null,
-        latency_ms: turnStartedAtRef.current ? Math.round(performance.now() - turnStartedAtRef.current) : undefined,
+        latency_ms: latencyMs,
       });
+      options.onInterrupted?.({ latencyMs });
     }
     finalTranscriptRef.current = '';
     submittedTranscriptRef.current = false;
@@ -430,7 +437,7 @@ export function useVoiceAgent(
         livekit_room: livekitSessionRef.current?.room ?? null,
       });
     }
-  }, [cleanupAudioPipeline, isListening, isSupported, sessionId, stopListening, stopPlayback, submitTranscript]);
+  }, [cleanupAudioPipeline, isListening, isSupported, options, sessionId, stopListening, stopPlayback, submitTranscript]);
 
   useEffect(() => {
     startListeningRef.current = startListening;
@@ -472,6 +479,7 @@ export function useVoiceAgent(
         const audio = new Audio(audioUrl);
         audioRef.current = audio;
         audio.onended = () => {
+          const latencyMs = turnStartedAtRef.current ? Math.round(performance.now() - turnStartedAtRef.current) : undefined;
           URL.revokeObjectURL(audioUrl);
           cleanupBargeInMonitor();
           audioRef.current = null;
@@ -485,8 +493,9 @@ export function useVoiceAgent(
             transport: 'livekit',
             livekit_room: livekitSessionRef.current?.room ?? null,
             output_chars: speakable.length,
-            latency_ms: turnStartedAtRef.current ? Math.round(performance.now() - turnStartedAtRef.current) : undefined,
+            latency_ms: latencyMs,
           });
+          options.onPlaybackEnded?.({ outputChars: speakable.length, latencyMs });
           if (enabledRef.current) {
             window.setTimeout(() => {
               void startListening();
@@ -503,6 +512,7 @@ export function useVoiceAgent(
         };
         setStatus('Speaking with ElevenLabs...');
         setIsSpeaking(true);
+        const playbackStartLatencyMs = turnStartedAtRef.current ? Math.round(performance.now() - turnStartedAtRef.current) : undefined;
         void recordVoiceEvent({
           session_id: sessionId,
           phase: 'tts_playback_started',
@@ -510,8 +520,9 @@ export function useVoiceAgent(
           transport: 'livekit',
           livekit_room: livekitSessionRef.current?.room ?? null,
           output_chars: speakable.length,
-          latency_ms: turnStartedAtRef.current ? Math.round(performance.now() - turnStartedAtRef.current) : undefined,
+          latency_ms: playbackStartLatencyMs,
         });
+        options.onPlaybackStarted?.({ outputChars: speakable.length, latencyMs: playbackStartLatencyMs });
         await audio.play();
         void startBargeInMonitor();
       } catch {
@@ -529,7 +540,7 @@ export function useVoiceAgent(
         });
       }
     },
-    [cleanupBargeInMonitor, enabled, sessionId, startBargeInMonitor, startListening, stopPlayback]
+    [cleanupBargeInMonitor, enabled, options, sessionId, startBargeInMonitor, startListening, stopPlayback]
   );
 
   useEffect(() => {

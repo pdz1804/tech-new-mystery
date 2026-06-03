@@ -1,0 +1,7 @@
+# Extra dependencies for the LiveKit SIP voice transport worker.
+# Install this in the existing backend venv after backend/requirements.txt.
+
+livekit-agents==1.5.17
+livekit-plugins-silero==1.5.17
+livekit-plugins-turn-detector==1.5.17
+livekit-plugins-elevenlabs==1.5.17

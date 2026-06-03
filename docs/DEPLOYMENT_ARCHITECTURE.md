@@ -36,6 +36,7 @@ graph TB
             AC["agent-core\nBedrockAgentCoreApp - Port 8080\n1024 CPU / 2048 MB"]
             CW2["worker\nCelery Worker\n1024 CPU / 2048 MB"]
             CB["beat\nCelery Beat\n256 CPU / 512 MB"]
+            LVW["livekit-voice-worker\nSIP Voice Worker\n1024 CPU / 2048 MB"]
             CLU["clustering\nHDBSCAN + PCA + Eval\n2048 CPU / 4096 MB"]
         end
 
@@ -147,6 +148,7 @@ graph TB
 | `agent-core` | `tech-news-prod-agent-core` | `{ECR}/tech-news-prod-agent-core:latest` | 8080 | 1024 | 2048 MB | `GET /ping` (200–399) |
 | `worker` | `tech-news-prod-worker` | `{ECR}/tech-news-prod-backend:latest` | — | 1024 | 2048 MB | — |
 | `beat` | `tech-news-prod-beat` | `{ECR}/tech-news-prod-backend:latest` | — | 256 | 512 MB | — |
+| `livekit-voice-worker` | `tech-news-prod-livekit-voice-worker` | `{ECR}/tech-news-prod-backend:latest` | — | 1024 | 2048 MB | — |
 | `clustering` | `tech-news-prod-clustering` | `{ECR}/tech-news-prod-backend:latest` | — | 2048 | 4096 MB | — |
 
 **ECR Repositories:**
@@ -228,6 +230,7 @@ graph TB
 | `ELEVENLABS_VOICE_ID` | ElevenLabs voice ID used by the voice agent |
 | `LIVEKIT_API_KEY` | LiveKit API key for minting room tokens |
 | `LIVEKIT_API_SECRET` | LiveKit API secret for signing room tokens |
+| `VOICE_WORKER_SERVICE_TOKEN` | Shared token used by the LiveKit SIP worker to call backend phone-turn endpoints |
 
 Voice-agent runtime flags are injected as ECS task environment variables:
 
@@ -258,7 +261,7 @@ Production voice mode is split across browser, backend, Agent Core, and provider
 | TTS playback | Backend API proxy + ElevenLabs | `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `ELEVENLABS_TTS_MODEL_ID`, `ELEVENLABS_TTS_OUTPUT_FORMAT` |
 | Voice telemetry | Backend API + frontend event sink + LangSmith | `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT`, `LANGSMITH_ENDPOINT` |
 
-The current LiveKit usage provides tokenized rooms, mic publication, and transport metadata. A separate server-side LiveKit worker is not deployed yet; the voice turn still uses the existing backend-to-Agent-Core invocation path. The frontend also runs local echo-cancelled talk-over detection during TTS playback so a user can interrupt by speaking, stop the current audio, and reopen STT.
+LiveKit usage is split by transport. Browser voice uses tokenized LiveKit rooms and the existing backend-to-Agent-Core invocation path. Dialable phone voice uses the `livekit-voice-worker` ECS service, which owns SIP room media, STT/TTS, VAD barge-in, and DTMF handling, then forwards final phone turns to `POST /v1/chat/voice/sip/message` so the existing backend voice agent remains the single cognitive layer.
 
 ---
 
@@ -283,7 +286,7 @@ graph LR
         BUILD2["docker build\nfrontend"]
         BUILD3["docker build\nagent-core"]
         PUSH["ECR push\n3 repositories"]
-        DEPLOY["ECS force-new-deployment\napi / frontend / worker / beat / clustering"]
+        DEPLOY["ECS force-new-deployment\napi / frontend / worker / beat / clustering / livekit-voice-worker"]
         LINT --> BUILD1
         LINT --> BUILD2
         LINT --> BUILD3

@@ -107,6 +107,16 @@ output "clustering_log_group_name" {
   value       = aws_cloudwatch_log_group.clustering.name
 }
 
+output "livekit_voice_worker_service_name" {
+  description = "Name of the LiveKit SIP voice worker ECS service."
+  value       = aws_ecs_service.livekit_voice_worker.name
+}
+
+output "livekit_voice_worker_task_definition_arn" {
+  description = "ARN of the LiveKit SIP voice worker ECS task definition."
+  value       = aws_ecs_task_definition.livekit_voice_worker.arn
+}
+
 output "clustering_min_tasks" {
   description = "Minimum clustering worker task count."
   value       = var.clustering_min_count

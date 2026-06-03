@@ -45,6 +45,16 @@ class VoiceMessageRequest(BaseModel):
     content: str = Field(..., min_length=1, max_length=1200)
 
 
+class VoiceSipMessageRequest(BaseModel):
+    """Send one SIP phone turn from the LiveKit worker."""
+
+    session_id: Optional[str] = Field(None, max_length=255)
+    call_id: Optional[str] = Field(None, max_length=255)
+    content: str = Field(default="", max_length=1200)
+    dtmf_digit: Optional[str] = Field(None, max_length=8)
+    livekit_room: Optional[str] = Field(None, max_length=255)
+
+
 class VoiceLiveKitSessionRequest(BaseModel):
     """Create a LiveKit voice transport session."""
 

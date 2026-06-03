@@ -5,6 +5,7 @@ import { ReactQueryProvider } from '@/components/providers/ReactQueryProvider';
 import { AuthHydration } from '@/components/providers/AuthHydration';
 import { ScrollToTop } from '@/components/providers/ScrollToTop';
 import { Header } from '@/components/layout/Header';
+import { FloatingVoiceBot } from '@/components/voice/FloatingVoiceBot';
 import '@/styles/globals.css';
 import '@/styles/liquid-glass.css';
 
@@ -52,6 +53,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
           <main id="main-content">
             {children}
           </main>
+          <FloatingVoiceBot />
         </ReactQueryProvider>
       </body>
     </html>

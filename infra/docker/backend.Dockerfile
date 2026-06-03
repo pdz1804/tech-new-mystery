@@ -31,10 +31,11 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only dependency files first for Docker layer caching
-COPY requirements.txt ./
+COPY requirements.txt requirements-livekit.txt constraints.txt ./
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements-livekit.txt -c constraints.txt
 
 # Install Playwright browsers (playwright is already in requirements.txt)
 # Use --with-deps to install system dependencies that Playwright needs

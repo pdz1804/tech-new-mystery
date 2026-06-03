@@ -138,6 +138,18 @@ Required GitHub Actions secrets for the voice feature:
 | `LIVEKIT_API_KEY` | LiveKit token signing public key |
 | `LIVEKIT_API_SECRET` | LiveKit token signing secret |
 
+Additional SIP-worker secret for dialable phone calls:
+
+| Secret | Purpose |
+| --- | --- |
+| `VOICE_WORKER_SERVICE_TOKEN` | Shared token accepted by `POST /v1/chat/voice/sip/message` and sent by the LiveKit worker. |
+
+## Dialable SIP Worker
+
+Phone calls are handled by a dedicated LiveKit worker, not by the FastAPI request process. The worker lives at `backend/app/workers/livekit_voice_agent.py` and is deployed as the `livekit-voice-worker` ECS service.
+
+The worker owns SIP room media, ElevenLabs STT/TTS, Silero VAD endpointing, DTMF events, and phone barge-in. Final transcripts are bridged explicitly through `session.on("user_input_transcribed", ...)` to `POST /v1/chat/voice/sip/message`, keeping the existing backend voice agent as the single cognitive layer. When the caller interrupts, the worker force-interrupts current playback, cancels the superseded response task, and only speaks the newest backend answer.
+
 Related existing app secrets such as `SECRET_KEY`, `JWT_SECRET_KEY`, `OPENAI_API_KEY`, `QDRANT_URL`, and `QDRANT_API_KEY` must also be present either in GitHub Actions secrets or already in the app Secrets Manager JSON payload.
 
 ## LiveKit Capabilities Used
@@ -150,7 +162,7 @@ Related existing app secrets such as `SECRET_KEY`, `JWT_SECRET_KEY`, `OPENAI_API
 
 Currently not implemented:
 
-* A separate LiveKit Agent worker that performs STT, LLM, TTS, turn detection, and audio frame flushing server-side.
+* A production-deployed LiveKit SIP transport adapter that performs STT, TTS, turn detection, and audio frame flushing server-side. A prototype now lives in [`../backend/app/workers/livekit_voice_agent.py`](../backend/app/workers/livekit_voice_agent.py), and it forwards committed phone turns to the existing backend voice-agent path.
 * LiveKit-native automatic barge-in based on continuous remote VAD.
 * LiveKit data-channel transcript streaming between the agent worker and UI.
 

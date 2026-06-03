@@ -2,7 +2,7 @@
 
 This stack deploys Tech News Mystery to AWS `us-west-2` with:
 
-- ECS Fargate services for FastAPI, Next.js, Celery worker, and Celery beat
+- ECS Fargate services for FastAPI, Next.js, Celery worker, Celery beat, clustering, and the LiveKit SIP voice worker
 - Application Load Balancer with `/v1/*` and `/health` routed to FastAPI
 - ECR repositories for backend and frontend images
 - ElastiCache Redis for cache/Celery broker
@@ -52,7 +52,7 @@ Before ECS tasks can run, put required secret values in the app secret:
 aws secretsmanager put-secret-value `
   --region us-west-2 `
   --secret-id <app_secret_arn_from_output> `
-  --secret-string '{ "SECRET_KEY": "...", "JWT_SECRET_KEY": "...", "OPENAI_API_KEY": "", "TAVILY_API_KEY": "", "NEWSAPI_KEY": "", "QDRANT_URL": "", "QDRANT_API_KEY": "", "GEMINI_API_KEY": "", "ANTHROPIC_API_KEY": "", "LANGFUSE_SECRET_KEY": "", "LANGFUSE_PUBLIC_KEY": "", "LANGFUSE_BASE_URL": "https://us.cloud.langfuse.com", "LANGSMITH_API_KEY": "", "ELEVENLABS_API_KEY": "", "ELEVENLABS_VOICE_ID": "", "LIVEKIT_API_KEY": "", "LIVEKIT_API_SECRET": "" }'
+  --secret-string '{ "SECRET_KEY": "...", "JWT_SECRET_KEY": "...", "OPENAI_API_KEY": "", "TAVILY_API_KEY": "", "NEWSAPI_KEY": "", "QDRANT_URL": "", "QDRANT_API_KEY": "", "GEMINI_API_KEY": "", "ANTHROPIC_API_KEY": "", "LANGFUSE_SECRET_KEY": "", "LANGFUSE_PUBLIC_KEY": "", "LANGFUSE_BASE_URL": "https://us.cloud.langfuse.com", "LANGSMITH_API_KEY": "", "ELEVENLABS_API_KEY": "", "ELEVENLABS_VOICE_ID": "", "LIVEKIT_API_KEY": "", "LIVEKIT_API_SECRET": "", "VOICE_WORKER_SERVICE_TOKEN": "" }'
 ```
 
 For local-to-AWS secret sync, you can use:
@@ -81,6 +81,7 @@ The voice agent also injects these non-secret ECS environment values from Terraf
 | `LIVEKIT_URL` | `wss://virtual-interview-191g0s6f.livekit.cloud` |
 | `LIVEKIT_AGENT_NAME` | `tech-news-voice-agent` |
 | `LIVEKIT_TOKEN_TTL_SECONDS` | `900` |
+| `VOICE_BACKEND_BASE_URL` | ALB `/v1` API URL from Terraform |
 
 ## Import Existing DynamoDB/S3
 
@@ -128,6 +129,7 @@ Required app secrets for the LiveKit + ElevenLabs voice agent:
 - `ELEVENLABS_VOICE_ID`
 - `LIVEKIT_API_KEY`
 - `LIVEKIT_API_SECRET`
+- `VOICE_WORKER_SERVICE_TOKEN`
 
 If these JSON keys are absent, ECS reports `ResourceInitializationError` in
 service events and `aws ecs wait services-stable` fails with max attempts

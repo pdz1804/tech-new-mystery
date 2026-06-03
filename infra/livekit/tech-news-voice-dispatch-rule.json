@@ -1,0 +1,21 @@
+{
+  "dispatch_rule": {
+    "trunk_ids": [
+      "PN_PPN_cVdPArHxVVGu"
+    ],
+    "rule": {
+      "dispatchRuleIndividual": {
+        "roomPrefix": "call-"
+      }
+    },
+    "name": "Tech News voice inbound",
+    "roomConfig": {
+      "agents": [
+        {
+          "agentName": "tech-news-voice-agent",
+          "metadata": "{\"source\":\"phone\",\"transport\":\"livekit_sip\"}"
+        }
+      ]
+    }
+  }
+}

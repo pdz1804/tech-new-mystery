@@ -229,12 +229,13 @@ else
   echo "CodeBuild project not found, Terraform will create: $AGENT_CORE_CODEBUILD_PROJECT"
 fi
 
-ecs_services=(api frontend worker beat clustering)
+ecs_services=(api frontend worker beat clustering livekit_voice_worker)
 for service in "${ecs_services[@]}"; do
-  if aws ecs describe-services --region "$REGION" --cluster "$NAME_PREFIX" --services "$service" --query 'services[?status==`ACTIVE`].serviceName' --output text 2>/dev/null | tr '\t' '\n' | grep -Fxq "$service"; then
-    import_if_needed "aws_ecs_service.${service}" "${NAME_PREFIX}/${service}"
+  service_name="${service//_/-}"
+  if aws ecs describe-services --region "$REGION" --cluster "$NAME_PREFIX" --services "$service_name" --query 'services[?status==`ACTIVE`].serviceName' --output text 2>/dev/null | tr '\t' '\n' | grep -Fxq "$service_name"; then
+    import_if_needed "aws_ecs_service.${service}" "${NAME_PREFIX}/${service_name}"
   else
-    echo "ECS service not found, Terraform will create: $service"
+    echo "ECS service not found, Terraform will create: $service_name"
   fi
 done
 

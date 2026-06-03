@@ -15,7 +15,7 @@ CI/CD Pipeline (.github/workflows/deploy.yml)
          ├─ Build & push Backend image → ECR
          ├─ Build & push Frontend image → ECR
          ├─ Build Agent Core (CodeBuild) → ECR
-         └─ Rollout: api, frontend, worker, beat, clustering services
+         └─ Rollout: api, frontend, worker, beat, clustering, livekit-voice-worker services
 ```
 
 ## GitHub Actions Workflow
@@ -41,6 +41,7 @@ ELEVENLABS_API_KEY          # ElevenLabs STT/TTS
 ELEVENLABS_VOICE_ID         # ElevenLabs voice used by TTS
 LIVEKIT_API_KEY             # LiveKit token signing key
 LIVEKIT_API_SECRET          # LiveKit token signing secret
+VOICE_WORKER_SERVICE_TOKEN  # Shared token between backend API and LiveKit SIP worker
 ```
 
 ### Required Variables in GitHub
@@ -65,7 +66,7 @@ NEXT_PUBLIC_API_URL                 = /v1
 
 ### Environment Variables (ECS Task Definition)
 
-Required in **api, worker, beat** services:
+Required in **api, worker, beat, clustering, and livekit-voice-worker** services:
 
 ```env
 # App
@@ -383,9 +384,9 @@ Loaded at runtime by:
 3. Verify environment variables in task definition
 
 ### ECS waiter times out after voice secret changes
-1. Run `aws ecs describe-services --cluster tech-news-mystery-prod --services api frontend worker beat clustering` and inspect `events`.
+1. Run `aws ecs describe-services --cluster tech-news-mystery-prod --services api frontend worker beat clustering livekit-voice-worker` and inspect `events`.
 2. If task placement reports `ResourceInitializationError` for missing JSON keys, add the missing voice keys to GitHub Actions secrets and re-run the deploy workflow so `tech-news-mystery-prod/app` is synced before task definition registration.
-3. Confirm the task definition secret mappings include `LANGSMITH_API_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET`.
+3. Confirm the task definition secret mappings include `LANGSMITH_API_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, and `VOICE_WORKER_SERVICE_TOKEN`.
 
 ### Agent Core connection fails
 1. Verify `AGENT_CORE_BASE_URL` in api task definition
@@ -407,7 +408,7 @@ Loaded at runtime by:
 - [ ] Redis service running in VPC
 - [ ] DynamoDB tables created
 - [ ] Qdrant service accessible (cloud or self-hosted)
-- [ ] Secrets Manager secret created with OPENAI_API_KEY, QDRANT_URL, QDRANT_API_KEY, LANGSMITH_API_KEY, ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, LIVEKIT_API_KEY, LIVEKIT_API_SECRET
+- [ ] Secrets Manager secret created with OPENAI_API_KEY, QDRANT_URL, QDRANT_API_KEY, LANGSMITH_API_KEY, ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID, LIVEKIT_API_KEY, LIVEKIT_API_SECRET, VOICE_WORKER_SERVICE_TOKEN
 - [ ] IAM role for ECS task execution has permissions for SecretsManager
 
 ## Testing Deployment
@@ -418,7 +419,7 @@ git push origin main
 
 # 2. Monitor deployment
 aws ecs describe-services --cluster tech-news-mystery-prod \
-  --services api frontend worker beat
+  --services api frontend worker beat livekit-voice-worker
 
 # 3. Check logs
 aws logs tail /ecs/tech-news-mystery-prod/api --follow

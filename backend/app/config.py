@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "backend/.env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
@@ -132,6 +132,10 @@ class Settings(BaseSettings):
     livekit_api_secret: str | None = None
     livekit_agent_name: str = "tech-news-voice-agent"
     livekit_token_ttl_seconds: int = 900
+    voice_worker_service_token: str | None = None
+    voice_sip_user_id: str = "sip-caller"
+    voice_backend_base_url: str = "http://localhost:8000/v1"
+    livekit_turn_detector_enabled: bool = True
 
     # LangSmith voice tracing
     langsmith_tracing: bool = False

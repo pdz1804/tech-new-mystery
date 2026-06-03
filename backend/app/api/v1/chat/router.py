@@ -13,7 +13,7 @@ import re
 
 import httpx
 from jose import jwt
-from fastapi import APIRouter, Depends, Query, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Query, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.config import settings
@@ -24,6 +24,7 @@ from app.api.v1.chat.schemas import (
     SessionResponse,
     MessageRequest,
     VoiceMessageRequest,
+    VoiceSipMessageRequest,
     VoiceSpeechRequest,
     VoiceLiveKitSessionRequest,
     VoiceEventRequest,
@@ -51,6 +52,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 SSE_FLUSH_PAUSE_SECONDS = 0.020
 ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream"
 ELEVENLABS_SINGLE_USE_TOKEN_URL = "https://api.elevenlabs.io/v1/single-use-token/realtime_scribe"
+VOICE_SESSION_DESCRIPTION = "Dedicated voice-agent testing session"
 
 
 def _sse(event_type: str, data: dict) -> str:
@@ -416,34 +418,33 @@ async def create_voice_stt_token(
     }
 
 
-@router.post("/voice/message")
-async def send_voice_message(
-    payload: VoiceMessageRequest,
-    current_user: dict = Depends(get_chat_auth_user),
-    req_memory: RequestAgentMemory = Depends(get_request_agent_memory),
+async def _run_voice_agent_turn(
+    *,
+    session_id: str,
+    user_id: str,
+    content: str,
+    req_memory: RequestAgentMemory,
+    transport: str = "livekit",
+    livekit_room: str | None = None,
+    call_id: str | None = None,
+    dtmf_digit: str | None = None,
 ) -> dict:
-    """Send one voice turn and return a single final answer.
-
-    Voice mode deliberately avoids frontend SSE rendering. The AgentCore runtime
-    receives mode=voice, uses a short spoken-answer prompt, and returns one
-    answer optimized for TTS latency.
-    """
+    """Run one low-latency voice turn through Agent Core and persistence."""
     error_handler = ErrorHandler()
     service = ChatService()
-    user_id = current_user["sub"]
     started_at = time.perf_counter()
 
     try:
-        InputValidator.validate_session_id(payload.session_id)
-        InputValidator.validate_message_request(payload.content)
+        InputValidator.validate_session_id(session_id)
+        InputValidator.validate_message_request(content)
     except InvalidInputError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.user_message)
 
-    session = await service.get_session(payload.session_id, user_id)
+    session = await service.get_session(session_id, user_id)
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Voice session not found")
 
-    messages_result = await service.get_messages(payload.session_id, user_id, page_size=6)
+    messages_result = await service.get_messages(session_id, user_id, page_size=6)
     recent_events = [
         {
             "role": m["role"],
@@ -455,7 +456,7 @@ async def send_voice_message(
     ]
 
     await req_memory.initialize(
-        session_id=payload.session_id,
+        session_id=session_id,
         user_id=user_id,
         recent_events=recent_events,
     )
@@ -463,15 +464,15 @@ async def send_voice_message(
     await error_handler.retry_with_backoff(
         service.add_message,
         "save_voice_user_message",
-        session_id=payload.session_id,
+        session_id=session_id,
         user_id=user_id,
         role="user",
-        content=payload.content,
+        content=content,
     )
     await req_memory.log_message(
-        session_id=payload.session_id,
+        session_id=session_id,
         role="user",
-        content=payload.content,
+        content=content,
     )
 
     assistant_content = ""
@@ -480,14 +481,18 @@ async def send_voice_message(
         agent_core = AgentCoreClient()
         async for event in _iterate_with_timeout(
             agent_core.invoke_agent(
-                session_id=payload.session_id,
-                user_message=payload.content,
+                session_id=session_id,
+                user_message=content,
                 context={
                     "recent_events": recent_events,
                     "request_scope": "voice",
                     "agent_mode": "voice",
                     "response_style": "one_spoken_paragraph",
                     "latency_priority": "high",
+                    "transport": transport,
+                    "livekit_room": livekit_room,
+                    "call_id": call_id,
+                    "dtmf_digit": dtmf_digit,
                 },
                 user_id=user_id,
                 mode="voice",
@@ -507,13 +512,13 @@ async def send_voice_message(
         await error_handler.retry_with_backoff(
             service.add_message,
             "save_voice_assistant_message",
-            session_id=payload.session_id,
+            session_id=session_id,
             user_id=user_id,
             role="assistant",
             content=assistant_content,
         )
         await req_memory.log_message(
-            session_id=payload.session_id,
+            session_id=session_id,
             role="assistant",
             content=assistant_content,
         )
@@ -538,11 +543,14 @@ async def send_voice_message(
     await _trace_voice_event(
         name="voice.agent_turn.completed",
         user_id=user_id,
-        inputs={"session_id": payload.session_id, "transcript_chars": len(payload.content)},
+        inputs={"session_id": session_id, "transcript_chars": len(content)},
         metadata={
             "phase": "agent_turn_completed",
             "provider": "agentcore",
-            "transport": "livekit",
+            "transport": transport,
+            "livekit_room": livekit_room,
+            "call_id": call_id,
+            "dtmf_digit": dtmf_digit,
             "output_chars": len(assistant_content),
             "latency_ms": latency_ms,
             "agent_mode": "voice",
@@ -553,12 +561,100 @@ async def send_voice_message(
     return {
         "success": True,
         "data": {
+            "session_id": session_id,
             "content": assistant_content,
             "latency_ms": latency_ms,
-            "input_chars": len(payload.content),
+            "input_chars": len(content),
             "output_chars": len(assistant_content),
         },
     }
+
+
+@router.post("/voice/message")
+async def send_voice_message(
+    payload: VoiceMessageRequest,
+    current_user: dict = Depends(get_chat_auth_user),
+    req_memory: RequestAgentMemory = Depends(get_request_agent_memory),
+) -> dict:
+    """Send one voice turn and return a single final answer.
+
+    Voice mode deliberately avoids frontend SSE rendering. The AgentCore runtime
+    receives mode=voice, uses a short spoken-answer prompt, and returns one
+    answer optimized for TTS latency.
+    """
+    return await _run_voice_agent_turn(
+        session_id=payload.session_id,
+        user_id=current_user["sub"],
+        content=payload.content,
+        req_memory=req_memory,
+    )
+
+
+def _extract_voice_worker_token(
+    *,
+    authorization: str | None,
+    x_voice_worker_token: str | None,
+) -> str | None:
+    if x_voice_worker_token:
+        return x_voice_worker_token
+    if authorization and authorization.lower().startswith("bearer "):
+        return authorization[7:].strip()
+    return None
+
+
+@router.post("/voice/sip/message")
+async def send_sip_voice_message(
+    payload: VoiceSipMessageRequest,
+    authorization: str | None = Header(None),
+    x_voice_worker_token: str | None = Header(None),
+    req_memory: RequestAgentMemory = Depends(get_request_agent_memory),
+) -> dict:
+    """Service-token endpoint for LiveKit SIP worker voice turns."""
+    received_token = _extract_voice_worker_token(
+        authorization=authorization,
+        x_voice_worker_token=x_voice_worker_token,
+    )
+    if not settings.voice_worker_service_token or received_token != settings.voice_worker_service_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid voice worker token",
+        )
+
+    service = ChatService()
+    user_id = settings.voice_sip_user_id
+    session_id = payload.session_id
+    if session_id:
+        session = await service.get_session(session_id, user_id)
+        if not session:
+            session_id = None
+
+    if not session_id:
+        session = await service.create_session(
+            user_id=user_id,
+            title="Phone voice call",
+            description=VOICE_SESSION_DESCRIPTION,
+        )
+        session_id = session["session_id"]
+
+    content = payload.content.strip()
+    if payload.dtmf_digit:
+        content = f"Caller pressed {payload.dtmf_digit}."
+    if not content:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No voice or DTMF content provided",
+        )
+
+    return await _run_voice_agent_turn(
+        session_id=session_id,
+        user_id=user_id,
+        content=content,
+        req_memory=req_memory,
+        transport="livekit_sip",
+        livekit_room=payload.livekit_room,
+        call_id=payload.call_id,
+        dtmf_digit=payload.dtmf_digit,
+    )
 
 
 @router.post("/sessions", response_model=dict, status_code=201)
