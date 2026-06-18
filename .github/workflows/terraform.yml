@@ -141,6 +141,12 @@ jobs:
           CODEBUILD_SOURCE_BUCKET: ${{ vars.AGENT_CORE_CODEBUILD_SOURCE_BUCKET || 'tech-news-mystery-prod-codebuild-sources-381492273521' }}
         run: bash scripts/import-existing.sh
 
+      - name: Remove disabled ECS IAM roles from Terraform state
+        working-directory: infra/terraform
+        run: |
+          terraform state rm aws_iam_role.ecs_task_execution || true
+          terraform state rm aws_iam_role.ecs_task || true
+
       - name: Terraform Apply
         working-directory: infra/terraform
         run: |
