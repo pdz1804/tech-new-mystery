@@ -1,3 +1,5 @@
+/* DISABLED — to restore: delete this first line and the closing marker at the bottom of this file
+
 resource "aws_cloudwatch_log_group" "app" {
   name              = "/ecs/${local.name_prefix}"
   retention_in_days = 30
@@ -349,3 +351,5 @@ resource "aws_cloudwatch_metric_alarm" "worker_task_count_anomaly" {
 
 # Agent Core Runtime is provisioned as an AWS managed service — see agentcore.tf.
 # All ECS task/service/autoscaling/alarms for agent-core have been removed.
+
+*/

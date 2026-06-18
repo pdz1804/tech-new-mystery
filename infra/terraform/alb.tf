@@ -1,3 +1,5 @@
+/* DISABLED — to restore: delete this first line and the closing marker at the bottom of this file
+
 resource "aws_lb" "app" {
   name               = substr("${local.name_prefix}-alb", 0, 32)
   load_balancer_type = "application"
@@ -114,3 +116,5 @@ resource "aws_lb_listener_rule" "api_https" {
 # Agent Core is deployed as an AWS Bedrock AgentCore Runtime (managed service).
 # It is invoked via boto3.client('bedrock-agentcore').invoke_agent_runtime().
 # No ALB or ECS required.
+
+*/

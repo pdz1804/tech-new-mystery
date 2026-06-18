@@ -1,78 +1,41 @@
-resource "aws_iam_role" "ecs_task_execution" {
-  name = "${local.name_prefix}-ecs-execution"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Principal = {
-        Service = "ecs-tasks.amazonaws.com"
-      }
-      Action = "sts:AssumeRole"
-    }]
-  })
-
-  lifecycle {
-    ignore_changes = [tags, tags_all]
-  }
-}
-
-resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
-  role       = aws_iam_role.ecs_task_execution.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
-  name = "${local.name_prefix}-read-secrets"
-  role = aws_iam_role.ecs_task_execution.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid      = "SecretsManager"
-        Effect   = "Allow"
-        Action   = ["secretsmanager:GetSecretValue"]
-        Resource = local.app_secret_arn
-      },
-      {
-        Sid      = "KMSDecrypt"
-        Effect   = "Allow"
-        Action   = ["kms:Decrypt"]
-        Resource = "*"
-      },
-      {
-        Sid    = "CloudWatchLogs"
-        Effect = "Allow"
-        Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents"
-        ]
-        Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${local.name_prefix}*"
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role" "ecs_task" {
-  name = "${local.name_prefix}-ecs-task"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect = "Allow"
-      Principal = {
-        Service = "ecs-tasks.amazonaws.com"
-      }
-      Action = "sts:AssumeRole"
-    }]
-  })
-
-  lifecycle {
-    ignore_changes = [tags, tags_all]
-  }
-}
+# DISABLED — ECS IAM roles; uncomment when re-enabling ECS services
+#
+# resource "aws_iam_role" "ecs_task_execution" {
+#   name = "${local.name_prefix}-ecs-execution"
+#   assume_role_policy = jsonencode({
+#     Version = "2012-10-17"
+#     Statement = [{ Effect = "Allow", Principal = { Service = "ecs-tasks.amazonaws.com" }, Action = "sts:AssumeRole" }]
+#   })
+#   lifecycle { ignore_changes = [tags, tags_all] }
+# }
+#
+# resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
+#   role       = aws_iam_role.ecs_task_execution.name
+#   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+# }
+#
+# resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
+#   name = "${local.name_prefix}-read-secrets"
+#   role = aws_iam_role.ecs_task_execution.id
+#   policy = jsonencode({
+#     Version = "2012-10-17"
+#     Statement = [
+#       { Sid = "SecretsManager", Effect = "Allow", Action = ["secretsmanager:GetSecretValue"], Resource = local.app_secret_arn },
+#       { Sid = "KMSDecrypt",     Effect = "Allow", Action = ["kms:Decrypt"],                  Resource = "*" },
+#       { Sid = "CloudWatchLogs", Effect = "Allow", Action = ["logs:CreateLogGroup","logs:CreateLogStream","logs:PutLogEvents"],
+#         Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/ecs/${local.name_prefix}*" }
+#     ]
+#   })
+# }
+#
+# resource "aws_iam_role" "ecs_task" {
+#   name = "${local.name_prefix}-ecs-task"
+#   assume_role_policy = jsonencode({
+#     Version = "2012-10-17"
+#     Statement = [{ Effect = "Allow", Principal = { Service = "ecs-tasks.amazonaws.com" }, Action = "sts:AssumeRole" }]
+#   })
+#   lifecycle { ignore_changes = [tags, tags_all] }
+# }
 
 data "aws_iam_role" "github_actions" {
   name = "github-actions-${var.project_name}"
@@ -118,8 +81,8 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
           "iam:PassRole"
         ]
         Resource = [
-          aws_iam_role.ecs_task_execution.arn,
-          aws_iam_role.ecs_task.arn,
+          # aws_iam_role.ecs_task_execution.arn,  # re-enable with ECS
+          # aws_iam_role.ecs_task.arn,            # re-enable with ECS
           aws_iam_role.agentcore_runtime.arn,
           aws_iam_role.agentcore_memory.arn
         ]
@@ -187,119 +150,16 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
   })
 }
 
-resource "aws_iam_role_policy" "ecs_task_app" {
-  name = "${local.name_prefix}-app-access"
-  role = aws_iam_role.ecs_task.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "DynamoDBTableAccess"
-        Effect = "Allow"
-        Action = [
-          "dynamodb:BatchGetItem",
-          "dynamodb:BatchWriteItem",
-          "dynamodb:ConditionCheckItem",
-          "dynamodb:DeleteItem",
-          "dynamodb:DescribeTable",
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-          "dynamodb:Query",
-          "dynamodb:Scan",
-          "dynamodb:UpdateItem"
-        ]
-        Resource = concat(
-          [for table in local.table_names : "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_table_prefix}${table}"],
-          [for table in local.table_names : "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/${var.dynamodb_table_prefix}${table}/index/*"]
-        )
-      },
-      {
-        Sid    = "ArticleImageBucketAccess"
-        Effect = "Allow"
-        Action = [
-          "s3:GetObject",
-          "s3:PutObject",
-          "s3:DeleteObject"
-        ]
-        Resource = "arn:aws:s3:::${local.s3_bucket_name}/*"
-      },
-      {
-        Sid      = "ArticleImageBucketList"
-        Effect   = "Allow"
-        Action   = ["s3:ListBucket"]
-        Resource = "arn:aws:s3:::${local.s3_bucket_name}"
-      },
-      {
-        Sid    = "BedrockInvoke"
-        Effect = "Allow"
-        Action = [
-          "bedrock:InvokeModel",
-          "bedrock:InvokeModelWithResponseStream"
-        ]
-        Resource = "*"
-      }
-    ]
-  })
-}
-
-# Backend ECS tasks need to invoke agent runtime and access its memory/browser/tools
-resource "aws_iam_role_policy" "backend_invoke_agentcore" {
-  name = "${local.name_prefix}-invoke-agentcore"
-  role = aws_iam_role.ecs_task.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid    = "InvokeAgentRuntime"
-        Effect = "Allow"
-        Action = ["bedrock-agentcore:InvokeAgentRuntime"]
-        Resource = [
-          aws_bedrockagentcore_agent_runtime.agent_core.agent_runtime_arn,
-          "${aws_bedrockagentcore_agent_runtime.agent_core.agent_runtime_arn}/*"
-        ]
-      },
-      {
-        Sid    = "AgentCoreMemory"
-        Effect = "Allow"
-        Action = [
-          "bedrock-agentcore:CreateEvent",
-          "bedrock-agentcore:DeleteEvent",
-          "bedrock-agentcore:GetEvent",
-          "bedrock-agentcore:GetMemory",
-          "bedrock-agentcore:ListEvents",
-          "bedrock-agentcore:ListMemories",
-          "bedrock-agentcore:RetrieveMemory"
-        ]
-        Resource = aws_bedrockagentcore_memory.agent_core.arn
-      },
-      {
-        Sid    = "AgentCoreBrowser"
-        Effect = "Allow"
-        Action = [
-          "bedrock-agentcore:GetBrowserSession",
-          "bedrock-agentcore:InvokeBrowser",
-          "bedrock-agentcore:InvokeOnBrowserSession",
-          "bedrock-agentcore:ConnectBrowserAutomationStream",
-          "bedrock-agentcore:StartBrowserSession",
-          "bedrock-agentcore:StopBrowserSession",
-          "bedrock-agentcore:UpdateBrowserStream"
-        ]
-        Resource = aws_bedrockagentcore_browser.agent_core.browser_arn
-      },
-      {
-        Sid    = "AgentCoreCodeInterpreter"
-        Effect = "Allow"
-        Action = [
-          "bedrock-agentcore:GetCodeInterpreterSession",
-          "bedrock-agentcore:InvokeCodeInterpreter",
-          "bedrock-agentcore:InvokeOnCodeInterpreterSession",
-          "bedrock-agentcore:StartCodeInterpreterSession",
-          "bedrock-agentcore:StopCodeInterpreterSession"
-        ]
-        Resource = aws_bedrockagentcore_code_interpreter.agent_core.code_interpreter_arn
-      }
-    ]
-  })
-}
+# DISABLED — ECS task policies; uncomment when re-enabling ECS services
+#
+# resource "aws_iam_role_policy" "ecs_task_app" {
+#   name = "${local.name_prefix}-app-access"
+#   role = aws_iam_role.ecs_task.id
+#   ... (full policy in git history)
+# }
+#
+# resource "aws_iam_role_policy" "backend_invoke_agentcore" {
+#   name = "${local.name_prefix}-invoke-agentcore"
+#   role = aws_iam_role.ecs_task.id
+#   ... (full policy in git history)
+# }
