@@ -142,7 +142,22 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
           "application-autoscaling:*",
           "bedrock-agentcore:*",
           "bedrock-agentcore-control:*",
-          "codebuild:*"
+          "codebuild:*",
+          "iam:CreateRole",
+          "iam:DeleteRole",
+          "iam:GetRole",
+          "iam:ListRolePolicies",
+          "iam:DeleteRolePolicy",
+          "iam:PutRolePolicy",
+          "iam:GetRolePolicy",
+          "iam:ListAttachedRolePolicies",
+          "iam:AttachRolePolicy",
+          "iam:DetachRolePolicy",
+          "iam:ListInstanceProfilesForRole",
+          "iam:TagRole",
+          "iam:UntagRole",
+          "iam:UpdateRole",
+          "iam:UpdateAssumeRolePolicy"
         ]
         Resource = "*"
       }
