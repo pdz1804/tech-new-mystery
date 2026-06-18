@@ -62,6 +62,7 @@ backend/celerybeat-schedule
 localstack-data/
 redis-data/
 screenshots/
+docker-compose.local.yml
 
 # Terraform
 **/.terraform/

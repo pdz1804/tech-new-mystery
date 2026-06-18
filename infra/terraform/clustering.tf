@@ -1,3 +1,5 @@
+/* DISABLED — to restore: delete this first line and the closing marker at the bottom of this file
+
 # Clustering Worker Infrastructure
 # Provides ECS task definition, service, auto-scaling, and monitoring
 # for the dedicated clustering worker that performs article clustering jobs
@@ -194,3 +196,5 @@ resource "aws_cloudwatch_metric_alarm" "clustering_task_count_low" {
 
   treat_missing_data = "breaching"
 }
+
+*/

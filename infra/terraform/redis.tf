@@ -1,3 +1,5 @@
+/* DISABLED — to restore: delete this first line and the closing marker at the bottom of this file
+
 resource "aws_elasticache_subnet_group" "redis" {
   name       = "${local.name_prefix}-redis"
   subnet_ids = local.private_subnet_ids
@@ -26,3 +28,5 @@ resource "aws_elasticache_replication_group" "redis" {
     ignore_changes = [security_group_ids, subnet_group_name]
   }
 }
+
+*/

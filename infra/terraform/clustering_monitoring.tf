@@ -1,3 +1,5 @@
+/* DISABLED — to restore: delete this first line and the closing marker at the bottom of this file
+
 # CloudWatch Monitoring for Clustering Infrastructure
 # Includes custom metrics, dashboards, and alarms for clustering job monitoring
 
@@ -453,3 +455,5 @@ output "api_performance_dashboard_url" {
   description = "URL to the API performance dashboard"
   value       = "https://console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#dashboards:name=${aws_cloudwatch_dashboard.api_performance.dashboard_name}"
 }
+
+*/
