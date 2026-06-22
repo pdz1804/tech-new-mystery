@@ -1,0 +1,1629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AWS Cost Analysis — EC2 / ELB Investigation (June 2026)</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --surface: #161b22;
+    --surface2: #1c2130;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent-blue: #58a6ff;
+    --accent-orange: #f0883e;
+    --accent-red: #f85149;
+    --accent-green: #3fb950;
+    --accent-yellow: #d29922;
+    --accent-purple: #bc8cff;
+    --badge-nat: #1a3a5c;
+    --badge-alb: #1a3a2a;
+    --badge-ecs: #3a2a1a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 14px;
+  }
+  a { color: var(--accent-blue); text-decoration: none; }
+
+  /* ── Layout ── */
+  .page { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+
+  /* ── Header ── */
+  .header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 24px;
+    margin-bottom: 32px;
+  }
+  .header h1 {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.3px;
+  }
+  .header .sub {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 6px;
+  }
+  .header .meta-row {
+    display: flex;
+    gap: 16px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+  }
+  .meta-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .meta-chip .dot { width: 6px; height: 6px; border-radius: 50%; }
+  .dot-red { background: var(--accent-red); }
+  .dot-green { background: var(--accent-green); }
+  .dot-yellow { background: var(--accent-yellow); }
+  .dot-blue { background: var(--accent-blue); }
+
+  /* ── Section ── */
+  section { margin-bottom: 40px; }
+  section h2 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 16px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  section h2 .num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  section h3 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--accent-blue);
+    margin-bottom: 10px;
+    margin-top: 20px;
+  }
+
+  /* ── Executive summary cards ── */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+    margin-bottom: 24px;
+  }
+  .summary-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px;
+  }
+  .summary-card .label {
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 8px;
+  }
+  .summary-card .value {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .summary-card .detail {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+  .val-red { color: var(--accent-red); }
+  .val-orange { color: var(--accent-orange); }
+  .val-yellow { color: var(--accent-yellow); }
+  .val-green { color: var(--accent-green); }
+  .val-blue { color: var(--accent-blue); }
+
+  /* ── Alert box ── */
+  .alert {
+    border-radius: 6px;
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .alert-red { background: #2d1117; border: 1px solid #6e2e2e; color: #ffa198; }
+  .alert-yellow { background: #2b2206; border: 1px solid #7a5800; color: #e3b341; }
+  .alert-blue { background: #0c1f38; border: 1px solid #1a4275; color: #79c0ff; }
+  .alert-green { background: #04260f; border: 1px solid #1a4a28; color: #56d364; }
+  .alert strong { font-weight: 600; }
+
+  /* ── Resource card ── */
+  .resource-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .resource-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .resource-name {
+    font-weight: 600;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .resource-body { padding: 16px 18px; }
+  .badge {
+    display: inline-block;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .badge-active { background: #123d20; color: var(--accent-green); border: 1px solid #1f5e32; }
+  .badge-idle { background: #2d2200; color: var(--accent-yellow); border: 1px solid #7a5800; }
+  .badge-warning { background: #3d1a00; color: var(--accent-orange); border: 1px solid #7a3800; }
+  .badge-type { background: var(--surface); color: var(--muted); border: 1px solid var(--border); }
+  .badge-cost { background: #2d1117; color: #ffa198; border: 1px solid #6e2e2e; }
+
+  /* ── Key-value table ── */
+  .kv-grid {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 0;
+    font-size: 13px;
+  }
+  .kv-grid .k {
+    color: var(--muted);
+    padding: 6px 0;
+    border-bottom: 1px solid #1e2530;
+  }
+  .kv-grid .v {
+    color: var(--text);
+    padding: 6px 0 6px 12px;
+    border-bottom: 1px solid #1e2530;
+    font-family: 'SF Mono', 'Consolas', monospace;
+    font-size: 12px;
+    word-break: break-all;
+  }
+  .kv-grid .k:last-of-type, .kv-grid .v:last-of-type { border-bottom: none; }
+
+  /* ── Relationship / flow diagram ── */
+  .diagram-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    overflow-x: auto;
+  }
+  .flow {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+    min-width: 700px;
+  }
+  .flow-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 140px;
+  }
+  .flow-box {
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+    border: 1px solid;
+    min-width: 130px;
+  }
+  .flow-box-internet { background: #0c1f38; border-color: #1a4275; color: #79c0ff; }
+  .flow-box-alb { background: #123d20; border-color: #1f5e32; color: #56d364; }
+  .flow-box-ecs { background: #2d2200; border-color: #7a5800; color: var(--accent-yellow); }
+  .flow-box-nat { background: #2d1117; border-color: #6e2e2e; color: #ffa198; }
+  .flow-box-aws { background: #1a1a3a; border-color: #4040a0; color: var(--accent-purple); }
+  .flow-box-private { background: #1a2a1a; border-color: #3a5a3a; color: #7ee787; }
+  .flow-box-public { background: #1a1a2a; border-color: #3a3a5a; color: #79c0ff; }
+  .flow-arrow {
+    display: flex;
+    align-items: center;
+    padding-top: 20px;
+    color: var(--muted);
+    font-size: 20px;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+  .flow-label {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 6px;
+    text-align: center;
+  }
+  .flow-sub {
+    font-size: 10px;
+    color: var(--muted);
+    font-weight: normal;
+    margin-top: 3px;
+  }
+
+  /* ── Timeline / billing ── */
+  .billing-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .billing-table th {
+    background: var(--surface2);
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+  }
+  .billing-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #1e2530;
+    vertical-align: middle;
+  }
+  .billing-table tr:last-child td { border-bottom: none; }
+  .billing-table tr:hover td { background: var(--surface2); }
+  .bar-wrap { display: flex; align-items: center; gap: 8px; }
+  .bar-bg { background: #1c2130; border-radius: 3px; height: 8px; flex: 1; max-width: 160px; }
+  .bar-fill { height: 8px; border-radius: 3px; background: var(--accent-orange); }
+  .cost-num { font-weight: 600; font-family: 'SF Mono', monospace; }
+  .text-red { color: var(--accent-red); }
+  .text-orange { color: var(--accent-orange); }
+  .text-green { color: var(--accent-green); }
+  .text-muted { color: var(--muted); }
+  .text-yellow { color: var(--accent-yellow); }
+
+  /* ── Finding list ── */
+  .finding-list { list-style: none; }
+  .finding-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid #1e2530;
+    font-size: 13px;
+  }
+  .finding-list li:last-child { border-bottom: none; }
+  .finding-icon {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+  .fi-red { background: #2d1117; color: var(--accent-red); border: 1px solid #6e2e2e; }
+  .fi-yellow { background: #2d2200; color: var(--accent-yellow); border: 1px solid #7a5800; }
+  .fi-blue { background: #0c1f38; color: var(--accent-blue); border: 1px solid #1a4275; }
+  .fi-purple { background: #1a1430; color: var(--accent-purple); border: 1px solid #4a3080; }
+
+  /* ── Plan cards ── */
+  .plan-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .plan-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 18px;
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+  }
+  .plan-num {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .plan-priority-critical { background: #2d1117; color: var(--accent-red); border: 1px solid #6e2e2e; }
+  .plan-priority-high { background: #2d2200; color: var(--accent-orange); border: 1px solid #7a3800; }
+  .plan-priority-medium { background: #2d2200; color: var(--accent-yellow); border: 1px solid #7a5800; }
+  .plan-title { font-weight: 600; font-size: 14px; }
+  .plan-body { padding: 16px 18px; }
+  .plan-savings {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent-green);
+    margin-bottom: 10px;
+  }
+  .plan-steps { list-style: none; }
+  .plan-steps li {
+    padding: 6px 0;
+    font-size: 13px;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    border-bottom: 1px solid #1e2530;
+  }
+  .plan-steps li:last-child { border-bottom: none; }
+  .step-num {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: var(--muted);
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  /* ── AC table ── */
+  .ac-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .ac-table th {
+    background: var(--surface2);
+    padding: 10px 14px;
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+  }
+  .ac-table td {
+    padding: 10px 14px;
+    border-bottom: 1px solid #1e2530;
+    vertical-align: top;
+    line-height: 1.5;
+  }
+  .ac-table tr:last-child td { border-bottom: none; }
+  .ac-id {
+    font-family: 'SF Mono', monospace;
+    font-size: 11px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 2px 6px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .verify-cmd {
+    font-family: 'SF Mono', 'Consolas', monospace;
+    font-size: 11px;
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 10px;
+    color: #7ee787;
+    display: block;
+    margin-top: 4px;
+  }
+
+  /* ── VPC topology table ── */
+  .topo-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .topo-table th {
+    background: var(--surface2);
+    padding: 8px 12px;
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+  }
+  .topo-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #1e2530;
+    font-family: 'SF Mono', monospace;
+    font-size: 11px;
+    vertical-align: top;
+  }
+  .topo-table tr:last-child td { border-bottom: none; }
+  .mono { font-family: 'SF Mono', 'Consolas', monospace; font-size: 11px; }
+  code {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-family: 'SF Mono', monospace;
+    font-size: 11px;
+    color: #e6edf3;
+  }
+
+  /* ── Footer ── */
+  .footer {
+    border-top: 1px solid var(--border);
+    padding-top: 16px;
+    margin-top: 40px;
+    color: var(--muted);
+    font-size: 12px;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* ── Cost projection ── */
+  .cost-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .cost-box-label { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .cost-box-val { font-size: 22px; font-weight: 700; }
+  .cost-arrow { color: var(--accent-green); font-size: 24px; }
+  .separator { background: var(--border); width: 1px; height: 48px; }
+
+  /* ── Tag cloud ── */
+  .tag { display: inline-block; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 2px 7px; font-size: 11px; color: var(--muted); margin: 2px; font-family: monospace; }
+
+  @media (max-width: 600px) {
+    .kv-grid { grid-template-columns: 120px 1fr; }
+    .flow { flex-direction: column; align-items: flex-start; }
+    .flow-arrow { transform: rotate(90deg); padding: 4px 0; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <div class="header">
+    <h1>AWS Infrastructure Cost Analysis</h1>
+    <div class="sub">Region: <strong>us-west-2</strong> · Account: <strong>381492273521</strong> · Projects: DeepResearch + Tech News Mystery</div>
+    <div class="meta-row">
+      <div class="meta-chip"><span class="dot dot-red"></span>Report Date: June 22, 2026</div>
+      <div class="meta-chip"><span class="dot dot-yellow"></span>Analysis Window: June 17–21, 2026</div>
+      <div class="meta-chip"><span class="dot dot-blue"></span>Branch: chore/disable-ecs-alb-redis-billing</div>
+      <div class="meta-chip"><span class="dot dot-green"></span>Toolchain: AWS CLI · Investigation Only</div>
+    </div>
+  </div>
+
+  <!-- 1. Executive Summary -->
+  <section id="summary">
+    <h2><span class="num">1</span> Executive Summary</h2>
+
+    <div class="summary-grid">
+      <div class="summary-card">
+        <div class="label">Total 5-Day Spend</div>
+        <div class="value val-red">$13.28</div>
+        <div class="detail">June 17–21 (EC2 + ELB)</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">NAT Gateway Cost</div>
+        <div class="value val-orange">$9.90</div>
+        <div class="detail">2 NAT GWs × $0.045/hr × ~110hr</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">ALB Cost</div>
+        <div class="value val-yellow">$3.38</div>
+        <div class="detail">Multiple ALBs → now 1 remaining</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">Projected Monthly</div>
+        <div class="value val-red">~$70.56</div>
+        <div class="detail">If current state continues</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">Monthly Savings (if cleaned)</div>
+        <div class="value val-green">~$70.56</div>
+        <div class="detail">All 3 resources: NAT GWs + ALB</div>
+      </div>
+      <div class="summary-card">
+        <div class="label">Running EC2 Instances</div>
+        <div class="value val-green">$0</div>
+        <div class="detail">Zero instances — 100% Fargate</div>
+      </div>
+    </div>
+
+    <div class="alert alert-red">
+      <strong>Key Finding:</strong> Your "EC2" billing line item is 100% NAT Gateway hourly charges — not compute instances. Two NAT Gateways (<code>nat-1-dev</code> and <code>nat-2-dev</code>) in the <strong>DeepResearch dev VPC</strong> have been running continuously since May 11, 2026, costing $2.16/day. The ECS service they were designed to serve has been at <strong>desiredCount=0 since June 12</strong>, meaning these NAT Gateways are serving zero workloads.
+    </div>
+
+    <div class="alert alert-yellow">
+      <strong>ALB Finding:</strong> The billing pattern (declining from $1.08 → $0.315/day) confirms multiple ALBs were terminated during the June 17–21 window. As of June 22, <strong>1 ALB remains active</strong> (<code>deep-research-agent-frontend-dev</code>) with zero active targets behind it, still costing ~$5.76/month.
+    </div>
+  </section>
+
+  <!-- 2. Billing Analysis -->
+  <section id="billing">
+    <h2><span class="num">2</span> Billing Pattern Analysis</h2>
+
+    <h3>NAT Gateway (EC2 Service Line) — $9.90 over 5 days</h3>
+    <div class="resource-card" style="margin-bottom:20px;">
+      <table class="billing-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Daily Cost</th>
+            <th>% of Max</th>
+            <th>NAT GW Hours</th>
+            <th>Implied Gateway Count</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>June 17</td>
+            <td class="cost-num text-orange">$2.16</td>
+            <td><div class="bar-wrap"><div class="bar-bg"><div class="bar-fill" style="width:100%"></div></div>100%</div></td>
+            <td class="mono">48.0 hrs</td>
+            <td class="mono">2 × $0.045/hr × 24h = $2.16 ✓</td>
+            <td class="text-muted">Stable, 2 NAT GWs</td>
+          </tr>
+          <tr>
+            <td>June 18</td>
+            <td class="cost-num text-orange">$2.16</td>
+            <td><div class="bar-wrap"><div class="bar-bg"><div class="bar-fill" style="width:100%"></div></div>100%</div></td>
+            <td class="mono">48.0 hrs</td>
+            <td class="mono">2 × $0.045/hr × 24h = $2.16 ✓</td>
+            <td class="text-muted">Stable, 2 NAT GWs</td>
+          </tr>
+          <tr>
+            <td>June 19</td>
+            <td class="cost-num text-orange">$2.16</td>
+            <td><div class="bar-wrap"><div class="bar-bg"><div class="bar-fill" style="width:100%"></div></div>100%</div></td>
+            <td class="mono">48.0 hrs</td>
+            <td class="mono">2 × $0.045/hr × 24h = $2.16 ✓</td>
+            <td class="text-muted">Stable, 2 NAT GWs</td>
+          </tr>
+          <tr>
+            <td>June 20</td>
+            <td class="cost-num text-orange">$2.16</td>
+            <td><div class="bar-wrap"><div class="bar-bg"><div class="bar-fill" style="width:100%"></div></div>100%</div></td>
+            <td class="mono">48.0 hrs</td>
+            <td class="mono">2 × $0.045/hr × 24h = $2.16 ✓</td>
+            <td class="text-muted">Stable, 2 NAT GWs</td>
+          </tr>
+          <tr>
+            <td>June 21</td>
+            <td class="cost-num text-yellow">$1.26</td>
+            <td><div class="bar-wrap"><div class="bar-bg"><div class="bar-fill" style="width:58%;background:#d29922"></div></div>58%</div></td>
+            <td class="mono">28.0 hrs</td>
+            <td class="mono">Partial day — 1 GW terminating?</td>
+            <td class="text-yellow">Drop suggests Terraform apply ran</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>ELB (Application Load Balancer) — $3.38 over 5 days (declining)</h3>
+    <div class="resource-card">
+      <table class="billing-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Daily Cost</th>
+            <th>% of Max</th>
+            <th>Implied ALBs Running</th>
+            <th>LCU Charges</th>
+            <th>Trend</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>June 17</td>
+            <td class="cost-num text-orange">$1.08</td>
+            <td><div class="bar-wrap"><div class="bar-bg"><div class="bar-fill" style="width:100%"></div></div>100%</div></td>
+            <td class="mono">≈ 2.4 ALBs full day</td>
+            <td class="text-muted">~$0.00 (no traffic)</td>
+            <td class="text-red">Peak</td>
+          </tr>
+          <tr>
+            <td>June 18</td>
+            <td class="cost-num text-orange">$0.90</td>
+            <td><div class="bar-wrap"><div class="bar-bg"><div class="bar-fill" style="width:83%;"></div></div>83%</div></td>
+            <td class="mono">≈ 2 ALBs full day</td>
+            <td class="text-muted">~$0.00</td>
+            <td class="text-yellow">Declining</td>
+          </tr>
+          <tr>
+            <td>June 19</td>
+            <td class="cost-num text-yellow">$0.54</td>
+            <td><div class="bar-wrap"><div class="bar-bg"><div class="bar-fill" style="width:50%;background:#d29922"></div></div>50%</div></td>
+            <td class="mono">≈ 1.2 ALBs</td>
+            <td class="text-muted">~$0.00</td>
+            <td class="text-yellow">Declining</td>
+          </tr>
+          <tr>
+            <td>June 20</td>
+            <td class="cost-num text-yellow">$0.54</td>
+            <td><div class="bar-wrap"><div class="bar-bg"><div class="bar-fill" style="width:50%;background:#d29922"></div></div>50%</div></td>
+            <td class="mono">≈ 1.2 ALBs</td>
+            <td class="text-muted">~$0.00</td>
+            <td class="text-muted">Stable low</td>
+          </tr>
+          <tr>
+            <td>June 21</td>
+            <td class="cost-num text-green">$0.315</td>
+            <td><div class="bar-wrap"><div class="bar-bg"><div class="bar-fill" style="width:29%;background:#3fb950"></div></div>29%</div></td>
+            <td class="mono">≈ 0.7 (partial or 1 remaining)</td>
+            <td class="text-muted">~$0.00</td>
+            <td class="text-green">Near zero</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="alert alert-blue" style="margin-top:16px;">
+      <strong>Interpretation:</strong> The Terraform branch <code>chore/disable-ecs-alb-redis-billing</code> progressively destroyed ALBs. The billing pattern confirms ALBs were being terminated between June 17 and June 21. Today (June 22), only <strong>1 ALB remains</strong> in state <code>active</code>. The NAT Gateways, however, have NOT been deleted — they remain fully operational and billing at full rate.
+    </div>
+  </section>
+
+  <!-- 3. Infrastructure Inventory -->
+  <section id="inventory">
+    <h2><span class="num">3</span> Live Infrastructure Inventory</h2>
+
+    <h3>NAT Gateway #1 — nat-1-dev</h3>
+    <div class="resource-card">
+      <div class="resource-header">
+        <div class="resource-name">
+          <span>deep-research-agent-nat-1-dev</span>
+          <span class="badge badge-active">AVAILABLE</span>
+          <span class="badge badge-cost">$32.40/month</span>
+        </div>
+        <span class="badge badge-type">NAT Gateway · Public</span>
+      </div>
+      <div class="resource-body">
+        <div class="kv-grid">
+          <div class="k">Resource ID</div><div class="v">nat-0443a068bdd67f607</div>
+          <div class="k">VPC</div><div class="v">vpc-08489f26f8b69bdef (DeepResearch dev, 10.0.0.0/16)</div>
+          <div class="k">Subnet (Public)</div><div class="v">subnet-01321aeff033ddee5 · deep-research-agent-public-1-dev · us-west-2a</div>
+          <div class="k">Elastic IP</div><div class="v">16.146.168.190 (eipalloc-0d5eea125f28aeb5f)</div>
+          <div class="k">Private IP</div><div class="v">10.0.0.117</div>
+          <div class="k">ENI</div><div class="v">eni-0dcd3d78d7895ebd8</div>
+          <div class="k">Created</div><div class="v">2026-05-11 08:50:31 UTC</div>
+          <div class="k">Routes</div><div class="v">rtb-0b21953c429ad0191 (private-rt-1-dev) → 0.0.0.0/0 → this NAT GW</div>
+          <div class="k">Serves</div><div class="v">subnet-0640e3ab87ad03bbc (private-1-dev, us-west-2a)</div>
+          <div class="k">Tags</div><div class="v">Project=DeepResearch, Environment=dev, ManagedBy=Terraform</div>
+        </div>
+      </div>
+    </div>
+
+    <h3>NAT Gateway #2 — nat-2-dev</h3>
+    <div class="resource-card">
+      <div class="resource-header">
+        <div class="resource-name">
+          <span>deep-research-agent-nat-2-dev</span>
+          <span class="badge badge-active">AVAILABLE</span>
+          <span class="badge badge-cost">$32.40/month</span>
+        </div>
+        <span class="badge badge-type">NAT Gateway · Public</span>
+      </div>
+      <div class="resource-body">
+        <div class="kv-grid">
+          <div class="k">Resource ID</div><div class="v">nat-038474c5757c5d0b2</div>
+          <div class="k">VPC</div><div class="v">vpc-08489f26f8b69bdef (DeepResearch dev, 10.0.0.0/16)</div>
+          <div class="k">Subnet (Public)</div><div class="v">subnet-05e19787502b5fade · deep-research-agent-public-2-dev · us-west-2b</div>
+          <div class="k">Elastic IP</div><div class="v">32.184.164.75 (eipalloc-0377c1e84323a52bd)</div>
+          <div class="k">Private IP</div><div class="v">10.0.1.233</div>
+          <div class="k">ENI</div><div class="v">eni-0c18f5d09f0b92090</div>
+          <div class="k">Created</div><div class="v">2026-05-11 08:50:31 UTC</div>
+          <div class="k">Routes</div><div class="v">rtb-07275ace213ec1b36 (private-rt-2-dev) → 0.0.0.0/0 → this NAT GW</div>
+          <div class="k">Serves</div><div class="v">subnet-0003b2cbc47293d66 (private-2-dev, us-west-2b)</div>
+          <div class="k">Tags</div><div class="v">Project=DeepResearch, Environment=dev, ManagedBy=Terraform</div>
+        </div>
+      </div>
+    </div>
+
+    <h3>Application Load Balancer</h3>
+    <div class="resource-card">
+      <div class="resource-header">
+        <div class="resource-name">
+          <span>deep-research-agent-frontend-dev</span>
+          <span class="badge badge-idle">ACTIVE (0 targets)</span>
+          <span class="badge badge-cost">$5.76/month</span>
+        </div>
+        <span class="badge badge-type">ALB · Internet-facing</span>
+      </div>
+      <div class="resource-body">
+        <div class="kv-grid">
+          <div class="k">ARN</div><div class="v">arn:aws:elasticloadbalancing:us-west-2:381492273521:loadbalancer/app/deep-research-agent-frontend-dev/6dceef222ea60172</div>
+          <div class="k">DNS Name</div><div class="v">deep-research-agent-frontend-dev-870276299.us-west-2.elb.amazonaws.com</div>
+          <div class="k">VPC</div><div class="v">vpc-08489f26f8b69bdef</div>
+          <div class="k">Subnets</div><div class="v">subnet-01321aeff033ddee5 (us-west-2a public) + subnet-05e19787502b5fade (us-west-2b public)</div>
+          <div class="k">Scheme</div><div class="v">internet-facing</div>
+          <div class="k">Protocol</div><div class="v">HTTP:80 → forward to target group (port 8000)</div>
+          <div class="k">HTTPS</div><div class="v">❌ No TLS listener configured</div>
+          <div class="k">Security Group</div><div class="v">sg-0437d0e01365cf0af</div>
+          <div class="k">Idle Timeout</div><div class="v">3600s ⚠️ (default is 60s — 60× longer than needed)</div>
+          <div class="k">Deletion Protection</div><div class="v">Disabled</div>
+          <div class="k">Created</div><div class="v">2026-05-11T08:50:32 UTC</div>
+          <div class="k">Target Group</div><div class="v">deep-research-agent-frontend-dev — type=ip, port=8000, /api/health check</div>
+          <div class="k">Active Targets</div><div class="v">0 (ECS service is at desiredCount=0)</div>
+        </div>
+      </div>
+    </div>
+
+    <h3>ECS Cluster &amp; Service</h3>
+    <div class="resource-card">
+      <div class="resource-header">
+        <div class="resource-name">
+          <span>deep-research-agent-frontend-dev</span>
+          <span class="badge badge-idle">ACTIVE / 0 TASKS</span>
+        </div>
+        <span class="badge badge-type">ECS Fargate</span>
+      </div>
+      <div class="resource-body">
+        <div class="kv-grid">
+          <div class="k">Cluster ARN</div><div class="v">arn:aws:ecs:us-west-2:381492273521:cluster/deep-research-agent-frontend-dev</div>
+          <div class="k">Service Status</div><div class="v">ACTIVE</div>
+          <div class="k">Desired Count</div><div class="v">0 (scaled to zero on 2026-06-12)</div>
+          <div class="k">Running Count</div><div class="v">0</div>
+          <div class="k">Launch Type</div><div class="v">FARGATE (explains zero EC2 instance charges)</div>
+          <div class="k">Platform</div><div class="v">Linux / LATEST (1.4.0 used at last deploy)</div>
+          <div class="k">Subnets</div><div class="v">subnet-0003b2cbc47293d66 (private-2, us-west-2b) + subnet-0640e3ab87ad03bbc (private-1, us-west-2a)</div>
+          <div class="k">Public IP</div><div class="v">DISABLED (requires NAT GW for outbound)</div>
+          <div class="k">Security Group</div><div class="v">sg-0c4ee7c0d70c5aacb</div>
+          <div class="k">Load Balancer</div><div class="v">Attached to ALB target group — container port 8000 (frontend)</div>
+          <div class="k">Task Definition</div><div class="v">deep-research-agent-frontend-dev:1</div>
+          <div class="k">Fargate Cost Now</div><div class="v">$0.00 (0 tasks running)</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. VPC Topology -->
+  <section id="topology">
+    <h2><span class="num">4</span> VPC Topology &amp; Network Relationships</h2>
+
+    <h3>All VPCs in us-west-2</h3>
+    <div class="resource-card">
+      <table class="topo-table">
+        <thead>
+          <tr>
+            <th>VPC ID</th>
+            <th>Name</th>
+            <th>CIDR</th>
+            <th>Project</th>
+            <th>NAT GWs</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>vpc-08489f26f8b69bdef</td>
+            <td style="color:var(--accent-orange)">deep-research-agent-vpc-dev</td>
+            <td>10.0.0.0/16</td>
+            <td>DeepResearch</td>
+            <td style="color:var(--accent-red)">2 × ACTIVE ⚠️</td>
+            <td><span class="badge badge-warning">COST DRIVER</span></td>
+          </tr>
+          <tr>
+            <td>vpc-07f5f6659edf8ee09</td>
+            <td>tech-news-mystery-prod-vpc</td>
+            <td>10.40.0.0/16</td>
+            <td>tech-news-mystery</td>
+            <td style="color:var(--accent-green)">None</td>
+            <td><span class="badge badge-type">Terraform-managed</span></td>
+          </tr>
+          <tr>
+            <td>vpc-0cb8708dd5185fc6a</td>
+            <td style="color:var(--accent-yellow)">tech-news-mystery-prod-vpc</td>
+            <td>10.40.0.0/16</td>
+            <td>tech-news-mystery</td>
+            <td style="color:var(--accent-green)">None</td>
+            <td><span class="badge badge-idle">⚠️ DUPLICATE / ORPHAN</span></td>
+          </tr>
+          <tr>
+            <td>vpc-06455a7fc73c8d965</td>
+            <td style="color:var(--muted)">Default VPC</td>
+            <td>172.31.0.0/16</td>
+            <td>—</td>
+            <td style="color:var(--accent-green)">None</td>
+            <td><span class="badge badge-type">AWS Default</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="alert alert-yellow" style="margin-top:12px;">
+      <strong>Orphan VPC Detected:</strong> Two VPCs share the same name <code>tech-news-mystery-prod-vpc</code> and identical CIDR <code>10.40.0.0/16</code>. The second one (<code>vpc-0cb8708dd5185fc6a</code>) has minimal tags (no <code>ManagedBy=terraform</code>), suggesting it's a stale duplicate from a failed or manual infrastructure apply. Both have subnets and internet gateways attached. Neither has NAT Gateways (no current cost impact), but the duplicate should be investigated and cleaned up.
+    </div>
+
+    <h3>Subnet Map — DeepResearch dev VPC (cost driver)</h3>
+    <div class="resource-card">
+      <table class="topo-table">
+        <thead>
+          <tr>
+            <th>Subnet ID</th>
+            <th>Name</th>
+            <th>AZ</th>
+            <th>CIDR</th>
+            <th>Type</th>
+            <th>Internet Route</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>subnet-01321aeff033ddee5</td>
+            <td>public-1-dev</td>
+            <td>us-west-2a</td>
+            <td>10.0.0.0/24</td>
+            <td style="color:var(--accent-blue)">PUBLIC</td>
+            <td>→ igw-084eb063fc23c17d9 (direct)</td>
+          </tr>
+          <tr>
+            <td>subnet-05e19787502b5fade</td>
+            <td>public-2-dev</td>
+            <td>us-west-2b</td>
+            <td>10.0.1.0/24</td>
+            <td style="color:var(--accent-blue)">PUBLIC</td>
+            <td>→ igw-084eb063fc23c17d9 (direct)</td>
+          </tr>
+          <tr>
+            <td>subnet-0640e3ab87ad03bbc</td>
+            <td>private-1-dev (ECS)</td>
+            <td>us-west-2a</td>
+            <td>10.0.10.0/24</td>
+            <td style="color:var(--accent-orange)">PRIVATE</td>
+            <td>→ nat-0443a068bdd67f607 (nat-1-dev)</td>
+          </tr>
+          <tr>
+            <td>subnet-0003b2cbc47293d66</td>
+            <td>private-2-dev (ECS)</td>
+            <td>us-west-2b</td>
+            <td>10.0.11.0/24</td>
+            <td style="color:var(--accent-orange)">PRIVATE</td>
+            <td>→ nat-038474c5757c5d0b2 (nat-2-dev)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 5. Resource Relationship Diagram -->
+  <section id="relationships">
+    <h2><span class="num">5</span> Resource Relationship Diagram</h2>
+
+    <div class="diagram-wrap">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:16px;">Traffic flow when ECS service is active (historical) vs. current state</div>
+      <div class="flow">
+        <!-- Internet -->
+        <div class="flow-col">
+          <div class="flow-box flow-box-internet">🌐 Internet<br><div class="flow-sub">User traffic</div></div>
+          <div class="flow-label">External</div>
+        </div>
+        <div class="flow-arrow">→</div>
+
+        <!-- ALB -->
+        <div class="flow-col">
+          <div class="flow-box flow-box-alb">⚖️ ALB<br><div class="flow-sub">deep-research-agent<br>-frontend-dev<br>HTTP:80</div></div>
+          <div class="flow-label">Public Subnets<br>(us-west-2a/b)</div>
+        </div>
+        <div class="flow-arrow">→</div>
+
+        <!-- ECS -->
+        <div class="flow-col">
+          <div class="flow-box flow-box-ecs">📦 ECS Fargate<br><div class="flow-sub">frontend service<br>port 8000<br>desiredCount=0 ❌</div></div>
+          <div class="flow-label">Private Subnets<br>(10.0.10/11.0/24)</div>
+        </div>
+        <div class="flow-arrow">→</div>
+
+        <!-- NAT -->
+        <div class="flow-col">
+          <div class="flow-box flow-box-nat">🔁 NAT GWs<br><div class="flow-sub">nat-1-dev (us-w2a)<br>nat-2-dev (us-w2b)<br>$2.16/day IDLE</div></div>
+          <div class="flow-label">Public Subnets<br>(Elastic IPs)</div>
+        </div>
+        <div class="flow-arrow">→</div>
+
+        <!-- AWS APIs -->
+        <div class="flow-col">
+          <div class="flow-box flow-box-aws">☁️ AWS APIs<br><div class="flow-sub">Bedrock, S3, ECR<br>DynamoDB, etc.</div></div>
+          <div class="flow-label">Internet (was needed<br>when tasks ran)</div>
+        </div>
+      </div>
+
+      <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border);">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:12px;"><strong style="color:var(--accent-red)">Current State (June 22):</strong> ECS has 0 tasks. The ALB has no targets. NAT GWs have no traffic but remain allocated and billed.</div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;">
+          <div><span style="color:var(--accent-green)">●</span> ALB → ECS: <span style="color:var(--accent-red)">BROKEN (0 tasks)</span></div>
+          <div><span style="color:var(--accent-green)">●</span> ECS → NAT: <span style="color:var(--accent-red)">NO TRAFFIC (0 tasks)</span></div>
+          <div><span style="color:var(--accent-green)">●</span> NAT → Internet: <span style="color:var(--accent-red)">$0.000001 data (idle)</span></div>
+          <div><span style="color:var(--accent-yellow)">●</span> NAT hourly charge: <span style="color:var(--accent-red)">$0.045/hr × 2 = $2.16/day (running 24/7)</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. Key Findings -->
+  <section id="findings">
+    <h2><span class="num">6</span> Key Findings</h2>
+
+    <ul class="finding-list">
+      <li>
+        <div class="finding-icon fi-red">!</div>
+        <div>
+          <strong>F-01 · NAT Gateways are idle but billing.</strong>
+          Both <code>nat-0443a068bdd67f607</code> (nat-1-dev) and <code>nat-038474c5757c5d0b2</code> (nat-2-dev) are in state <code>available</code> and have been running since 2026-05-11. The ECS service they serve has been at desiredCount=0 since 2026-06-12. NAT Gateways charge the hourly rate ($0.045/hr) regardless of whether any traffic passes through them. Combined cost: $2.16/day, $64.80/month — with <strong>zero bytes of application traffic</strong>.
+        </div>
+      </li>
+      <li>
+        <div class="finding-icon fi-red">!</div>
+        <div>
+          <strong>F-02 · ALB is active with zero backend targets.</strong>
+          The ALB <code>deep-research-agent-frontend-dev</code> is in state <code>active</code> with an HTTP:80 listener forwarding to a target group configured for IP-based targets at port 8000. Since ECS is at 0 tasks, all health checks fail and the target group has 0 healthy targets. The ALB still bills at the fixed hourly rate ($0.008/hr = $5.76/month). Traffic volume through it is effectively zero (LCU charges negligible).
+        </div>
+      </li>
+      <li>
+        <div class="finding-icon fi-yellow">⚠</div>
+        <div>
+          <strong>F-03 · ECS service still exists and is ACTIVE even at 0 tasks.</strong>
+          The service <code>deep-research-agent-frontend-dev</code> is in status <code>ACTIVE</code> with <code>desiredCount=0</code>. This means it can be scaled back up at any time. The service configuration remains fully intact. This is intentional per the branch name. However, it also means the ALB and NAT Gateways are being retained for a service that currently runs nothing — creating a "standby tax" with no benefit.
+        </div>
+      </li>
+      <li>
+        <div class="finding-icon fi-yellow">⚠</div>
+        <div>
+          <strong>F-04 · Duplicate tech-news-mystery VPC detected.</strong>
+          Two VPCs share the name <code>tech-news-mystery-prod-vpc</code> and the same CIDR <code>10.40.0.0/16</code>. VPC <code>vpc-0cb8708dd5185fc6a</code> has only partial tags (no ManagedBy=terraform), suggesting it's an orphan from a manual or failed creation. Both have subnets and internet gateways (free resources), but the duplicate adds configuration clutter and risk of accidentally deploying workloads into the wrong VPC. Neither currently hosts NAT Gateways or paid resources.
+        </div>
+      </li>
+      <li>
+        <div class="finding-icon fi-yellow">⚠</div>
+        <div>
+          <strong>F-05 · Elastic IPs will become billable if NAT GWs are deleted without releasing them.</strong>
+          Two Elastic IPs are allocated: <code>eipalloc-0d5eea125f28aeb5f</code> (16.146.168.190) and <code>eipalloc-0377c1e84323a52bd</code> (32.184.164.75). Currently they are attached to NAT Gateways and cost $0 while attached. If NAT Gateways are deleted and the EIPs are not simultaneously released, each unattached EIP costs $0.005/hr ($3.60/month each, $7.20/month total). Terraform should release them automatically if the resources are managed together.
+        </div>
+      </li>
+      <li>
+        <div class="finding-icon fi-blue">i</div>
+        <div>
+          <strong>F-06 · ALB idle timeout is set to 3600s (1 hour).</strong>
+          The default ALB idle timeout is 60 seconds. This ALB is configured at 3600 seconds — 60× the default. For a frontend application, this is unusual and was likely never intentionally set. While it doesn't directly increase cost, it can hold open idle connections longer than necessary. This should be corrected if the ALB is re-enabled.
+        </div>
+      </li>
+      <li>
+        <div class="finding-icon fi-blue">i</div>
+        <div>
+          <strong>F-07 · No HTTPS configured on the ALB.</strong>
+          The ALB only has an HTTP:80 listener. There is no TLS termination, no HTTPS redirect, and no ACM certificate attached. For a production frontend, this is a security gap. If the ALB is restored to service, TLS should be added.
+        </div>
+      </li>
+      <li>
+        <div class="finding-icon fi-blue">i</div>
+        <div>
+          <strong>F-08 · Zero data transfer costs confirm genuinely idle state.</strong>
+          The original billing data showed $0.000001 in NAT Gateway data processing fees — essentially zero. This confirms that no application traffic has been flowing through the NAT Gateways. The entire cost is from the hourly presence fee, not from actual usage.
+        </div>
+      </li>
+      <li>
+        <div class="finding-icon fi-yellow">⚠</div>
+        <div>
+          <strong>F-09 · EFS filesystem with 4 active mount targets in default VPC (hidden cost).</strong>
+          Filesystem <code>fs-0a87977063ddb1658</code> has 4 mount target ENIs (<code>eni-0c3da2b27cf00ae60</code>, <code>eni-0de582ddd3769f08c</code>, <code>eni-03a725ad2f728b3d9</code>, <code>eni-007d59db1067debcf</code>) across AZs us-west-2a/b/c/d in the <strong>default VPC</strong> (<code>vpc-06455a7fc73c8d965</code>). This filesystem is not part of the DeepResearch or tech-news-mystery Terraform configurations and was not captured in the EC2/ELB billing analysis. EFS charges $0.30/GB-month for Standard storage. The actual cost depends on how much data is stored — this should be inspected separately via AWS Cost Explorer under "EFS" service.
+        </div>
+      </li>
+      <li>
+        <div class="finding-icon fi-purple">i</div>
+        <div>
+          <strong>F-10 · BedrockAgentCore (AgentCore runtime) still active in Terraform state.</strong>
+          The tech-news-mystery prod Terraform state (S3: <code>tech-news-mystery-tfstate-381492273521</code>) contains active <code>aws_bedrockagentcore_agent_runtime</code>, <code>aws_bedrockagentcore_browser</code>, <code>aws_bedrockagentcore_code_interpreter</code>, and <code>aws_bedrockagentcore_memory</code> resources. ARN: <code>arn:aws:bedrock-agentcore:us-west-2:381492273521:runtime/tech_news_mystery_prod_agent-kst5dmCC4B</code>. These are NOT EC2/ELB costs and do not appear in the billing window analyzed here, but they may contribute to the overall AWS bill under the "Bedrock" service. These were intentionally left active per the branch name (only ECS/ALB/Redis were disabled).
+        </div>
+      </li>
+      <li>
+        <div class="finding-icon fi-blue">i</div>
+        <div>
+          <strong>F-11 · tech-news-mystery-prod ALB was already deleted (explains billing decline).</strong>
+          The Terraform state references an ALB <code>app/tech-news-mystery-prod-alb/b5f845b788e72feb</code> (DNS: <code>tech-news-mystery-prod-alb-840627461.us-west-2.elb.amazonaws.com</code>), but <code>aws elbv2 describe-load-balancers</code> returns only 1 ALB today. This confirms the billing pattern: the tech-news-mystery-prod ALB was destroyed between June 17 and June 21, explaining the ELB cost declining from $1.08 → $0.315/day. The only surviving ALB is the <strong>DeepResearch</strong> one (<code>deep-research-agent-frontend-dev</code>).
+        </div>
+      </li>
+      <li>
+        <div class="finding-icon fi-blue">i</div>
+        <div>
+          <strong>F-12 · Third Elastic IP is ALB-managed (auto-released on ALB deletion).</strong>
+          A third EIP (<code>eipalloc-02426f5aac6fe441c</code>, IP <code>35.83.28.159</code>) is associated with ENI <code>eni-0c116e6e36cad504a</code> and tagged <code>ServiceManaged: alb</code>. This EIP is managed by the ALB service automatically and will be released when the <code>deep-research-agent-frontend-dev</code> ALB is deleted — no manual action required. Unlike the 2 NAT GW EIPs (which are Terraform-managed), this one has no tags and requires no explicit Terraform resource for cleanup.
+        </div>
+      </li>
+    </ul>
+  </section>
+
+  <!-- 7. Root Cause Analysis -->
+  <section id="rca">
+    <h2><span class="num">7</span> Root Cause Analysis</h2>
+
+    <div class="alert alert-red">
+      <strong>Root Cause:</strong> The Terraform branch <code>chore/disable-ecs-alb-redis-billing</code> successfully set ECS <code>desiredCount=0</code> and destroyed most ALBs, but did <em>not</em> destroy the NAT Gateways or the final ALB. These infrastructure components continue to charge hourly regardless of whether any workloads use them.
+    </div>
+
+    <div class="resource-card">
+      <div class="resource-body">
+        <h3 style="margin-top:0">Why do NAT Gateways keep charging?</h3>
+        <p style="font-size:13px;line-height:1.7;color:var(--text);">
+          AWS NAT Gateways are billed on two dimensions: (1) hourly presence at $0.045/hr, and (2) data processing at $0.045/GB. Setting ECS tasks to 0 eliminates data processing fees but does NOT stop the hourly charge. The only way to stop NAT Gateway hourly charges is to <strong>delete the NAT Gateway resource</strong> itself (via AWS console, CLI, or Terraform <code>terraform destroy</code> on the resource). Simply stopping workloads is insufficient.
+        </p>
+        <h3>Why does the ALB keep charging?</h3>
+        <p style="font-size:13px;line-height:1.7;color:var(--text);">
+          Similarly, ALBs bill an hourly rate ($0.008/hr) plus LCU charges based on traffic. The LCU charges are near-zero since there's no traffic, but the hourly fixed cost accumulates. The final remaining ALB must be deleted (not just have its targets set to 0) to eliminate these charges.
+        </p>
+        <h3>Timeline of events</h3>
+        <div style="font-size:13px;line-height:1.8;padding:12px;background:var(--surface2);border-radius:6px;border:1px solid var(--border);font-family:monospace;">
+          2026-05-11 → ECS cluster, ALB, NAT GWs all created by Terraform (initial deploy)<br>
+          2026-06-12 → ECS service scaled to desiredCount=0 (Terraform apply on disable branch)<br>
+          2026-06-17 → Billing window start: 2-3 ALBs + 2 NAT GWs all still running<br>
+          2026-06-17→21 → Additional ALBs destroyed progressively (billing drops from $1.08→$0.315/day ELB)<br>
+          2026-06-22 → Current: 1 ALB + 2 NAT GWs still active. ECS at 0 tasks. Daily cost: ~$2.36/day
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8. Current vs Target Cost -->
+  <section id="costs">
+    <h2><span class="num">8</span> Cost Projection</h2>
+
+    <div class="cost-box">
+      <div>
+        <div class="cost-box-label">Current Monthly Run Rate (June 22 state)</div>
+        <div class="cost-box-val val-red">~$70.56 / month</div>
+      </div>
+      <div class="separator"></div>
+      <div>
+        <div class="cost-box-label">2 × NAT Gateway hourly</div>
+        <div style="font-size:15px;color:var(--accent-orange);font-weight:600;">$64.80</div>
+      </div>
+      <div class="separator"></div>
+      <div>
+        <div class="cost-box-label">1 × ALB hourly</div>
+        <div style="font-size:15px;color:var(--accent-yellow);font-weight:600;">$5.76</div>
+      </div>
+      <div class="separator"></div>
+      <div>
+        <div class="cost-box-label">ECS Fargate (0 tasks)</div>
+        <div style="font-size:15px;color:var(--accent-green);font-weight:600;">$0.00</div>
+      </div>
+      <div class="separator"></div>
+      <div class="cost-arrow">→</div>
+      <div>
+        <div class="cost-box-label">Target Monthly Cost (after cleanup)</div>
+        <div class="cost-box-val val-green">$0.00 / month</div>
+      </div>
+    </div>
+
+    <div class="resource-card">
+      <table class="billing-table">
+        <thead>
+          <tr>
+            <th>Resource</th>
+            <th>Current State</th>
+            <th>Monthly Cost</th>
+            <th>After Cleanup</th>
+            <th>Savings</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>NAT GW nat-1-dev</strong></td>
+            <td><span class="badge badge-active">RUNNING</span></td>
+            <td class="cost-num text-red">$32.40</td>
+            <td class="text-green">$0.00 (deleted)</td>
+            <td class="cost-num text-green">$32.40</td>
+          </tr>
+          <tr>
+            <td><strong>NAT GW nat-2-dev</strong></td>
+            <td><span class="badge badge-active">RUNNING</span></td>
+            <td class="cost-num text-red">$32.40</td>
+            <td class="text-green">$0.00 (deleted)</td>
+            <td class="cost-num text-green">$32.40</td>
+          </tr>
+          <tr>
+            <td><strong>ALB deep-research-agent-frontend-dev</strong></td>
+            <td><span class="badge badge-idle">ACTIVE (0 targets)</span></td>
+            <td class="cost-num text-yellow">$5.76</td>
+            <td class="text-green">$0.00 (deleted)</td>
+            <td class="cost-num text-green">$5.76</td>
+          </tr>
+          <tr>
+            <td><strong>EIP (2 allocated)</strong></td>
+            <td><span class="badge badge-type">Attached to NAT GWs</span></td>
+            <td class="cost-num text-green">$0.00</td>
+            <td class="text-yellow">$7.20 if not released!</td>
+            <td class="cost-num text-yellow">Release EIPs</td>
+          </tr>
+          <tr style="background:var(--surface2);">
+            <td><strong>TOTAL</strong></td>
+            <td>—</td>
+            <td class="cost-num text-red" style="font-size:16px;">$70.56</td>
+            <td class="text-green">$0.00</td>
+            <td class="cost-num text-green" style="font-size:16px;">$70.56 / month</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 9. Proposed Plans -->
+  <section id="plans">
+    <h2><span class="num">9</span> Proposed Remediation Plans</h2>
+
+    <div class="plan-card">
+      <div class="plan-header">
+        <div class="plan-num plan-priority-critical">1</div>
+        <div>
+          <div class="plan-title">P1 · Delete NAT Gateways via AWS CLI (CRITICAL — $64.80/month savings)</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px;">Priority: CRITICAL · Effort: Low (AWS CLI, 4 commands) · Risk: Low (ECS already at 0 tasks)</div>
+        </div>
+      </div>
+      <div class="plan-body">
+        <div class="plan-savings">Saves $64.80/month · Billing stops ~60s after deletion</div>
+        <div class="alert alert-yellow" style="margin-bottom:14px;">
+          <strong>⚠ These resources are NOT in this repo's Terraform state.</strong> The NAT Gateways belong to the <strong>DeepResearch stack</strong> (separate repository, VPC <code>vpc-08489f26f8b69bdef</code>, 10.0.0.0/16). Running <code>terraform plan</code> in <code>infra/terraform/</code> will show 0 changes — it has never managed these resources. Use the AWS CLI commands below instead, or target the DeepResearch repo's Terraform directly.
+        </div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">
+          Since ECS is already at desiredCount=0 and generating zero traffic, removing the NAT Gateways carries no risk to any running workload. The VPC, subnets, and route tables can remain — only the NAT GW and EIP resources need to be destroyed. Order matters: delete NAT GWs first, then release EIPs (EIPs cannot be released while attached).
+        </p>
+        <ul class="plan-steps">
+          <li><div class="step-num">1</div>Delete NAT Gateway 1 (nat-1-dev, us-west-2a):<br><code style="font-size:11px;display:block;margin-top:4px;background:#0d1117;border:1px solid var(--border);padding:6px 8px;border-radius:4px;color:#7ee787;">aws ec2 delete-nat-gateway --nat-gateway-id nat-0443a068bdd67f607 --region us-west-2</code></li>
+          <li><div class="step-num">2</div>Delete NAT Gateway 2 (nat-2-dev, us-west-2b):<br><code style="font-size:11px;display:block;margin-top:4px;background:#0d1117;border:1px solid var(--border);padding:6px 8px;border-radius:4px;color:#7ee787;">aws ec2 delete-nat-gateway --nat-gateway-id nat-038474c5757c5d0b2 --region us-west-2</code></li>
+          <li><div class="step-num">3</div>Wait ~60s for state to reach <code>deleted</code>, then release EIP 1 (prevents $3.60/month unattached EIP charge):<br><code style="font-size:11px;display:block;margin-top:4px;background:#0d1117;border:1px solid var(--border);padding:6px 8px;border-radius:4px;color:#7ee787;">aws ec2 release-address --allocation-id eipalloc-0d5eea125f28aeb5f --region us-west-2</code></li>
+          <li><div class="step-num">4</div>Release EIP 2:<br><code style="font-size:11px;display:block;margin-top:4px;background:#0d1117;border:1px solid var(--border);padding:6px 8px;border-radius:4px;color:#7ee787;">aws ec2 release-address --allocation-id eipalloc-0377c1e84323a52bd --region us-west-2</code></li>
+          <li><div class="step-num">5</div>Verify all gone:<br><code style="font-size:11px;display:block;margin-top:4px;background:#0d1117;border:1px solid var(--border);padding:6px 8px;border-radius:4px;color:#7ee787;">aws ec2 describe-nat-gateways --filter "Name=vpc-id,Values=vpc-08489f26f8b69bdef" "Name=state,Values=available" --region us-west-2 --query "NatGateways | length(@)"</code>Expected: <code>0</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="plan-card">
+      <div class="plan-header">
+        <div class="plan-num plan-priority-high">2</div>
+        <div>
+          <div class="plan-title">P2 · Delete remaining ALB via AWS CLI ($5.76/month savings)</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px;">Priority: HIGH · Effort: Low (2 AWS CLI commands) · Risk: Low (0 active targets)</div>
+        </div>
+      </div>
+      <div class="plan-body">
+        <div class="plan-savings">Saves $5.76/month · Billing stops immediately on deletion</div>
+        <div class="alert alert-yellow" style="margin-bottom:14px;">
+          <strong>⚠ This ALB is NOT in this repo's Terraform state.</strong> The surviving ALB <code>deep-research-agent-frontend-dev</code> is in the <strong>DeepResearch VPC</strong> (<code>vpc-08489f26f8b69bdef</code>). Running <code>terraform state list | grep aws_lb</code> in <code>infra/terraform/</code> will return nothing for it — the tech-news-mystery ALB (<code>tech-news-mystery-prod-alb</code>) was already destroyed in an earlier Terraform apply. Use the AWS CLI commands below, or target the DeepResearch repo's Terraform.
+        </div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">
+          Deletion protection is disabled on this ALB (confirmed in investigation). The ALB-managed EIP (<code>eipalloc-02426f5aac6fe441c</code>) is automatically released when the ALB is deleted — no manual EIP cleanup required for this one.
+        </p>
+        <ul class="plan-steps">
+          <li><div class="step-num">1</div>Delete the target group first (ALB must be deleted before TG can be removed, but TG must be deregistered from ALB first — deleting ALB handles this automatically):<br><code style="font-size:11px;display:block;margin-top:4px;background:#0d1117;border:1px solid var(--border);padding:6px 8px;border-radius:4px;color:#7ee787;">aws elbv2 delete-load-balancer --load-balancer-arn "arn:aws:elasticloadbalancing:us-west-2:381492273521:loadbalancer/app/deep-research-agent-frontend-dev/6dceef222ea60172" --region us-west-2</code></li>
+          <li><div class="step-num">2</div>Wait ~5 seconds, then delete the orphaned target group:<br><code style="font-size:11px;display:block;margin-top:4px;background:#0d1117;border:1px solid var(--border);padding:6px 8px;border-radius:4px;color:#7ee787;">aws elbv2 delete-target-group --target-group-arn "arn:aws:elasticloadbalancing:us-west-2:381492273521:targetgroup/deep-research-agent-frontend-dev/2288f3ce36c6e9c9" --region us-west-2</code></li>
+          <li><div class="step-num">3</div>Verify no active ALBs remain:<br><code style="font-size:11px;display:block;margin-top:4px;background:#0d1117;border:1px solid var(--border);padding:6px 8px;border-radius:4px;color:#7ee787;">aws elbv2 describe-load-balancers --region us-west-2 --query "LoadBalancers[?State.Code=='active'] | length(@)"</code>Expected: <code>0</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="plan-card">
+      <div class="plan-header">
+        <div class="plan-num plan-priority-medium">3</div>
+        <div>
+          <div class="plan-title">P3 · Investigate and clean up orphan tech-news-mystery VPC</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px;">Priority: MEDIUM · Effort: Medium · Risk: Low (no paid resources inside)</div>
+        </div>
+      </div>
+      <div class="plan-body">
+        <div class="plan-savings">No direct cost savings now · Prevents future confusion</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">
+          VPC <code>vpc-0cb8708dd5185fc6a</code> is a near-duplicate of the Terraform-managed <code>vpc-07f5f6659edf8ee09</code>. Both share the same CIDR and name. The orphan has subnets and an internet gateway (free) but nothing paid. It should be deleted to prevent accidentally deploying resources into the wrong VPC.
+        </p>
+        <ul class="plan-steps">
+          <li><div class="step-num">1</div>Confirm the orphan VPC is NOT in Terraform state: <code>terraform state list | grep vpc-0cb8708dd5185fc6a</code></li>
+          <li><div class="step-num">2</div>List all resources in the orphan VPC to confirm empty: describe-instances, describe-nat-gateways, describe-load-balancers filtered by VPC ID</li>
+          <li><div class="step-num">3</div>Detach and delete internet gateway <code>igw-0e4b400f2afca7c0c</code></li>
+          <li><div class="step-num">4</div>Delete subnets: <code>subnet-096eeca1e6485af19</code>, <code>subnet-0f8b40620a8500ae8</code>, <code>subnet-0085370f8307dc20a</code>, <code>subnet-061a356af3cddc65f</code></li>
+          <li><div class="step-num">5</div>Delete the VPC itself</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="plan-card">
+      <div class="plan-header">
+        <div class="plan-num plan-priority-medium">4</div>
+        <div>
+          <div class="plan-title">P4 · Pre-restoration checklist before re-enabling ECS</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px;">Priority: MEDIUM · Effort: High · Future consideration</div>
+        </div>
+      </div>
+      <div class="plan-body">
+        <div class="plan-savings">Prevents cost regression when service is re-enabled</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">
+          When the time comes to re-enable the DeepResearch frontend service, these improvements should be applied to avoid recurring issues.
+        </p>
+        <ul class="plan-steps">
+          <li><div class="step-num">1</div><strong>[Tech-News-Mystery]</strong> HTTPS is already coded in <code>alb.tf</code> — the listener is gated on <code>var.certificate_arn != ""</code> (lines 69–81). To activate: provision an ACM certificate for your domain and pass it as <code>certificate_arn = "arn:aws:acm:..."</code> in your tfvars file. No code change needed.</li>
+          <li><div class="step-num">2</div><strong>[Tech-News-Mystery]</strong> ALB idle timeout: this repo's <code>alb.tf</code> already uses <code>idle_timeout = 120</code> (2 minutes) — no change needed here. The 3600s misconfiguration is in the DeepResearch ALB (separate repo); correct it there if/when that ALB is recreated.</li>
+          <li><div class="step-num">3</div><strong>[DeepResearch — separate repo]</strong> If recreating the DeepResearch stack: consider a single NAT Gateway instead of 2 (one per AZ) — saves $32.40/month at the cost of AZ redundancy. Acceptable for a dev environment.</li>
+          <li><div class="step-num">4</div>Add AWS Cost Anomaly Detection alert for NAT GW spending above $1/day to catch future idle-but-billing situations early: AWS Console → Cost Management → Cost Anomaly Detection → Create monitor (service: EC2)</li>
+          <li><div class="step-num">5</div>Tag all resources with <code>CostCenter</code> and <code>Billable=true/false</code> to make future cost attribution clearer in Cost Explorer — especially important since two stacks share the same AWS account</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- P5 Recreation Plan -->
+    <div class="plan-card" style="border-color:#3a4a5a;">
+      <div class="plan-header" style="background:#0c1f38;border-bottom-color:#1a3a5c;">
+        <div class="plan-num" style="background:#0c2040;color:#79c0ff;border:1px solid #1a4275;">5</div>
+        <div>
+          <div class="plan-title" style="color:#79c0ff;">P5 · Full Infrastructure Recreation Plan — Bring Everything Back</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:2px;">Priority: REFERENCE · For when you're ready to re-activate · Two separate stacks to restore</div>
+        </div>
+      </div>
+      <div class="plan-body">
+        <div style="margin-bottom:20px;padding:14px;background:#0c1f38;border:1px solid #1a3a5c;border-radius:6px;font-size:13px;line-height:1.7;">
+          <strong style="color:#79c0ff;">Architecture Summary — Two Independent Stacks</strong><br>
+          Your infrastructure has two separate Terraform-managed stacks that were both disabled. They have <em>different</em> networking architectures and must be restored independently.
+          <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:14px;font-size:12px;">
+            <div style="background:#0d1117;border:1px solid var(--border);border-radius:6px;padding:12px;">
+              <div style="color:var(--accent-green);font-weight:600;margin-bottom:6px;">Tech-News-Mystery (this repo)</div>
+              <div style="color:var(--muted);">Path: <code>infra/terraform/</code></div>
+              <div style="color:var(--muted);">VPC: vpc-07f5f6659edf8ee09 (10.40.0.0/16)</div>
+              <div style="color:var(--muted);">ECS networking: <strong style="color:var(--accent-green)">PUBLIC subnets + public IP</strong></div>
+              <div style="color:var(--muted);">NAT Gateways needed: <strong style="color:var(--accent-green)">NONE ✓</strong></div>
+              <div style="color:var(--muted);">Disabled files: <code>alb.tf</code>, <code>ecs.tf</code>, <code>redis.tf</code></div>
+              <div style="color:var(--muted);">Restore method: Remove block comment markers</div>
+            </div>
+            <div style="background:#0d1117;border:1px solid var(--border);border-radius:6px;padding:12px;">
+              <div style="color:var(--accent-orange);font-weight:600;margin-bottom:6px;">DeepResearch (separate repo)</div>
+              <div style="color:var(--muted);">VPC: vpc-08489f26f8b69bdef (10.0.0.0/16)</div>
+              <div style="color:var(--muted);">ECS networking: <strong style="color:var(--accent-orange)">PRIVATE subnets + NAT GWs</strong></div>
+              <div style="color:var(--muted);">NAT Gateways needed: <strong style="color:var(--accent-orange)">YES (2 for HA)</strong></div>
+              <div style="color:var(--muted);">Disabled via: <code>desiredCount=0</code> on ECS service</div>
+              <div style="color:var(--muted);">NAT GWs: currently still RUNNING</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Stack A -->
+        <div style="margin-bottom:24px;">
+          <div style="font-size:13px;font-weight:600;color:var(--accent-green);margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #1a4a28;">
+            Stack A — Tech-News-Mystery Production (this repo)
+          </div>
+
+          <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">Pre-flight checklist</div>
+          <ul class="plan-steps" style="margin-bottom:16px;">
+            <li><div class="step-num">✓</div>Confirm Docker images exist in ECR for backend, frontend, clustering: <code style="font-size:11px;">aws ecr describe-images --repository-name tech-news-mystery-backend --region us-west-2 --query "imageDetails[?imageTags[?contains(@,'latest')]]"</code></li>
+            <li><div class="step-num">✓</div>Confirm Secrets Manager secret has all required keys (api keys, JWT secret, Redis URL will be auto-set): <code style="font-size:11px;">aws secretsmanager list-secrets --region us-west-2 --query "SecretList[?contains(Name,'tech-news')]"</code></li>
+            <li><div class="step-num">✓</div>Confirm you are on the <strong>main branch</strong> (not the disable branch): <code style="font-size:11px;">git branch --show-current</code></li>
+            <li><div class="step-num">✓</div>Confirm Terraform state is accessible: <code style="font-size:11px;">cd infra/terraform &amp;&amp; terraform init &amp;&amp; terraform state list | head -20</code></li>
+          </ul>
+
+          <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">Step 1 — Re-enable disabled Terraform files (4 block-comment files + 1 line-comment file)</div>
+          <div style="background:#0d1117;border:1px solid var(--border);border-radius:6px;padding:14px;margin-bottom:12px;font-family:monospace;font-size:12px;line-height:1.8;color:#e6edf3;">
+            <div style="color:#8b949e;margin-bottom:6px;"># Files using /* DISABLED */ block-comment pattern — delete EXACTLY:</div>
+            <div style="color:#8b949e;">#   Line 1: /* DISABLED — to restore: delete this first line and the closing marker at the bottom of this file</div>
+            <div style="color:#8b949e;">#   Last line: */</div>
+            <br>
+            <div style="color:#ffa198;"># File 1: infra/terraform/alb.tf</div>
+            <div style="color:#56d364;">→ Delete line 1 ("/* DISABLED...") and last line ("*/")</div>
+            <br>
+            <div style="color:#ffa198;"># File 2: infra/terraform/ecs.tf</div>
+            <div style="color:#56d364;">→ Delete line 1 ("/* DISABLED...") and last line ("*/")</div>
+            <br>
+            <div style="color:#ffa198;"># File 3: infra/terraform/redis.tf</div>
+            <div style="color:#56d364;">→ Delete line 1 ("/* DISABLED...") and last line ("*/")</div>
+            <br>
+            <div style="color:#ffa198;"># File 4: infra/terraform/clustering.tf  ← don't forget this one!</div>
+            <div style="color:#56d364;">→ Delete line 1 ("/* DISABLED...") and last line ("*/")  (only if restoring clustering workers)</div>
+            <br>
+            <div style="color:#8b949e;margin-top:4px;"># File 5: infra/terraform/outputs.tf — uses LINE comments (# prefix), different pattern:</div>
+            <div style="color:#8b949e;">#   Uncomment each # output "..." { ... } block (remove the # from every line)</div>
+            <div style="color:#ffa198;"># outputs.tf</div>
+            <div style="color:#56d364;">→ Remove the leading # from each output block (alb_dns_name, api_url, ecs_cluster_name, etc.)</div>
+            <div style="color:#8b949e;">#   Note: terraform output alb_dns_name WILL FAIL until outputs.tf is uncommented</div>
+          </div>
+
+          <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">Step 2 — Verify plan before applying</div>
+          <ul class="plan-steps" style="margin-bottom:16px;">
+            <li><div class="step-num">2</div>Run <code>terraform plan -out=tfplan.out 2>&amp;1 | tee plan.log</code></li>
+            <li><div class="step-num" style="font-size:9px;">2a</div>Expect plan to add: <code>aws_lb.app</code>, <code>aws_lb_listener.http</code>, <code>aws_lb_listener.https</code> (if cert set), <code>aws_lb_target_group.api</code>, <code>aws_lb_target_group.frontend</code></li>
+            <li><div class="step-num" style="font-size:9px;">2b</div>Expect plan to add: <code>aws_ecs_cluster.app</code>, <code>aws_ecs_service.api</code>, <code>aws_ecs_service.frontend</code>, <code>aws_ecs_service.worker</code>, <code>aws_ecs_service.beat</code>, <code>aws_ecs_service.livekit_voice_worker</code></li>
+            <li><div class="step-num" style="font-size:9px;">2c</div>Expect plan to add: <code>aws_elasticache_replication_group.redis</code>, <code>aws_elasticache_subnet_group.redis</code></li>
+            <li><div class="step-num" style="font-size:9px;">2d</div>Confirm plan shows <strong>0 destroyed</strong> resources — nothing should be deleted</li>
+          </ul>
+
+          <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">Step 3 — Apply and monitor</div>
+          <ul class="plan-steps" style="margin-bottom:16px;">
+            <li><div class="step-num">3</div>Run <code>terraform apply tfplan.out</code></li>
+            <li><div class="step-num" style="font-size:9px;">3a</div><strong>Redis takes longest</strong> (~8-12 min): ElastiCache cluster creation is the blocking step</li>
+            <li><div class="step-num" style="font-size:9px;">3b</div><strong>ALB</strong>: Creates in ~1-2 min</li>
+            <li><div class="step-num" style="font-size:9px;">3c</div><strong>ECS tasks</strong>: Start after ALB is ready, typically healthy within 3-5 min (health check on <code>/api/health</code> and <code>/</code>)</li>
+            <li><div class="step-num" style="font-size:9px;">3d</div>Total expected time: <strong>~15-20 minutes</strong> end-to-end</li>
+          </ul>
+
+          <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">Step 4 — Post-apply verification</div>
+          <ul class="plan-steps">
+            <li><div class="step-num">4</div>Get ALB DNS: <code>terraform output alb_dns_name</code></li>
+            <li><div class="step-num" style="font-size:9px;">4a</div>API health: <code>curl http://&lt;alb-dns&gt;/v1/health</code> → expect <code>{"status":"ok"}</code></li>
+            <li><div class="step-num" style="font-size:9px;">4b</div>ECS task count: <code>aws ecs describe-services --cluster tech-news-mystery-prod --services api frontend worker --region us-west-2 --query "services[].{name:serviceName,running:runningCount,desired:desiredCount}"</code></li>
+            <li><div class="step-num" style="font-size:9px;">4c</div>Redis connectivity: check ECS worker logs via CloudWatch for successful Redis connection messages</li>
+          </ul>
+        </div>
+
+        <!-- Stack B -->
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--accent-orange);margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #3d2a00;">
+            Stack B — DeepResearch Frontend Dev (separate repository)
+          </div>
+
+          <div class="alert alert-yellow" style="margin-bottom:16px;">
+            <strong>Important:</strong> The DeepResearch NAT Gateways and ALB are currently still running (not yet deleted). If you run P1+P2 to delete them and later need to restore, follow these steps. If you haven't deleted them yet, simply scale ECS up (Step 3 only).
+          </div>
+
+          <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">Why NAT Gateways are required for DeepResearch (unlike tech-news-mystery)</div>
+          <div style="font-size:13px;color:var(--muted);margin-bottom:16px;padding:10px;background:var(--surface2);border-radius:6px;border:1px solid var(--border);">
+            The DeepResearch ECS service uses <strong>private subnets</strong> with <code>assignPublicIp=DISABLED</code>. Tasks in private subnets have no direct internet path — they must route outbound traffic through a NAT Gateway to reach AWS APIs (Bedrock, ECR, Secrets Manager, etc.). Without a NAT Gateway, ECS tasks in those private subnets cannot start (they can't pull the container image from ECR or reach Secrets Manager).
+          </div>
+
+          <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">Step 1 — Re-enable NAT Gateways in the DeepResearch Terraform stack</div>
+          <ul class="plan-steps" style="margin-bottom:16px;">
+            <li><div class="step-num">1</div>In the DeepResearch repo, find and re-enable the <code>aws_nat_gateway</code> and <code>aws_eip</code> resources (they were the ones disabled on that repo's cost-cutting branch)</li>
+            <li><div class="step-num" style="font-size:9px;">1a</div>Resources to restore: <code>aws_nat_gateway.nat_1_dev</code> + <code>aws_eip.nat_1</code> (public subnet us-west-2a) and <code>aws_nat_gateway.nat_2_dev</code> + <code>aws_eip.nat_2</code> (public subnet us-west-2b)</li>
+            <li><div class="step-num" style="font-size:9px;">1b</div>Also restore the private route table routes: <code>aws_route.private_nat_1</code> (subnet-0640e3ab87ad03bbc → NAT 1) and <code>aws_route.private_nat_2</code> (subnet-0003b2cbc47293d66 → NAT 2)</li>
+            <li><div class="step-num" style="font-size:9px;">1c</div>NAT Gateway creation takes <strong>~60-90 seconds</strong> each. Do NOT proceed to ECS scale-up until NAT GW state = <code>available</code></li>
+            <li><div class="step-num" style="font-size:9px;">1d</div>Wait check: <code>aws ec2 describe-nat-gateways --filter "Name=vpc-id,Values=vpc-08489f26f8b69bdef" "Name=state,Values=available" --region us-west-2 --query "NatGateways[].NatGatewayId"</code></li>
+          </ul>
+
+          <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">Step 2 — Re-enable the ALB</div>
+          <ul class="plan-steps" style="margin-bottom:16px;">
+            <li><div class="step-num">2</div>In the DeepResearch Terraform, re-enable the <code>aws_lb</code>, <code>aws_lb_listener</code>, and <code>aws_lb_target_group</code> resources for <code>deep-research-agent-frontend-dev</code></li>
+            <li><div class="step-num" style="font-size:9px;">2a</div>The ALB must be created before ECS services can register targets against it</li>
+            <li><div class="step-num" style="font-size:9px;">2b</div>Fix idle timeout: set to 60s instead of 3600s to avoid the misconfiguration seen in the current ALB</li>
+            <li><div class="step-num" style="font-size:9px;">2c</div>ALB creation takes ~1-2 minutes</li>
+          </ul>
+
+          <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">Step 3 — Scale ECS service back up (works even without deleting NAT GWs first, if they're still running)</div>
+          <ul class="plan-steps" style="margin-bottom:16px;">
+            <li><div class="step-num">3</div>In the DeepResearch Terraform, change <code>desiredCount</code> from <code>0</code> → <code>1</code> (or higher) for the ECS service</li>
+            <li><div class="step-num" style="font-size:9px;">3a</div>Alternative if Terraform is not available: <code>aws ecs update-service --cluster deep-research-agent-frontend-dev --service deep-research-agent-frontend-dev --desired-count 1 --region us-west-2</code></li>
+            <li><div class="step-num" style="font-size:9px;">3b</div>Monitor task startup: <code>aws ecs describe-services --cluster deep-research-agent-frontend-dev --services deep-research-agent-frontend-dev --region us-west-2 --query "services[0].{desired:desiredCount,running:runningCount,pending:pendingCount}"</code></li>
+            <li><div class="step-num" style="font-size:9px;">3c</div>ECS tasks in private subnets pull images via NAT GW → ECR. First pull may take 1-2 extra minutes. Health check grace period: 120s (configured on the service)</li>
+          </ul>
+
+          <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.4px;">Cost impact on re-enable</div>
+          <div style="background:#0d1117;border:1px solid var(--border);border-radius:6px;padding:14px;font-size:12px;font-family:monospace;">
+            <div style="color:#ffa198;">NAT GWs restart:    +$2.16/day  ($64.80/month) — billing starts IMMEDIATELY when state=available</div>
+            <div style="color:#e3b341;">ALB restarts:       +$0.19/day  ($5.76/month)  — billing starts IMMEDIATELY on creation</div>
+            <div style="color:#79c0ff;">ECS Fargate tasks:  +~$0.50/day ($15/month)    — billing starts when task is RUNNING</div>
+            <div style="color:#8b949e;">─────────────────────────────────────────────────────</div>
+            <div style="color:#56d364;">Total re-enable:    ~$2.85/day  (~$85/month)</div>
+          </div>
+        </div>
+
+        <!-- Quick-restore cheatsheet -->
+        <div style="margin-top:20px;padding:14px;background:#0a1a0a;border:1px solid #1a4a28;border-radius:6px;">
+          <div style="font-size:12px;font-weight:600;color:var(--accent-green);margin-bottom:10px;">Quick-Restore Cheatsheet (print and keep)</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px;">
+            <div>
+              <div style="color:var(--muted);margin-bottom:4px;">Tech-News-Mystery re-enable:</div>
+              <div style="background:#0d1117;border:1px solid var(--border);border-radius:4px;padding:8px;font-family:monospace;line-height:1.8;font-size:11px;color:#7ee787;">
+                # 1. Remove /* DISABLED */ from alb.tf, ecs.tf,<br>
+                #    redis.tf, clustering.tf (4 block-comment files)<br>
+                # 2. Uncomment # output blocks in outputs.tf<br>
+                cd infra/terraform<br>
+                terraform plan -out=plan.out<br>
+                terraform apply plan.out
+              </div>
+            </div>
+            <div>
+              <div style="color:var(--muted);margin-bottom:4px;">DeepResearch NAT GW + ALB delete (P1+P2, AWS CLI):</div>
+              <div style="background:#0d1117;border:1px solid var(--border);border-radius:4px;padding:8px;font-family:monospace;line-height:1.8;font-size:11px;color:#7ee787;">
+                # Delete NAT GWs (P1)<br>
+                aws ec2 delete-nat-gateway \<br>
+                &nbsp;&nbsp;--nat-gateway-id nat-0443a068bdd67f607 --region us-west-2<br>
+                aws ec2 delete-nat-gateway \<br>
+                &nbsp;&nbsp;--nat-gateway-id nat-038474c5757c5d0b2 --region us-west-2<br>
+                # Release EIPs (wait ~60s after delete above)<br>
+                aws ec2 release-address \<br>
+                &nbsp;&nbsp;--allocation-id eipalloc-0d5eea125f28aeb5f --region us-west-2<br>
+                aws ec2 release-address \<br>
+                &nbsp;&nbsp;--allocation-id eipalloc-0377c1e84323a52bd --region us-west-2<br>
+                # Delete ALB (P2)<br>
+                aws elbv2 delete-load-balancer \<br>
+                &nbsp;&nbsp;--load-balancer-arn "arn:aws:elasticloadbalancing:us-west-2:\<br>
+                &nbsp;&nbsp;381492273521:loadbalancer/app/deep-research-agent-frontend-dev/\<br>
+                &nbsp;&nbsp;6dceef222ea60172" --region us-west-2
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- 10. Acceptance Criteria -->
+  <section id="ac">
+    <h2><span class="num">10</span> Acceptance Criteria</h2>
+
+    <div class="resource-card">
+      <table class="ac-table">
+        <thead>
+          <tr>
+            <th>AC ID</th>
+            <th>Criterion</th>
+            <th>Verification Command</th>
+            <th>Expected Result</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="ac-id">AC-01</span></td>
+            <td><strong>NAT GW nat-1-dev deleted</strong><br><span class="text-muted">nat-0443a068bdd67f607 must not be in available state</span></td>
+            <td><code class="verify-cmd">aws ec2 describe-nat-gateways --nat-gateway-ids nat-0443a068bdd67f607 --query "NatGateways[0].State" --region us-west-2</code></td>
+            <td><code>"deleted"</code> or <code>ResourceNotFoundException</code></td>
+          </tr>
+          <tr>
+            <td><span class="ac-id">AC-02</span></td>
+            <td><strong>NAT GW nat-2-dev deleted</strong><br><span class="text-muted">nat-038474c5757c5d0b2 must not be in available state</span></td>
+            <td><code class="verify-cmd">aws ec2 describe-nat-gateways --nat-gateway-ids nat-038474c5757c5d0b2 --query "NatGateways[0].State" --region us-west-2</code></td>
+            <td><code>"deleted"</code> or <code>ResourceNotFoundException</code></td>
+          </tr>
+          <tr>
+            <td><span class="ac-id">AC-03</span></td>
+            <td><strong>No available NAT Gateways in DeepResearch VPC</strong></td>
+            <td><code class="verify-cmd">aws ec2 describe-nat-gateways --filter "Name=vpc-id,Values=vpc-08489f26f8b69bdef" "Name=state,Values=available" --region us-west-2 --query "NatGateways | length(@)"</code></td>
+            <td><code>0</code></td>
+          </tr>
+          <tr>
+            <td><span class="ac-id">AC-04</span></td>
+            <td><strong>Elastic IPs released</strong><br><span class="text-muted">Both EIPs must not remain allocated</span></td>
+            <td><code class="verify-cmd">aws ec2 describe-addresses --allocation-ids eipalloc-0d5eea125f28aeb5f eipalloc-0377c1e84323a52bd --region us-west-2</code></td>
+            <td>Error: InvalidAllocationID.NotFound (both released)</td>
+          </tr>
+          <tr>
+            <td><span class="ac-id">AC-05</span></td>
+            <td><strong>ALB deleted</strong><br><span class="text-muted">deep-research-agent-frontend-dev must not exist</span></td>
+            <td><code class="verify-cmd">aws elbv2 describe-load-balancers --names deep-research-agent-frontend-dev --region us-west-2</code></td>
+            <td>Error: LoadBalancerNotFound</td>
+          </tr>
+          <tr>
+            <td><span class="ac-id">AC-06</span></td>
+            <td><strong>No active ALBs in account</strong></td>
+            <td><code class="verify-cmd">aws elbv2 describe-load-balancers --region us-west-2 --query "LoadBalancers[?State.Code=='active'] | length(@)"</code></td>
+            <td><code>0</code></td>
+          </tr>
+          <tr>
+            <td><span class="ac-id">AC-07</span></td>
+            <td><strong>Target group cleaned up</strong></td>
+            <td><code class="verify-cmd">aws elbv2 describe-target-groups --names deep-research-agent-frontend-dev --region us-west-2</code></td>
+            <td>Error: TargetGroupNotFound</td>
+          </tr>
+          <tr>
+            <td><span class="ac-id">AC-08</span></td>
+            <td><strong>Daily cost drops to &lt;$0.10/day</strong><br><span class="text-muted">Verified in AWS Cost Explorer after 24h</span></td>
+            <td>Check AWS Cost Explorer → EC2 + ELB service lines for next calendar day</td>
+            <td>EC2: $0.00, ELB: $0.00</td>
+          </tr>
+          <tr>
+            <td><span class="ac-id">AC-09</span></td>
+            <td><strong>No unattached Elastic IPs</strong><br><span class="text-muted">Prevents $7.20/month EIP billing surprise</span></td>
+            <td><code class="verify-cmd">aws ec2 describe-addresses --region us-west-2 --query "Addresses[?AssociationId==null] | length(@)"</code></td>
+            <td><code>0</code></td>
+          </tr>
+          <tr>
+            <td><span class="ac-id">AC-10</span></td>
+            <td><strong>(Optional) Orphan VPC cleaned up</strong></td>
+            <td><code class="verify-cmd">aws ec2 describe-vpcs --vpc-ids vpc-0cb8708dd5185fc6a --region us-west-2</code></td>
+            <td>Error: InvalidVpcID.NotFound</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 11. Quick Reference -->
+  <section id="ref">
+    <h2><span class="num">11</span> Quick Reference — Resource IDs</h2>
+
+    <div class="resource-card">
+      <div class="resource-body">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px;">
+          <div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:8px;">NAT Gateways (DELETE THESE)</div>
+            <span class="tag">nat-0443a068bdd67f607</span>
+            <span class="tag">nat-038474c5757c5d0b2</span>
+          </div>
+          <div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:8px;">Elastic IPs (RELEASE THESE)</div>
+            <span class="tag">eipalloc-0d5eea125f28aeb5f</span>
+            <span class="tag">eipalloc-0377c1e84323a52bd</span>
+          </div>
+          <div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:8px;">Application Load Balancer (DELETE THIS)</div>
+            <span class="tag">arn:.../app/deep-research-agent-frontend-dev/6dceef222ea60172</span>
+          </div>
+          <div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:8px;">Target Group (DELETE THIS)</div>
+            <span class="tag">arn:.../targetgroup/deep-research-agent-frontend-dev/2288f3ce36c6e9c9</span>
+          </div>
+          <div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:8px;">ECS Service (Already at 0, keep or delete)</div>
+            <span class="tag">deep-research-agent-frontend-dev</span>
+          </div>
+          <div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:8px;">VPC (INVESTIGATE ORPHAN)</div>
+            <span class="tag">vpc-0cb8708dd5185fc6a</span>
+          </div>
+          <div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:8px;">EFS (INVESTIGATE — not in TF state)</div>
+            <span class="tag">fs-0a87977063ddb1658</span>
+            <span class="tag">4 mount targets in default VPC</span>
+          </div>
+          <div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:8px;">Terraform State (S3)</div>
+            <span class="tag">tech-news-mystery-tfstate-381492273521</span>
+            <span class="tag">tech-news-mystery/prod/terraform.tfstate</span>
+          </div>
+          <div>
+            <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);margin-bottom:8px;">Local Terraform Path</div>
+            <span class="tag">D:\FPT\Demo\Tech-News-Mystery\infra\terraform\</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="footer">
+    <div>Generated: June 22, 2026 · AWS Region: us-west-2 · Account: 381492273521</div>
+    <div>Investigation only — no resources were modified during this analysis</div>
+  </div>
+
+</div>
+</body>
+</html>
